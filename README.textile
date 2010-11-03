@@ -1,4 +1,4 @@
-Lamina provides an event-driven analogue to Clojure's sequences, called channels.  Similar mechanisms have been used in languages and platforms such as "Go":http://golang.org/,  "JoCaml":http://jocaml.inria.fr/, and ".NET":http://msdn.microsoft.com/en-us/devlabs/ee794896.aspx.
+Lamina provides an event-driven analogue to Clojure's sequences, called channels.  Similar mechanisms have been used in languages such as "Go":http://golang.org/,  "JoCaml":http://jocaml.inria.fr/, and "C#":http://msdn.microsoft.com/en-us/devlabs/ee794896.aspx.
 
 Channels are meant to be a generic interface for the creation and consumption of asynchronous events.  Within "Aleph":https://github.com/ztellman/aleph, they are used to represent network communication over a variety of protocols.
 
