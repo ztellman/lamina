@@ -1,0 +1,6 @@
+pom.xml
+*jar
+lib
+classes
+local-push
+DS_Store
