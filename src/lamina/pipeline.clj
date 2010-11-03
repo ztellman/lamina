@@ -11,7 +11,7 @@
   lamina.pipeline
   (:use
     [clojure.contrib.def :only (defmacro- defvar)]
-    [aleph.core.channel]
+    [lamina.channel]
     [clojure.pprint])
   (:require
     [clojure.contrib.logging :as log])
