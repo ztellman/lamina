@@ -59,6 +59,7 @@
 ;;;; PIPELINES
 
 ;; core pipeline functions
+(import-fn pipeline/pipeline-channel)
 (import-fn pipeline/pipeline)
 (import-fn pipeline/run-pipeline)
 
