@@ -2,5 +2,6 @@ pom.xml
 *jar
 lib
 classes
+push
 local-push
 DS_Store
