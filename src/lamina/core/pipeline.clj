@@ -8,10 +8,10 @@
 
 (ns
   ^{:skip-wiki true}
-  lamina.pipeline
+  lamina.core.pipeline
   (:use
     [clojure.contrib.def :only (defmacro- defvar)]
-    [lamina.channel]
+    [lamina.core.channel]
     [clojure.pprint])
   (:require
     [clojure.contrib.logging :as log])

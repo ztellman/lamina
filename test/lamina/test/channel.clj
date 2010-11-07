@@ -8,8 +8,8 @@
 
 (ns lamina.test.channel
   (:use
-    [lamina]
-    [lamina.channel :only (listen)])
+    [lamina.core]
+    [lamina.core.channel :only (listen)])
   (:use
     [clojure.test]
     [clojure.contrib.def]

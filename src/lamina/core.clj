@@ -8,12 +8,12 @@
 
 (ns
   ^{:author "Zachary Tellman"}
-  lamina
+  lamina.core
   (:use
     [potemkin :only (import-fn)])
   (:require
-    [lamina.pipeline :as pipeline]
-    [lamina.channel :as channel]))
+    [lamina.core.pipeline :as pipeline]
+    [lamina.core.channel :as channel]))
 
 
 ;;;; CHANNELS

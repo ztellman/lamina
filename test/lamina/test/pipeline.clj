@@ -8,7 +8,7 @@
 ;;   You must not remove this notice, or any other, from this software.
 
 (ns lamina.test.pipeline
-  (:use [lamina])
+  (:use [lamina.core])
   (:use [clojure.test])
   (:import [java.util.concurrent
 	    TimeoutException
