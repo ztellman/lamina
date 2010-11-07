@@ -6,7 +6,7 @@ Sequences can be turned into channels, and vise-versa:
 
 <pre><code>> (def ch (apply channel (range 3)))
 <== [0 1 2]
-> (lazy-channel-seq ch)
+> (channel-seq ch)
 (0 1 2)
 </code></pre>
 
