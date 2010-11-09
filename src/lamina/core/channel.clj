@@ -23,6 +23,7 @@
 (defprotocol AlephChannel
   (listen- [ch fs])
   (receive-while- [ch callback-predicate-map])
+  (try-receive [ch])
   (receive- [ch fs])
   (receive-all- [ch fs])
   (cancel-callback- [ch fs])
@@ -77,8 +78,8 @@
   (enqueue- ch messages))
 
 (defn enqueue-and-close
-  "Enqueues the final messages into the channel.  When this message is received,
-   the channel will be closed."
+  "Enqueues the final messages into the channel, sealing it.  When this message is
+   received, the channel will be closed."
   [ch & messages]
   (enqueue-and-close- ch messages))
 
@@ -90,7 +91,7 @@
    constant value via a channel."
   ([message]
      (let [ch (constant-channel)]
-       (apply enqueue ch message)
+       (enqueue ch message)
        ch))
   ([]
      (let [result (ref nil)
@@ -130,8 +131,10 @@
 	   true)
 	 (receive-while- [this callback-predicate-map]
 	   (doseq [[f pred] callback-predicate-map]
-	     (receive- this #(when (pred %) (f %))))
+	     (receive this #(when (pred %) (f %))))
 	   true)
+	 (try-receive [_]
+	   [@complete @result])
 	 (receive- [this fs]
 	   (subscribe fs receivers #(%1 %2))
 	   true)
@@ -336,6 +339,14 @@
 		(apply alter transient-receivers conj fs)
 		(update-cached-receivers)
 		(callbacks))))))
+      (try-receive [_]
+	(dosync
+	  (if (empty? @messages)
+	    [false nil]
+	    (do
+	      (let [msg (first @messages)]
+		(alter messages pop)
+		[true msg])))))
       (receive-while- [this callback-predicate-map]
 	(assert-fns (keys callback-predicate-map))
 	(assert-fns (vals callback-predicate-map))
@@ -411,6 +422,7 @@
     (receive- [_ fs] false)
     (receive-all- [_ fs] false)
     (receive-while- [_ callback-predicate-map] false)
+    (try-receive [_] [false nil])
     (listen- [_ f] false)
     (cancel-callback- [_ fs])
     (closed? [_] true)
@@ -436,6 +448,8 @@
       (receive-all- src fs))
     (receive-while- [_ callback-predicate-map]
       (receive-while src callback-predicate-map))
+    (try-receive [_]
+      (try-receive src))
     (listen- [_ fs]
       (listen- src fs))
     (cancel-callback- [_ fs]
@@ -501,6 +515,13 @@
 	  (zipmap
 	    (transform-callbacks (keys callback-predicate-map))
 	    (map transform-predicate (vals callback-predicate-map)))))
+      (try-receive [_]
+	(let [[success value] (try-receive ch)
+	      value (and success (f value))
+	      success (and success (not= ::ignore value))]
+	  (if success
+	    [true value]
+	    [false nil])))
       (listen- [_ fs]
 	(listen- ch (transform-callbacks fs)))
       (cancel-callback- [_ fs]
@@ -640,26 +661,32 @@
   ([channel-map]
      (poll channel-map -1))
   ([channel-map timeout]
-     (let [received (ref false)
-	   result-channel (constant-channel)
-	   enqueue-fn (fn [k]
-			(fn [v]
-			  (dosync
-			    (when-not @received
-			      (ref-set received true)
-			      #(enqueue result-channel (when k [k %]))))))]
-       (doseq [[k ch] channel-map]
-	 (listen ch (enqueue-fn k)))
-       (let [listen-results (map
-			      (fn [[k ch]] (listen ch (enqueue-fn k)))
-			      channel-map)]
-	 (when (or (zero? timeout) (every? #(not %) listen-results))
-	   (let [enqueue-fn* ((enqueue-fn nil) nil)]
-	     (when enqueue-fn*
-	       (enqueue-fn* nil)))))
-       (when (< 0 timeout)
-	 (delay-invoke #(((enqueue-fn nil) nil) nil) timeout))
-       result-channel)))
+     (if-let [val (some
+		    (fn [[k ch]]
+		      (let [[success value] (try-receive ch)]
+			(and success [k value])))
+		    channel-map)]
+       (constant-channel val)
+       (let [received (ref false)
+	    result-channel (constant-channel)
+	    enqueue-fn (fn [k]
+			 (fn [v]
+			   (dosync
+			     (when-not @received
+			       (ref-set received true)
+			       #(enqueue result-channel (when k [k %]))))))]
+	(doseq [[k ch] channel-map]
+	  (listen ch (enqueue-fn k)))
+	(let [listen-results (map
+			       (fn [[k ch]] (listen ch (enqueue-fn k)))
+			       channel-map)]
+	  (when (or (zero? timeout) (every? #(not %) listen-results))
+	    (let [enqueue-fn* ((enqueue-fn nil) nil)]
+	      (when enqueue-fn*
+		(enqueue-fn* nil)))))
+	(when (< 0 timeout)
+	  (delay-invoke #(((enqueue-fn nil) nil) nil) timeout))
+	result-channel))))
 
 (defn lazy-channel-seq
   "Creates a lazy-seq which consumes messages from the channel.  Only elements
@@ -715,11 +742,14 @@
   ([ch]
      (wait-for-message ch -1))
   ([ch timeout]
-     (let [result (promise)]
-       (receive (poll {:ch ch} timeout) #(deliver result %))
-       (if-let [result @result]
-	 (second result)
-	 (throw (TimeoutException. "Timed out waiting for message from channel."))))))
+     (let [[success value] (try-receive ch)]
+       (if success
+	 value
+	 (let [result (promise)]
+	  (receive (poll {:ch ch} timeout) #(deliver result %))
+	  (if-let [result @result]
+	    (second result)
+	    (throw (TimeoutException. "Timed out waiting for message from channel."))))))))
 
 ;;;
 
