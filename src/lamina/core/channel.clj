@@ -649,6 +649,13 @@
 (defn delay-invoke [f delay]
   (.schedule ^ScheduledThreadPoolExecutor delayed-executor ^Runnable f (long delay) TimeUnit/MILLISECONDS))
 
+(defn try-poll [channel-map]
+  (some
+    (fn [[k ch]]
+      (let [[success value] (try-receive ch)]
+	(and success [k value])))
+    channel-map))
+
 (defn poll
   "Allows you to consume exactly one message from multiple channels.
 
@@ -661,11 +668,7 @@
   ([channel-map]
      (poll channel-map -1))
   ([channel-map timeout]
-     (if-let [val (some
-		    (fn [[k ch]]
-		      (let [[success value] (try-receive ch)]
-			(and success [k value])))
-		    channel-map)]
+     (if-let [val (try-poll channel-map)]
        (constant-channel val)
        (let [received (ref false)
 	    result-channel (constant-channel)

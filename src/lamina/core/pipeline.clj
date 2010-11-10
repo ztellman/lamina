@@ -77,31 +77,39 @@
 
 (declare handle-result)
 
+(defn- handle-error [result ctx]
+  (with-context ctx
+    (let [possible-redirect (when (inner-error-handler)
+			      (apply (inner-error-handler) result))
+	  possible-redirect (if (or (redirect? possible-redirect) (not (outer-error-handler)))
+			      possible-redirect
+			      (apply (outer-error-handler) result))]
+      (if (redirect? possible-redirect)
+	(handle-result
+	  (:value possible-redirect)
+	  (-> possible-redirect :pipeline :stages)
+	  (assoc ctx
+	    :inner-error-handler (-> possible-redirect :pipeline :error-handler)
+	    :initial-value (:value possible-redirect)
+	    :pipeline (-> possible-redirect :pipeline)))
+	(enqueue (-> ctx :outer-result :error) result)))))
+
 (defn- poll-pipeline-channel [chs fns ctx]
-  (if (-> chs :success count pos?)
-    (wait-for-message (:success chs) 0)
+  (if-let [result (try-poll chs)]
+    (do
+      (if (= :error (first result))
+	(do
+	  (handle-error (second result) ctx)
+	  ::waiting)
+       (second result)))
     (do
       (receive (poll chs -1)
 	(fn [[typ result]]
-	  (with-context ctx
-	    (case typ
-	      :success
-	      (handle-result result fns ctx)
-	      :error
-	      (let [possible-redirect (when (inner-error-handler)
-					(apply (inner-error-handler) result))
-		    possible-redirect (if (or (redirect? possible-redirect) (not (outer-error-handler)))
-					possible-redirect
-					(apply (outer-error-handler) result))]
-		(if (redirect? possible-redirect)
-		  (handle-result
-		    (:value possible-redirect)
-		    (-> possible-redirect :pipeline :stages)
-		    (assoc ctx
-		      :inner-error-handler (-> possible-redirect :pipeline :error-handler)
-		      :initial-value (:value possible-redirect)
-		      :pipeline (-> possible-redirect :pipeline)))
-		  (enqueue (-> ctx :outer-result :error) result)))))))
+	  (case typ
+	    :success
+	    (handle-result result fns ctx)
+	    :error
+	    (handle-error result ctx))))
       ::waiting)))
 
 (defn- handle-result [result fns ctx]
