@@ -160,7 +160,7 @@
   (let [opts (apply hash-map (get-opts opts+stages))
 	stages (drop (* 2 (count opts)) opts+stages)
 	pipeline {:stages stages
-		  :error-handler (or (:error-handler opts) (fn [val ex] (log/error "aleph.core.pipeline" ex)))}]
+		  :error-handler (or (:error-handler opts) (fn [val ex] (log/error "lamina.core.pipeline" ex)))}]
     (when-not (every? fn? stages)
       (throw (Exception. "Every stage in a pipeline must be a function.")))
     ^{:tag ::pipeline

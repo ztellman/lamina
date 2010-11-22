@@ -35,6 +35,8 @@
 (import-fn channel/constant-channel)
 (import-fn channel/sealed-channel)
 
+(def nil-channel channel/nil-channel)
+
 ;; channel utility functions
 (import-fn channel/poll)
 (import-fn channel/siphon)

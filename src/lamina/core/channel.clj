@@ -20,7 +20,7 @@
     [clojure.lang
      Counted]))
 
-(defprotocol AlephChannel
+(defprotocol Channel
   (listen- [ch fs])
   (receive-while- [ch callback-predicate-map])
   (try-receive [ch])
@@ -36,7 +36,7 @@
     "Returns true if queue is sealed and there are no pending messages."))
 
 (defn channel? [ch]
-  (satisfies? AlephChannel ch))
+  (satisfies? Channel ch))
 
 ;;;
 
@@ -113,7 +113,7 @@
 	     nil)]
 
        ^{:type ::constant-channel}
-       (reify AlephChannel Counted
+       (reify Channel Counted
 	 (count [_]
 	   (if @complete 1 0))
 	 (toString [_]
@@ -312,7 +312,7 @@
 	   (throw (Exception. "All callbacks must be functions.")))]
     
     ^{:type ::channel}
-    (reify AlephChannel Counted
+    (reify Channel Counted
       (count [_]
 	(count @messages))
       (toString [_]
@@ -416,7 +416,7 @@
 
 (def nil-channel
   ^{:type ::channel}
-  (reify AlephChannel Counted
+  (reify Channel Counted
     (count [_] 0)
     (toString [_] "[]")
     (receive- [_ fs] false)
@@ -437,7 +437,7 @@
    into a single channel."
   [src dst]
   ^{:type ::channel}
-  (reify AlephChannel Counted
+  (reify Channel Counted
     (count [_]
       (count src))
     (toString [_]
@@ -503,7 +503,7 @@
 			     (apply swap! callback-map dissoc callbacks)
 			     callbacks*))]
     ^{:type ::channel}
-    (reify AlephChannel
+    (reify Channel
       (toString [_]
 	"[ ... wrapped channel ... ]")
       (receive- [_ fs]
