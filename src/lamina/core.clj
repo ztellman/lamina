@@ -24,6 +24,7 @@
 (import-fn #'channel/cancel-callback)
 (import-fn #'channel/enqueue)
 (import-fn #'channel/enqueue-and-close)
+(import-fn #'channel/on-close)
 (import-fn #'channel/sealed?)
 (import-fn #'channel/closed?)
 (import-fn channel/channel?)

@@ -30,6 +30,7 @@
   (enqueue- [ch msgs])
   (enqueue-and-close- [ch msgs])
   (on-zero-callbacks- [ch fs])
+  (on-close- [ch fs])
   (sealed? [ch]
     "Returns true if no further messages can be enqueued.")
   (closed? [ch]
@@ -76,6 +77,11 @@
   "Enqueues messages into the channel."
   [ch & messages]
   (enqueue- ch messages))
+
+(defn on-close
+  "Registers callbacks that will be triggered by the channel closing."
+  [ch & callbacks]
+  (on-close- ch callbacks))
 
 (defn enqueue-and-close
   "Enqueues the final messages into the channel, sealing it.  When this message is
@@ -135,6 +141,8 @@
 	   true)
 	 (try-receive [_]
 	   [@complete @result])
+	 (on-close- [_ _]
+	   )
 	 (receive- [this fs]
 	   (subscribe fs receivers #(%1 %2))
 	   true)
@@ -184,6 +192,7 @@
 	receivers (ref #{})
 	listeners (ref #{})
 	conditional-receivers (ref {})
+	on-close-channel (constant-channel)
 
 	empty-callbacks (ref #{}) ;; on the removal of all callbacks
 	   
@@ -256,7 +265,7 @@
 	    (ref-set empty-callbacks nil)
 	    (ref-set receivers nil)
 	    (ref-set conditional-receivers nil)))
-	   
+
 	callbacks
 	(fn callbacks
 	  ([]
@@ -294,7 +303,7 @@
 		  (doseq [f fns]
 		    (f msg))))
 	      (when (and @sealed (zero? (count @messages)))
-		(on-zero-callbacks))
+		(enqueue on-close-channel nil))
 	      true)))
 
 	callback-count
@@ -310,6 +319,8 @@
 	assert-fns
 	#(when-not (every? fn? %)
 	   (throw (Exception. "All callbacks must be functions.")))]
+
+    (receive on-close-channel (fn [_] (on-zero-callbacks)))
     
     ^{:type ::channel}
     (reify Channel Counted
@@ -346,6 +357,8 @@
 	    (do
 	      (let [msg (first @messages)]
 		(alter messages pop)
+		(when (and @sealed (empty? @messages))
+		  (enqueue on-close-channel nil))
 		[true msg])))))
       (receive-while- [this callback-predicate-map]
 	(assert-fns (keys callback-predicate-map))
@@ -384,6 +397,8 @@
 	(dosync
 	  (apply alter empty-callbacks conj fs))
 	nil)
+      (on-close- [_ fs]
+	(apply receive on-close-channel (map #(fn [_] (%)) fs)))
       (enqueue- [this msgs]
 	(if-let [fs @cached-receivers]
 	  (if-not (can-enqueue?)
@@ -428,6 +443,9 @@
     (closed? [_] true)
     (sealed? [_] true)
     (on-zero-callbacks- [_ fs])
+    (on-close- [_ fs]
+      (doseq [f fs]
+	(f)))
     (enqueue- [_ msgs] false)
     (enqueue-and-close- [_ msgs] false)))
 
@@ -456,6 +474,8 @@
       (cancel-callback- src fs))
     (on-zero-callbacks- [_ fs]
       (on-zero-callbacks- src fs))
+    (on-close- [_ fs]
+      (on-close- src fs))
     (closed? [_]
       (closed? src))
     (sealed? [_]
@@ -528,6 +548,8 @@
 	(cancel-callback- ch (remove-callbacks fs)))
       (on-zero-callbacks- [_ fs]
 	(on-zero-callbacks- ch fs))
+      (on-close- [_ fs]
+	(on-close- ch fs))
       (closed? [_]
 	(closed? ch))
       (sealed? [_]
