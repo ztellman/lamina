@@ -262,9 +262,10 @@
 	  (doseq [f @empty-callbacks]
 	    (f))
 	  (dosync
-	    (ref-set empty-callbacks nil)
-	    (ref-set receivers nil)
-	    (ref-set conditional-receivers nil)))
+	    (ref-set empty-callbacks #{})
+	    (ref-set receivers #{})
+	    (ref-set conditional-receivers {}))
+	  nil)
 
 	callbacks
 	(fn callbacks
