@@ -196,7 +196,7 @@
       :value val}))
 
 (defn complete
-  "Short-circuits the pipeline, and passes the result to the outermost pipeline channel."
+  "Short-circuits the inner-most pipeline, returning the result."
   [result]
   (redirect
     (pipeline
@@ -212,6 +212,14 @@
    Returns a pipeline future."
   [initial-value & opts+stages]
   ((apply pipeline opts+stages) initial-value))
+
+(defn wait
+  "Creates a pipeline stage that accepts a value, and emits the same value after 'interval' milliseconds."
+  [interval]
+  (fn [x]
+    (run-pipeline
+      (read-channel (wait-channel interval))
+      (fn [_] x))))
 
 (defn blocking
   "Takes a synchronous function, and returns a function which will be executed asynchronously,
