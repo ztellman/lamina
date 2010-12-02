@@ -213,14 +213,6 @@
   [initial-value & opts+stages]
   ((apply pipeline opts+stages) initial-value))
 
-(defn wait
-  "Creates a pipeline stage that accepts a value, and emits the same value after 'interval' milliseconds."
-  [interval]
-  (fn [x]
-    (run-pipeline
-      (read-channel (wait-channel interval))
-      (fn [_] x))))
-
 (defn blocking
   "Takes a synchronous function, and returns a function which will be executed asynchronously,
    and whose invocation will return a pipeline channel."
@@ -253,6 +245,14 @@
 	      (enqueue success (second %))
 	      (enqueue error [nil (TimeoutException. (str "read-channel timed out after " timeout " ms"))])))
 	 result))))
+
+(defn wait
+  "Creates a pipeline stage that accepts a value, and emits the same value after 'interval' milliseconds."
+  [interval]
+  (fn [x]
+    (run-pipeline
+      (read-channel (wait-channel interval))
+      (fn [_] x))))
 
 (defn read-merge
   "For merging asynchronous reads into a pipeline.
