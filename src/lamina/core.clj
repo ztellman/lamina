@@ -70,7 +70,6 @@
 (import-fn pipeline/read-channel)
 (import-fn pipeline/read-merge)
 (import-fn pipeline/blocking)
-(import-fn pipeline/wait)
 
 ;; redirect signals
 (import-fn pipeline/redirect)

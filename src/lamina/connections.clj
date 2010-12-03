@@ -8,16 +8,38 @@
 
 (ns lamina.connections
   (:use
-    [lamina core])
+    [lamina core]
+    [lamina.core.channel :only (wait-channel)])
   (:require
     [clojure.contrib.logging :as log]))
 
-(defn- siphon-pipeline-channel [src dst]
-  (receive (:success src) #(enqueue (:success dst) %))
-  (receive (:error src) #(enqueue (:error dst) %)))
+;;
+
+(defn reconnect-loop [connection-generator result]
+  (let [delay (atom 500)]
+    (run-pipeline nil
+      :error-handler (fn [_ _]
+		       (log/info
+			 (str
+			   "Waiting "
+			   (swap! delay #(min 64000 (* % 2)))
+			   "ms before attempting reconnection."))
+		       (restart))
+      (fn [_] (read-channel (wait-channel @delay)))
+      (fn [_] (connection-generator))
+      (fn [ch]
+	(let [[a b] (fork 2 ch)]
+	  (enqueue (:success result) a)
+	  (receive-all b
+	    (fn [_]
+	      (when (closed? b)
+		(enqueue (:error result) [b (Exception. "Connection severed.")])))))))))
 
 (defn persistent-connection [connection-generator]
-  (let [connection (atom (connection-generator))
+  (let [error-result (pipeline-channel
+		       nil-channel
+		       (constant-channel [nil nil]))
+	connection (atom error-result)
 	delay (atom 500)]
     (fn []
       (let [c @connection]
@@ -26,14 +48,14 @@
 	  (fn [_ ex]
 	    (log/warn "lamina.connections" ex)
 	    (let [c* (pipeline-channel)]
-	      (when (compare-and-set! connection c c*)
-		(let [interval (swap! delay #(min 64000 (* % 2)))]
-		  (log/info (str "Waiting " interval "ms before attempt reconnection."))
-		  (siphon-pipeline-channel
-		    (run-pipeline connection-generator
-		      (wait interval)
-		      #(*))
-		    c*))))))))))
+	      (println c c*)
+	      (if (compare-and-set! connection c c*)
+		(do
+		  (reconnect-loop connection-generator c*)
+		  (redirect (pipeline (constantly c*)) nil))
+		@connection))))))))
+
+;;
 
 (defn- timeout-fn [timeout]
   (if (neg? timeout)
@@ -59,7 +81,7 @@
 			       (when-not (closed? ch)
 				 #(read-channel ch))))
 	    #(do
-	       (if (nil? %)
+	       (if (closed? ch)
 		 (throw (Exception. "Request connection severed."))
 		 (enqueue (:success response) %))
 	       nil)))
@@ -77,7 +99,9 @@
 	   (enqueue requests [request response (timeout-fn timeout)])
 	   response)))))
 
-(defn start-pipelined-request-handler [connection-generator response-handlers request-handler]
+;;
+
+(defn start-pipelined-request-handler [response-handlers request-handler]
   (run-pipeline response-handlers
     read-channel
     (fn [[request response ch timeout]]
@@ -109,7 +133,7 @@
 				   (enqueue ch request)
 				   (enqueue handlers [request response ch (timeout-fn timeout)])
 				   response)))))]
-    (start-pipelined-request-handler connection-generator handlers request-handler)
+    (start-pipelined-request-handler handlers request-handler)
     request-handler))
 
 

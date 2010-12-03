@@ -139,7 +139,7 @@
 	      (recur (with-context ctx (f result)) (next fns) ctx)
 	      (catch Exception e
 		(let [failure (pipeline-channel)]
-		  (enqueue (:error failure) [result e])
+		  (enqueue (:error failure) [(:initial-value ctx) e])
 		  (poll-pipeline-channel failure fns ctx))))))))))
 
 ;;;
