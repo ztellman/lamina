@@ -15,45 +15,70 @@
 
 ;;
 
-(defn reconnect-loop [connection-generator result]
-  (let [delay (atom 500)]
-    (run-pipeline nil
-      :error-handler (fn [_ _]
-		       (log/info
-			 (str
-			   "Waiting "
-			   (swap! delay #(min 64000 (* % 2)))
-			   "ms before attempting reconnection."))
-		       (restart))
-      (fn [_] (read-channel (wait-channel @delay)))
-      (fn [_] (connection-generator))
-      (fn [ch]
-	(let [[a b] (fork 2 ch)]
-	  (enqueue (:success result) a)
-	  (receive-all b
-	    (fn [_]
-	      (when (closed? b)
-		(enqueue (:error result) [b (Exception. "Connection severed.")])))))))))
+(defn- retry-connect [delay latch]
+  (fn [_ _]
+    (when @latch
+      (swap! delay #(if (zero? %) 500 (min 64000 (* % 2))))
+      (log/info (str "Waiting " @delay "ms before attempting reconnection."))
+      (restart))))
 
-(defn persistent-connection [connection-generator]
-  (let [error-result (pipeline-channel
-		       nil-channel
-		       (constant-channel [nil nil]))
-	connection (atom error-result)
-	delay (atom 500)]
+(defn- handle-connection [delay connection-lost-callback connection]
+  (fn [ch]
+    (let [[a b] (fork 2 ch)
+	  connection @connection
+	  close-signal (constant-channel)]
+      (reset! delay 0)
+      (enqueue (:success connection) (splice a ch))
+      (receive-all b
+	(fn [_]
+	  (when (closed? b)
+	    (if connection-lost-callback
+	      (connection-lost-callback)
+	      (log/warn "Connection dropped."))
+	    (enqueue close-signal nil)
+	    (enqueue (:error connection)
+	      [b (Exception. "Connection severed.")]))))
+      (read-channel close-signal))))
+
+(defn- connect-loop [connection-generator connection-lost-callback connection]
+  (let [latch (atom true)
+	delay (atom 0)]
+    (run-pipeline nil
+      (fn [_]
+	(if @latch
+	  (do (reset! connection (pipeline-channel)) nil)
+	  (complete nil)))
+      (pipeline :error-handler (retry-connect delay latch)
+	(fn [_] (read-channel (wait-channel @delay)))
+	(fn [_] (connection-generator)))
+      (handle-connection delay connection-lost-callback connection)
+      restart)
     (fn []
-      (let [c @connection]
-	(run-pipeline c
-	  :error-handler
-	  (fn [_ ex]
-	    (log/warn "lamina.connections" ex)
-	    (let [c* (pipeline-channel)]
-	      (println c c*)
-	      (if (compare-and-set! connection c c*)
-		(do
-		  (reconnect-loop connection-generator c*)
-		  (redirect (pipeline (constantly c*)) nil))
-		@connection))))))))
+      (reset! latch false)
+      (run-pipeline @connection
+	(fn [ch] (enqueue-and-close nil))))))
+
+(defn persistent-connection
+  "Given a function that generates a connection (a pipeline-channel that yields a channel),
+   returns a function will always return a connection, but only generate a new connection
+   when the previous connection has been severed."
+  ([connection-generator]
+     (persistent-connection connection-generator nil))
+  ([connection-generator connection-lost-callback]
+     (let [connection (atom (pipeline-channel
+			      nil-channel
+			      (constant-channel [nil nil])))
+	   stop-loop (connect-loop
+		       connection-generator
+		       connection-lost-callback
+		       connection)]
+       
+       (fn
+	 ([]
+	    (run-pipeline @connection 
+	      :error-handler (fn [_ _] (restart))))
+	 ([_]
+	    (stop-loop))))))
 
 ;;
 
@@ -63,12 +88,29 @@
     (let [now (System/currentTimeMillis)]
       #(max 0 (- (+ now timeout) (System/currentTimeMillis))))))
 
+(defn- siphon-pipeline-channel [src dst]
+  (doseq [ch [:success :error]]
+    (receive (ch src) #(enqueue (ch dst) %))))
+
+(defn- response-handler [ch response]
+  (fn [msg]
+    (cond
+      (and (nil? msg) (closed? ch))
+      (throw (Exception. "request connection severed"))
+      
+      (instance? Throwable msg)
+      (enqueue (:error response) msg)
+      
+      :else
+      (enqueue (:success response) msg))
+    nil))
+
 (defn- start-sync-request-handler [connection-generator requests]
   (run-pipeline requests
     read-channel
     (fn [[request response timeout]]
       (run-pipeline (connection-generator)
-	:error-handler (fn [_ _]
+	:error-handler (fn [_ ex]
 			 (if-not (zero? (timeout))
 			   (restart)
 			   (complete nil)))
@@ -80,16 +122,24 @@
 			     (complete
 			       (when-not (closed? ch)
 				 #(read-channel ch))))
-	    #(do
-	       (if (closed? ch)
-		 (throw (Exception. "Request connection severed."))
-		 (enqueue (:success response) %))
-	       nil)))
+	    (response-handler ch response)))
 	#(when % (%))))
     (fn [_] (restart))))
 
-(defn request-handler [connection-generator]
-  (let [requests (channel)]
+(defn request-handler
+  "Given a function that returns a connection, returns a function that takes a
+   request value and optionally a timeout, and returns a pipeline-channel
+   representing the response.
+
+   A new request will only be sent once the response to the previous one has
+   been received.
+
+   If the connection drops while the request is being processed, it will attempt
+   to re-establish the connection and resend the request, if the timeout has not
+   elapsed."
+  [connection-generator]
+  (let [connection-generator (persistent-connection connection-generator)
+	requests (channel)]
     (start-sync-request-handler connection-generator requests)
     (fn this
       ([request]
@@ -108,21 +158,29 @@
       (run-pipeline (read-channel ch (timeout))
 	:error-handler (fn [_ ex]
 			 (if-not (zero? (timeout))
-			   (siphon (request-handler request) response)
+			   (siphon-pipeline-channel (request-handler request) response)
 			   (enqueue (:error response) [request ex]))
 			 (complete
 			   (when-not (closed? ch)
 			     #(read-channel ch))))
-	#(do
-	   (if (nil? %)
-	     (throw (Exception. "Request connection severed."))
-	     (enqueue (:success response) %))
-	   nil)))
+	(response-handler ch response)))
     #(when % (%))
     (fn [_] (restart))))
 
-(defn pipelined-request-handler [connection-generator]
+(defn pipelined-request-handler
+  "Given a function that returns a connection, returns a function that takes a
+   request value and optionally a timeout, and returns a pipeline-channel
+   representing the response.
+
+   Requests will be sent as soon as they're made, with the assumption that
+   responses will be returned in the same order.
+
+   If the connection drops while the request is being processed, it will attempt
+   to re-establish the connection and resend the request, if the timeout has not
+   elapsed."
+  [connection-generator]
   (let [handlers (channel)
+	connection-generator (persistent-connection connection-generator)
 	request-handler (fn this
 			  ([request]
 			     (this request -1))
@@ -131,10 +189,30 @@
 			       (run-pipeline (connection-generator)
 				 (fn [ch]
 				   (enqueue ch request)
-				   (enqueue handlers [request response ch (timeout-fn timeout)])
-				   response)))))]
+				   (enqueue handlers [request response ch (timeout-fn timeout)])))
+			       response)))]
     (start-pipelined-request-handler handlers request-handler)
     request-handler))
+
+;;
+
+(defn persistent-listener
+  [connection-generator connection-primer]
+  (let [listen-channel (channel)
+	connection-generator (persistent-connection connection-generator)
+	]
+    (run-pipeline nil
+      (fn [_]
+	(connection-generator))
+      (fn [ch]
+	(connection-primer ch)
+	(siphon ch listen-channel)
+	(let [ch (fork ch)
+	      close-signal (constant-channel)]
+	  (receive-all ch #(when (closed? ch) (enqueue close-signal nil)))
+	  (read-channel close-signal))
+	restart))
+    listen-channel))
 
 
 
