@@ -60,8 +60,13 @@
 
 (defn persistent-connection
   "Given a function that generates a connection (a pipeline-channel that yields a channel),
-   returns a function will always return a connection, but only generate a new connection
-   when the previous connection has been severed."
+   returns a function that, given zero parameters, returns a connection.
+
+   Behind the scenes, this will maintain a single live connection, reconnecting when
+   necessary.  If 'connection-lost-callback' is specified, it will be called every time
+   the connection drops.
+
+   To close the connection, pass 'true' into the returned function."
   ([connection-generator]
      (persistent-connection connection-generator nil))
   ([connection-generator connection-lost-callback]
@@ -77,8 +82,9 @@
 	 ([]
 	    (run-pipeline @connection 
 	      :error-handler (fn [_ _] (restart))))
-	 ([_]
-	    (stop-loop))))))
+	 ([close?]
+	    (when close?
+	      (stop-loop)))))))
 
 ;;
 
@@ -105,7 +111,7 @@
       (enqueue (:success response) msg))
     nil))
 
-(defn- start-sync-request-handler [connection-generator requests]
+(defn- start-client-loop [connection-generator requests]
   (run-pipeline requests
     read-channel
     (fn [[request response timeout]]
@@ -126,21 +132,18 @@
 	#(when % (%))))
     (fn [_] (restart))))
 
-(defn request-handler
+(defn client
   "Given a function that returns a connection, returns a function that takes a
    request value and optionally a timeout, and returns a pipeline-channel
-   representing the response.
+   representing the response.  This will keep a single live connection to the
+   server, reconnecting when necessary.
 
    A new request will only be sent once the response to the previous one has
-   been received.
-
-   If the connection drops while the request is being processed, it will attempt
-   to re-establish the connection and resend the request, if the timeout has not
-   elapsed."
+   been received."
   [connection-generator]
   (let [connection-generator (persistent-connection connection-generator)
 	requests (channel)]
-    (start-sync-request-handler connection-generator requests)
+    (start-client-loop connection-generator requests)
     (fn this
       ([request]
 	 (this request -1))
@@ -151,7 +154,7 @@
 
 ;;
 
-(defn start-pipelined-request-handler [response-handlers request-handler]
+(defn- start-pipelined-client-loop [response-handlers request-handler]
   (run-pipeline response-handlers
     read-channel
     (fn [[request response ch timeout]]
@@ -167,17 +170,14 @@
     #(when % (%))
     (fn [_] (restart))))
 
-(defn pipelined-request-handler
+(defn pipelined-client
   "Given a function that returns a connection, returns a function that takes a
    request value and optionally a timeout, and returns a pipeline-channel
-   representing the response.
+   representing the response.  This will keep a single live connection to the
+   server, reconnecting when necessary.
 
    Requests will be sent as soon as they're made, with the assumption that
-   responses will be returned in the same order.
-
-   If the connection drops while the request is being processed, it will attempt
-   to re-establish the connection and resend the request, if the timeout has not
-   elapsed."
+   responses will be returned in the same order."
   [connection-generator]
   (let [handlers (channel)
 	connection-generator (persistent-connection connection-generator)
@@ -191,7 +191,7 @@
 				   (enqueue ch request)
 				   (enqueue handlers [request response ch (timeout-fn timeout)])))
 			       response)))]
-    (start-pipelined-request-handler handlers request-handler)
+    (start-pipelined-client-loop handlers request-handler)
     request-handler))
 
 ;;
@@ -199,8 +199,7 @@
 (defn persistent-listener
   [connection-generator connection-primer]
   (let [listen-channel (channel)
-	connection-generator (persistent-connection connection-generator)
-	]
+	connection-generator (persistent-connection connection-generator)]
     (run-pipeline nil
       (fn [_]
 	(connection-generator))
@@ -214,5 +213,32 @@
 	restart))
     listen-channel))
 
+;;
 
+(defn server [ch handler]
+  (run-pipeline ch
+    read-channel
+    #(let [c (constant-channel)]
+       (handler c %)
+       (read-channel c))
+    #(enqueue ch %)
+    (fn [_] (restart)))
+  (fn []
+    (enqueue-and-close ch)))
 
+(defn pipelined-server [ch handler]
+  (let [requests (channel)
+	responses (channel)]
+    (run-pipeline responses
+      read-channel
+      #(read-channel %)
+      #(enqueue ch %)
+      (fn [_] (restart)))
+    (run-pipeline ch
+      read-channel
+      #(let [c (constant-channel)]
+	 (handler c %)
+	 (enqueue responses c))
+      (fn [_] (restart))))
+  (fn []
+    (enqueue-and-close nil)))
