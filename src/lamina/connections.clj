@@ -56,7 +56,7 @@
     (fn []
       (reset! latch false)
       (run-pipeline @connection
-	(fn [ch] (enqueue-and-close nil))))))
+	(fn [ch] (enqueue-and-close ch nil))))))
 
 (defn persistent-connection
   "Given a function that generates a connection (a pipeline-channel that yields a channel),
@@ -76,14 +76,19 @@
 	   stop-loop (connect-loop
 		       connection-generator
 		       connection-lost-callback
-		       connection)]
+		       connection)
+	   closed? (atom false)]
        
        (fn
 	 ([]
 	    (run-pipeline @connection 
-	      :error-handler (fn [_ _] (restart))))
+	      :error-handler (fn [_ _]
+			       (if @closed?
+				 (complete (splice (constant-channel ::closed) nil-channel))
+				 (restart)))))
 	 ([close?]
 	    (when close?
+	      (reset! closed? true)
 	      (stop-loop)))))))
 
 ;;
@@ -97,6 +102,13 @@
 (defn- siphon-pipeline-channel [src dst]
   (doseq [ch [:success :error]]
     (receive (ch src) #(enqueue (ch dst) %))))
+
+(defn- check-for-closed [response]
+  (run-pipeline response
+    (fn [rsp]
+      (when (= ::closed rsp)
+	(throw (Exception. "Connection closed.")))
+      rsp)))
 
 (defn- response-handler [ch response]
   (fn [msg]
@@ -148,9 +160,11 @@
       ([request]
 	 (this request -1))
       ([request timeout]
-	 (let [response (pipeline-channel)]
-	   (enqueue requests [request response (timeout-fn timeout)])
-	   response)))))
+	 (if (= ::close request)
+	   (connection-generator true)
+	   (let [response (pipeline-channel)]
+	     (enqueue requests [request response (timeout-fn timeout)])
+	     (check-for-closed response)))))))
 
 ;;
 
@@ -185,33 +199,49 @@
 			  ([request]
 			     (this request -1))
 			  ([request timeout]
-			     (let [response (pipeline-channel)]
-			       (run-pipeline (connection-generator)
-				 (fn [ch]
-				   (enqueue ch request)
-				   (enqueue handlers [request response ch (timeout-fn timeout)])))
-			       response)))]
+			     (if (= ::close request)
+			       (connection-generator true)
+			       (let [response (pipeline-channel)]
+				 (run-pipeline (connection-generator)
+				   (fn [ch]
+				     (enqueue ch request)
+				     (enqueue handlers [request response ch (timeout-fn timeout)])))
+				(check-for-closed response)))))]
     (start-pipelined-client-loop handlers request-handler)
     request-handler))
+
+(defn close-client
+  "Takes a client function, and closes the connection."
+  [client]
+  (client ::close))
 
 ;;
 
 (defn persistent-listener
   [connection-generator connection-primer]
   (let [listen-channel (channel)
-	connection-generator (persistent-connection connection-generator)]
+	connection-generator (persistent-connection connection-generator)
+	close-channel (constant-channel)]
+    (receive close-channel
+      (fn [_] (connection-generator true)))
     (run-pipeline nil
       (fn [_]
 	(connection-generator))
       (fn [ch]
 	(connection-primer ch)
-	(siphon ch listen-channel)
+	(receive-all ch
+	  #(if (= ::closed %)
+	     (enqueue-and-close listen-channel nil)
+	     (enqueue listen-channel %)))
 	(let [ch (fork ch)
 	      close-signal (constant-channel)]
-	  (receive-all ch #(when (closed? ch) (enqueue close-signal nil)))
+	  (receive-all ch
+	    (fn [_]
+	      (when (closed? ch)
+		(enqueue close-signal nil))))
 	  (read-channel close-signal))
 	restart))
-    listen-channel))
+    (splice listen-channel close-channel)))
 
 ;;
 
@@ -222,7 +252,9 @@
        (handler c %)
        (read-channel c))
     #(enqueue ch %)
-    (fn [_] (restart)))
+    (fn [_]
+      (when-not (closed? ch)
+	(restart))))
   (fn []
     (enqueue-and-close ch)))
 
@@ -239,6 +271,8 @@
       #(let [c (constant-channel)]
 	 (handler c %)
 	 (enqueue responses c))
-      (fn [_] (restart))))
+      (fn [_]
+	(when-not (closed? ch)
+	  (restart)))))
   (fn []
     (enqueue-and-close nil)))
