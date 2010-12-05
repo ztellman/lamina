@@ -119,10 +119,10 @@
     (pipeline :error-handler (fn [val ex] (redirect (pipeline inc) val))
       inc
       fail)
-    2)
+    1)
 
   (test-pipeline
-    (pipeline :error-handler (fn [val ex] (restart val))
+    (pipeline :error-handler (fn [val ex] (restart (inc val)))
       inc
       (fail-times 3)
       inc)
@@ -142,7 +142,7 @@
 	inc
 	(fail-times 3))
       inc)
-    5))
+    3))
 
 '(deftest test-tail-recursion
   (let [ch (apply sealed-channel (range 1e4))]

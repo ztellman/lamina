@@ -672,6 +672,11 @@
 (defn delay-invoke [f delay]
   (.schedule ^ScheduledThreadPoolExecutor delayed-executor ^Runnable f (long delay) TimeUnit/MILLISECONDS))
 
+(defn wait-channel [interval]
+  (let [ch (constant-channel)]
+    (delay-invoke #(enqueue ch nil) interval)
+    ch))
+
 (defn try-poll [channel-map]
   (some
     (fn [[k ch]]

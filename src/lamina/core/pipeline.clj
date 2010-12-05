@@ -139,7 +139,7 @@
 	      (recur (with-context ctx (f result)) (next fns) ctx)
 	      (catch Exception e
 		(let [failure (pipeline-channel)]
-		  (enqueue (:error failure) [result e])
+		  (enqueue (:error failure) [(:initial-value ctx) e])
 		  (poll-pipeline-channel failure fns ctx))))))))))
 
 ;;;
@@ -160,7 +160,7 @@
   (let [opts (apply hash-map (get-opts opts+stages))
 	stages (drop (* 2 (count opts)) opts+stages)
 	pipeline {:stages stages
-		  :error-handler (or (:error-handler opts) (fn [val ex] (log/error "lamina.core.pipeline" ex)))}]
+		  :error-handler (or (:error-handler opts) (fn [val ex] (log/debug "lamina.core.pipeline" ex)))}]
     (when-not (every? fn? stages)
       (throw (Exception. "Every stage in a pipeline must be a function.")))
     ^{:tag ::pipeline
@@ -196,7 +196,7 @@
       :value val}))
 
 (defn complete
-  "Short-circuits the pipeline, and passes the result to the outermost pipeline channel."
+  "Short-circuits the inner-most pipeline, returning the result."
   [result]
   (redirect
     (pipeline
@@ -245,6 +245,14 @@
 	      (enqueue success (second %))
 	      (enqueue error [nil (TimeoutException. (str "read-channel timed out after " timeout " ms"))])))
 	 result))))
+
+(defn wait
+  "Creates a pipeline stage that accepts a value, and emits the same value after 'interval' milliseconds."
+  [interval]
+  (fn [x]
+    (run-pipeline
+      (read-channel (wait-channel interval))
+      (fn [_] x))))
 
 (defn read-merge
   "For merging asynchronous reads into a pipeline.
