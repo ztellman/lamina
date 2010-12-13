@@ -11,17 +11,48 @@
     [clojure test walk]
     [lamina.core.observable]))
 
-(defn sub [o]
-  (subscribe o {:a (observer #(prn %))}))
+(declare accumulator)
+
+(defn sub [key o]
+  (subscribe o {key (observer #(apply swap! accumulator conj %))}))
+
+(defmacro output= [value & body]
+  `(binding [accumulator (atom [])]
+     (do ~@body)
+     (is (= ~value @accumulator))))
 
 (deftest test-observable
   (let [o (observable)]
-    (is (sub o))
-    (is (= [1] (read-string (with-out-str (message o [1])))))
-    (is (unsubscribe o [:a]))
-    (is (=  (with-out-str (message o [1]))))
-    (is (close o))
-    (is (not (sub o)))))
+    (output= [1]
+      (sub :a o)
+      (message o [1]))
+    (output= [2]
+      (sub :a o)
+      (message o [2]))
+    (output= [3 3]
+      (sub :b o)
+      (message o [3]))
+    (output= []
+      (unsubscribe o [:a :b])
+      (message o [4]))
+    (is (= true (close o)))))
+
+(deftest test-constant-observable
+  (let [o (constant-observable)]
+    (output= [1]
+      (sub :a o)
+      (is (= false (message o [1]))))
+    (is (= false (message o [2]))))
+  (let [o (constant-observable)]
+    (output= [1 1]
+      (is (= false (message o [1 2])))
+      (sub :a o)
+      (sub :b o)))
+  (let [o (constant-observable)]
+    (output= [1 1]
+      (sub :a o)
+      (sub :b o)
+      (is (= false (message o [1 2]))))))
 
 (defn siphon-output [f & input]
   (let [r (atom [])
@@ -35,6 +66,5 @@
 
 (deftest test-siphon
   (is (= [1 2 3] (siphon-output #(siphon %1 %2) [1 2 3])))
-  (is (= [2 4] (siphon-output #(siphon-while even? %1 %2) [2] [4 5])))
-  (is (= [2 4 6] (siphon-output #(siphon (partial * 2) %1 %2) [1 2 3])))
+  (is (= [2 4 6] (siphon-output #(siphon-transform (partial * 2) %1 %2) [1 2 3])))
   (is (= [1 3] (siphon-output #(siphon-when odd? %1 %2) [1 2 3 4]))))

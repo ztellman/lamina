@@ -7,6 +7,8 @@
 ;;   You must not remove this notice, or any other, from this software.
 
 (ns lamina.core.observable
+  (:use
+    [clojure.walk])
   (:import
     [java.util.concurrent
      ScheduledThreadPoolExecutor
@@ -14,122 +16,162 @@
 
 ;;;
 
+(def empty-value ::empty)
+
 (defprotocol Observer
   (on-message [this msgs])
-  (on-close [this]))
+  (on-close [this])
+  (on-observers-changed [this observers]))
 
 (defn observer
   ([message-callback]
-     (observer message-callback nil))
+     (observer message-callback nil nil))
   ([message-callback close-callback]
+     (observer message-callback close-callback nil))
+  ([message-callback close-callback observers-callback]
      (reify Observer
        (on-message [_ msgs]
 	 (when message-callback
 	   (message-callback msgs)))
        (on-close [_]
 	 (when close-callback
-	   (close-callback))))))
+	   (close-callback)))
+       (on-observers-changed [_ observers]
+	 (when observers-callback
+	   (observers-callback observers))))))
 
 ;;;
 
-(defprotocol Observable
+(defprotocol ObservableProtocol
   (subscribe [this observer-map])
   (unsubscribe [this keys])
   (message [this msgs])
-  (observers [this])
   (close [this])
   (closed? [this]))
 
-(defn- close-observable [closed observers]
-  (dosync
-    (ref-set closed true)
-    (let [o (vals @observers)]
-      (ref-set observers nil)
-      o)))
-
-(defmacro when-not-closed [closed & body]
-  `(if (deref ~closed)
-     false
+(defmacro modify-observers [observers closed? false-case f args]
+  `(if ~closed?
      (do
-       ~@body
-       true)))
+       ~false-case
+       nil)
+     (let [observers# (apply swap! ~observers ~f ~args)]
+       (doseq [o# (vals observers#)]
+	 (on-observers-changed o# observers#))
+       observers#)))
+
+(deftype Observable [observers closed?]
+  ObservableProtocol
+  (subscribe [_ m]
+    (modify-observers observers @closed?
+      false
+      merge m))
+  (unsubscribe [_ ks]
+    (modify-observers observers @closed?
+      false
+      dissoc ks))
+  (message [_ msgs]
+    (when-not (empty? msgs)
+      (if @closed?
+	false
+	(let [s (vals @observers)]
+	  (if (= 1 (count s))
+	    (not= ::false (on-message (first s) msgs))
+	    (do
+	      (doseq [o s]
+		(on-message o msgs))
+	      true))))))
+  (close [_]
+    (if-not (compare-and-set! closed? false true)
+      false
+      (do
+	(doseq [o (vals @observers)]
+	  (on-close o))
+	true)))
+  (closed? [_]
+    @closed?))
 
 (defn observable []
-  (let [closed (ref false)
-	observers (ref {})]
-    (reify Observable
-      (subscribe [_ m]
-	(when-not-closed closed
-	  (dosync (alter observers merge m))))
-      (unsubscribe [_ ks]
-	(when-not-closed closed
-	  (dosync (apply alter observers dissoc ks))))
-      (observers [_]
-	@observers)
-      (message [_ msgs]
-	(when-not-closed closed
-	  (let [observers @observers]
-	    (if (= 1 (count observers))
-	      (not= ::false (on-message (first (vals observers)) msgs))
-	      (doseq [o (vals observers)]
-		(on-message o msgs))))))
-      (close [_]
-	(when-not-closed closed
-	  (doseq [o (close-observable closed observers)]
-	    (on-close o))))
-      (closed? [_]
-	@closed))))
+  (Observable. (atom {}) (atom false)))
 
-(def closed-observable
-  (reify Observable
+(defn observable? [o]
+  (instance? Observable o))
+
+(deftype ConstantObservable [observers val]
+  ObservableProtocol
+  (subscribe [_ m]
+    (modify-observers observers (not= ::empty @val)
+      (do
+	(doseq [o (vals m)]
+	  (on-message o [@val]))
+	true) 
+      merge m))
+  (unsubscribe [_ ks]
+    (modify-observers observers (not= ::empty @val)
+      false
+      dissoc ks))
+  (message [_ msgs]
+    (when-not (empty? msgs)
+      (let [msg (first msgs)]
+	(when (compare-and-set! val ::empty msg)
+	  (let [s (vals @observers)]
+	    (reset! observers nil)
+	    (doseq [o s]
+	      (on-message o [msg]))))))
+    false)
+  (close [_]
+    (throw (Exception. "Constant observables cannot be closed.")))
+  (closed? [_]
+    false)
+  (toString [_]
+    (if-not (= ::empty @val)
+      (apply str (drop-last (prn-str @val)))
+      "")))
+
+(defn constant-observable
+  ([]
+     (constant-observable ::empty))
+  ([message]
+     (ConstantObservable. (atom {}) (atom message))))
+
+(defn constant-observable? [o]
+  (instance? ConstantObservable o))
+
+(def nil-observable
+  (reify ObservableProtocol
     (subscribe [_ _] false)
     (unsubscribe [_ _] false)
-    (observers [_] nil)
     (message [_ _] false)
     (close [_] false)
     (closed? [_] true)))
 
 ;;;
 
-(defn siphon
-  ([src dst]
-     (siphon identity src dst))
-  ([f src dst]
-     (subscribe src
-       {dst (observer
-	      #(when-not (message dst (map f %))
-		 (unsubscribe src [dst])
-		 ::false))})))
+(defmacro siphon-template [src dst expr]
+  (let [x (gensym "x")]
+    `(do
+       (subscribe ~src
+	 {~dst (observer
+		 (fn [~x]
+		   (message ~dst ~(postwalk-replace {'x x} expr))))})
+       (subscribe ~dst
+	 {~src (observer
+		 nil
+		 (fn []
+		   (when (>= 1 (count (unsubscribe ~src [~dst])))
+		     (close ~src))
+		   (unsubscribe ~dst [~src]))
+		 nil)}))))
+
+(defn siphon [src dst]
+  (siphon-template src dst x))
+
+(defn siphon-transform [f src dst]
+  (siphon-template src dst (map f x)))
 
 (defn siphon-when [pred src dst]
-  (subscribe src
-    {dst (observer
-	   #(when-not (message dst (filter pred %))
-	      (unsubscribe src [dst])
-	      ::false))}))
+  (siphon-template src dst (filter pred x)))
 
-(defn- take-while* [pred s]
-  (loop [src s, dst []]
-    (if (empty? src)
-      [true dst]
-      (if (pred (first src))
-	(recur (rest src) (conj dst (first src)))
-	[false dst]))))
 
-(defn siphon-while [pred src dst]
-  (let [done? (ref false)]
-    (subscribe src
-      {dst (observer
-	     #(let [msgs (dosync
-			   (ensure done?)
-			   (when-not @done?
-			     (let [[complete msgs] (take-while* pred %)]
-			       (if-not complete
-				 (do (ref-set done? true) msgs)
-				 msgs))))]
-		(when (or (not (message dst msgs)) @done?)
-		  (unsubscribe src [dst])
-		  ::false)))})))
 
 
 
