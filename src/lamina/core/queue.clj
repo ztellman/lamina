@@ -20,7 +20,7 @@
   (source [this])
   (distributor [this])
   (enqueue [this msgs])
-  (pop- [this])
+  (dequeue [this empty-value])
   (receive- [this callback])
   (listen [this callbacks])
   (on-close [this callbacks])
@@ -28,8 +28,8 @@
   (cancel-callbacks [this callbacks]))
 
 (defn receive [q callbacks]
-  (let [msg (pop- q)]
-    (if-not (= o/empty-value msg)
+  (let [msg (dequeue q ::none)]
+    (if-not (= ::none msg)
       (do
 	(doseq [c callbacks]
 	  (c msg))
@@ -41,7 +41,7 @@
    (source [_] o/nil-observable)
    (distributor [_] o/nil-observable)
    (enqueue [_ _] false)
-   (pop- [_] o/empty-value)
+   (dequeue [_ empty-value] empty-value)
    (receive- [_ _] false)
    (listen [_ _] false)
    (on-close [_ _] false)
@@ -63,7 +63,7 @@
   `(if (o/closed? (.source ~q))
      false
      (do
-       (send-to-callbacks
+       (send-to-callbacks ~q
 	 (dosync
 	   ~@body
 	   (gather-callbacks (deref (.q ~q)) ~q true)))
@@ -82,7 +82,7 @@
     (if @accumulate
       (update-and-send this
 	(apply alter q conj msgs))
-      (send-to-callbacks
+      (send-to-callbacks this
 	(dosync
 	  (gather-callbacks msgs this false)))))
   (on-close [_ callbacks]
@@ -95,9 +95,9 @@
 		false)))
       (doseq [c callbacks]
 	(c))))
-  (pop- [_]
+  (dequeue [_ empty-value]
     (if (empty? @q)
-      o/empty-value
+      empty-value
       (dosync
 	(let [msg (first @q)]
 	  (alter q pop)
@@ -162,20 +162,16 @@
 	    (if (zero? cnt)
 	      msgs
 	      (recur (dec cnt) (pop msgs)))))))
-    (when (closed? q)
-      (doseq [c @(.close-callbacks q)]
-	(c))
-      (ref-set (.close-callbacks q) nil))
     (concat l r)))
 
-(defn send-to-callbacks [msgs-and-targets]
-  (if (= o/empty-value msgs-and-targets)
-    false
-    (do
-      (doseq [[msg callbacks] msgs-and-targets]
-	(doseq [c callbacks]
-	  (c msg)))
-      true)))
+(defn send-to-callbacks [^EventQueue q msgs-and-targets]
+  (doseq [[msg callbacks] msgs-and-targets]
+    (doseq [c callbacks]
+      (c msg)))
+  (when (closed? q)
+    (doseq [c @(.close-callbacks q)]
+      (c))
+    (dosync (ref-set (.close-callbacks q) nil))))
 
 (defn setup-accumulate-bit [accumulate q]
   (let [src (source q)
@@ -202,28 +198,35 @@
 	       (ref #{})
 	       (ref #{})
 	       accumulate)]
-       (o/siphon source distributor)
+       (o/siphon source {distributor identity})
        (setup-accumulate-bit accumulate q)
        q)))
 
 (defn copy-queue
-  [f source ^EventQueue q]
+  [^EventQueue q fs]
   (let [accumulate (atom true)
-	distributor (o/observable)
-	copy (EventQueue.
-	       source
-	       distributor
-	       (ref nil)
-	       (ref #{})
-	       (ref #{})
-	       (ref #{})
-	       accumulate)]
-    (o/siphon source distributor)
+	source (source q)
+	copies (map
+		 (fn [f]
+		   (let [distributor (o/observable)
+			 copy (EventQueue.
+				source
+				distributor
+				(ref nil)
+				(ref #{})
+				(ref #{})
+				(ref #{})
+				accumulate)]
+		     (o/siphon source {distributor f})
+		     copy))
+		 fs)]
     (dosync
       (ensure (.q q))
-      (ref-set (.q copy) (f @(.q q)))
-      (setup-accumulate-bit accumulate copy)
-      copy)))
+      (let [q @(.q q)]
+	(doseq [[f copy] (map list fs copies)]
+	  (ref-set (.q copy) (f q))
+	  (setup-accumulate-bit accumulate copy)))
+      copies)))
 
 ;;;
 
@@ -232,7 +235,11 @@
   (source [_] source)
   (distributor [_] source)
   (enqueue [_ _] (assert false))
-  (pop- [_] @(.val source))
+  (dequeue [_ empty-value]
+    (let [val @(.val source)]
+      (if (= o/empty-value val)
+	empty-value
+	val)))
   (receive- [_ callbacks]
     (o/subscribe source
       (zipmap
@@ -248,7 +255,7 @@
 	  (fn [f]
 	    (o/observer
 	      #(let [msg (first %)]
-		 (when-let [f* (f msg)]
+		 (when-let [f* (second (dosync (f msg)))]
 		   (f* msg)))))
 	  callbacks))))
   (on-close [_ callbacks]

@@ -16,7 +16,7 @@
 	    TimeUnit]))
 
 (defn test-pipeline [pipeline expected-result]
-  (is (= expected-result (wait-for-pipeline (pipeline 0) 5000))))
+  (is (= expected-result (wait-for-result (pipeline 0) 5000))))
 
 (def slow-inc
   (blocking
@@ -26,7 +26,7 @@
 
 (defn assert-failure [pipeline]
   (try
-    (wait-for-pipeline (pipeline 0) 100)
+    (wait-for-result (pipeline 0) 100)
     (catch TimeoutException e
       (is false))
     (catch Exception e
@@ -144,7 +144,7 @@
       inc)
     3))
 
-'(deftest test-tail-recursion
+(deftest test-tail-recursion
   (let [ch (apply sealed-channel (range 1e4))]
     (run-pipeline ch
       read-channel

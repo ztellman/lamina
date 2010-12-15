@@ -146,30 +146,25 @@
 
 ;;;
 
-(defmacro siphon-template [src dst expr]
-  (let [x (gensym "x")]
-    `(do
-       (subscribe ~src
-	 {~dst (observer
-		 (fn [~x]
-		   (message ~dst ~(postwalk-replace {'x x} expr))))})
-       (subscribe ~dst
-	 {~src (observer
-		 nil
-		 (fn []
-		   (when (>= 1 (count (unsubscribe ~src [~dst])))
-		     (close ~src))
-		   (unsubscribe ~dst [~src]))
-		 nil)}))))
-
-(defn siphon [src dst]
-  (siphon-template src dst x))
-
-(defn siphon-transform [f src dst]
-  (siphon-template src dst (map f x)))
-
-(defn siphon-when [pred src dst]
-  (siphon-template src dst (filter pred x)))
+(defn siphon [src destination-function-map]
+  (do
+    (subscribe src
+      (zipmap
+	(keys destination-function-map)
+	(map
+	  (fn [[dst f]]
+	    (observer
+	      (fn [msgs] (message dst (f msgs)))))
+	  destination-function-map)))
+    (doseq [dst (keys destination-function-map)]
+      (subscribe dst
+	{src (observer
+	       nil
+	       (fn []
+		 (when (>= 1 (count (unsubscribe src [dst])))
+		   (close src))
+		 (unsubscribe dst [src]))
+	       nil)}))))
 
 
 

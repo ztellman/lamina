@@ -13,21 +13,25 @@
     [potemkin :only (import-fn)])
   (:require
     [lamina.core.pipeline :as pipeline]
-    [lamina.core.channel :as channel]))
+    [lamina.core.channel :as channel]
+    [lamina.core.seq :as seq]))
 
 
 ;;;; CHANNELS
 
 ;; core channel functions
-(import-fn #'channel/receive)
-(import-fn #'channel/receive-all)
-(import-fn #'channel/cancel-callback)
-(import-fn #'channel/enqueue)
-(import-fn #'channel/enqueue-and-close)
-(import-fn #'channel/on-close)
-(import-fn #'channel/sealed?)
-(import-fn #'channel/closed?)
+(import-fn channel/receive)
+(import-fn channel/cancel-callback)
+(import-fn channel/enqueue)
+(import-fn channel/enqueue-and-close)
+(import-fn channel/close)
+(import-fn channel/on-close)
+(import-fn channel/on-sealed)
+(import-fn channel/sealed?)
+(import-fn channel/closed?)
 (import-fn channel/channel?)
+(import-fn seq/receive-all)
+(import-fn channel/poll)
 
 ;; channel variants
 (import-fn channel/splice)
@@ -39,30 +43,28 @@
 (def nil-channel channel/nil-channel)
 
 ;; channel utility functions
-(import-fn channel/poll)
-(import-fn channel/siphon)
-(import-fn channel/siphon-while)
-(import-fn channel/fork)
-(import-fn channel/fork-while)
-(import-fn channel/map*)
-(import-fn channel/filter*)
-(import-fn channel/take*)
-(import-fn channel/take-while*)
+
+(import-fn seq/siphon)
+(import-fn seq/fork)
+(import-fn seq/map*)
+(import-fn seq/filter*)
+;;(import-fn channel/take*)
+;;(import-fn channel/take-while*)
 
 ;; named channels
-(import-fn channel/named-channel)
-(import-fn channel/release-named-channel)
+;;(import-fn channel/named-channel)
+;;(import-fn channel/release-named-channel)
 
 ;; synchronous channel functions
-(import-fn channel/lazy-channel-seq)
-(import-fn channel/channel-seq)
-(import-fn channel/wait-for-message)
+(import-fn seq/lazy-channel-seq)
+(import-fn seq/channel-seq)
+(import-fn seq/wait-for-message)
 
 
 ;;;; PIPELINES
 
 ;; core pipeline functions
-(import-fn pipeline/pipeline-channel)
+(import-fn pipeline/result-channel)
 (import-fn pipeline/pipeline)
 (import-fn pipeline/run-pipeline)
 
@@ -77,20 +79,18 @@
 (import-fn pipeline/complete)
 
 ;; pipeline result hooks
-(import-fn pipeline/wait-for-pipeline)
+(import-fn pipeline/wait-for-result)
 
 ;;;
 
 (defn receive-in-order
-  "Consumes messages from a channel one at a time.  The callback will only receive the next message once
-   it has completed processing the previous one.
+  "Consumes messages from a channel one at a time.  The callback will only receive the next
+   message once it has completed processing the previous one.
 
    This is a lossy iteration over the channel.  Fork the channel if there is another consumer."
   [ch f]
   (if (closed? ch)
-    (pipeline/pipeline-channel
-      (constant-channel nil)
-      channel/nil-channel)
+    (pipeline/success-result nil)
     (run-pipeline ch
       read-channel
       (fn [msg]

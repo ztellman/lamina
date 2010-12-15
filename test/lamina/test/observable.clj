@@ -65,6 +65,12 @@
     (apply concat @r)))
 
 (deftest test-siphon
-  (is (= [1 2 3] (siphon-output #(siphon %1 %2) [1 2 3])))
-  (is (= [2 4 6] (siphon-output #(siphon-transform (partial * 2) %1 %2) [1 2 3])))
-  (is (= [1 3] (siphon-output #(siphon-when odd? %1 %2) [1 2 3 4]))))
+  (is (= [1 2 3]
+	   (siphon-output #(siphon %1 {%2 identity})
+	 [1 2 3])))
+  (is (= [2 4 6]
+	 (siphon-output #(siphon %1 {%2 (fn [msgs] (map (partial * 2) msgs))})
+	 [1 2 3])))
+  (is (= [1 3]
+	 (siphon-output #(siphon %1 {%2 (fn [msgs] (filter odd? msgs))})
+	 [1 2 3 4]))))

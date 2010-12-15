@@ -21,126 +21,121 @@
 
 ;;;
 
-(defvar *context* nil)
+(defrecord ResultChannel [success error]
+  Object
+  (toString [_]
+    (str "result:\n"
+      "  success: " (str success) "\n"
+      "  error: " (str error) "\n")))
 
-(defn- outer-result
-  ([]
-     (outer-result *context*))
-  ([context]
-     (:outer-result context)))
+(defn result-channel []
+  (ResultChannel. (constant-channel) (constant-channel)))
 
-(defn- inner-error-handler []
-  (when-not (= (:inner-error-handler *context*) (:outer-error-handler *context*))
-    (:inner-error-handler *context*)))
+(defn error-result [val]
+  (ResultChannel. nil-channel (constant-channel val)))
 
-(defn- outer-error-handler []
-  (:outer-error-handler *context*))
+(defn success-result [val]
+  (ResultChannel. (constant-channel val) nil-channel))
 
-(defn- current-pipeline []
-  (:pipeline *context*))
-
-(defn- initial-value []
-  (:initial-value *context*))
-
-(defmacro- with-context [context & body]
-  `(binding [*context* ~context]
-     ~@body))
-
-(defn- tag= [x tag]
-  (and
-    (instance? clojure.lang.IMeta x)
-    (-> x meta :tag (= tag))))
-
-(defn pipeline? [x]
-  (tag= x ::pipeline))
-
-(defn redirect? [x]
-  (tag= x ::redirect))
-
-(defn pipeline-channel? [x]
-  (tag= x ::pipeline-channel))
-
-(defn pipeline-channel
-  ([]
-     (pipeline-channel
-       (constant-channel)
-       (constant-channel)))
-  ([success-channel error-channel]
-     (with-meta
-       (sorted-map
-	 :success success-channel
-	 :error error-channel)
-       {:tag ::pipeline-channel
-	:type ::pipeline-channel})))
+(defn result-channel? [x]
+  (instance? ResultChannel x))
 
 ;;;
 
-(declare handle-result)
+(defrecord Redirect [pipeline value])
 
-(defn- handle-error [result ctx]
-  (with-context ctx
-    (let [possible-redirect (when (inner-error-handler)
-			      (apply (inner-error-handler) result))
-	  possible-redirect (if (or (redirect? possible-redirect) (not (outer-error-handler)))
-			      possible-redirect
-			      (apply (outer-error-handler) result))]
-      (if (redirect? possible-redirect)
-	(handle-result
-	  (:value possible-redirect)
-	  (-> possible-redirect :pipeline :stages)
-	  (assoc ctx
-	    :inner-error-handler (-> possible-redirect :pipeline :error-handler)
-	    :initial-value (:value possible-redirect)
-	    :pipeline (-> possible-redirect :pipeline)))
-	(enqueue (-> ctx :outer-result :error) result)))))
+(defn redirect [pipeline value]
+  (Redirect. pipeline value))
 
-(defn- poll-pipeline-channel [chs fns ctx]
-  (if-let [result (try-poll chs)]
-    (do
-      (if (= :error (first result))
-	(do
-	  (handle-error (second result) ctx)
-	  ::waiting)
-       (second result)))
-    (do
-      (receive (poll chs -1)
-	(fn [[typ result]]
-	  (case typ
-	    :success
-	    (handle-result result fns ctx)
-	    :error
-	    (handle-error result ctx))))
-      ::waiting)))
+(defn redirect? [x]
+  (instance? Redirect x))
 
-(defn- handle-result [result fns ctx]
-  (cond
-    (redirect? result)
-    (recur
-      (:value result)
-      (-> result :pipeline :stages)
-      (assoc ctx
-	:pipeline (:pipeline result)
-	:initial-value (:value result)
-	:inner-error-handler (-> result :pipeline :error-handler)))
-    (pipeline-channel? result)
-    (let [result (poll-pipeline-channel result fns ctx)]
-      (when-not (= result ::waiting)
-	(recur result fns ctx)))
-    :else
-    (let [{outer-success :success outer-error :error} (outer-result ctx)]
-      (if (empty? fns)
-	(enqueue outer-success result)
-	(let [f (first fns)]
-	  (if (pipeline? f)
-	    (let [result (poll-pipeline-channel (with-context ctx (f result)) (next fns) ctx)]
-	      (when-not (= result ::waiting)
-		(recur result (next fns) ctx)))
-	    (try
-	      (recur (with-context ctx (f result)) (next fns) ctx)
-	      (catch Exception e
-		(let [failure (pipeline-channel)]
-		  (enqueue (:error failure) [(:initial-value ctx) e])
-		  (poll-pipeline-channel failure fns ctx))))))))))
+(defn restart
+  ([]
+     (restart ::initial))
+  ([value]
+     (redirect ::pipeline)))
+
+;;;
+
+(defn handle-error [pipeline ^ResultChannel result ^ResultChannel outer-result]
+  (let [[_ ex :as err] (dequeue (.error result) nil)]
+    (if-let [redirect (if-let [handler (:error-handler pipeline)]
+			(let [result (apply handler err)]
+			  (when (redirect? result)
+			    result)))]
+      redirect
+      (do
+	(enqueue (.error outer-result) err)
+	nil))))
+
+(defmacro redirect-recur [redirect pipeline initial-value err-count]
+  `(let [pipeline# (:pipeline ~redirect)
+	 pipeline# (if (= ::pipeline pipeline#)
+		     ~pipeline
+		     pipeline#)
+	 value# (:value ~redirect)
+	 value# (if (= ::initial value#)
+		  ~initial-value
+		  value#)]
+     (recur (:stages pipeline#) pipeline# value# value# ~err-count)))
+
+(defn start-pipeline
+  ([pipeline initial-value]
+     (start-pipeline pipeline initial-value (result-channel)))
+  ([pipeline initial-value result]
+     (start-pipeline pipeline (:stages pipeline) initial-value initial-value result))
+  ([pipeline fns value initial-value ^ResultChannel result]
+     (loop [fns fns, pipeline pipeline, initial-value initial-value, value value, err-count 0]
+       (cond
+	 (< 100 err-count)
+	 (enqueue (.error result) [initial-value (Exception. "Error loop detected in pipeline.")])
+
+	 (redirect? value)
+	 (redirect-recur value pipeline initial-value err-count)
+
+	 (result-channel? value)
+	 (let [ch ^ResultChannel value]
+	   (cond
+	     (not= ::none (dequeue (.error ch) ::none))
+	     (if-let [redirect (handle-error pipeline ch result)]
+	       (redirect-recur redirect pipeline initial-value (inc err-count)))
+
+	     (not= ::none (dequeue (.success ch) ::none))
+	     (recur fns pipeline initial-value (dequeue (.success ch) nil) 0)
+
+	     :else
+	     (receive (poll ch)
+	       (fn [[outcome value]]
+		 (case outcome
+		   :error (if-let [redirect (handle-error pipeline ch result)]
+			    (start-pipeline
+			      (:pipeline redirect)
+			      (:value redirect)
+			      result))
+		   :success (start-pipeline
+			      pipeline fns
+			      value initial-value
+			      result))))))
+
+	 (empty? fns)
+	 (enqueue (.success result) value)
+
+	 :else
+	 (let [f (first fns)]
+	   (let [[success val] (try
+				 [true (f value)]
+				 (catch Exception e
+				   [false e]))]
+	     (if success
+	       (recur (rest fns) pipeline initial-value val 0)
+	       (if-let [redirect (handle-error
+				   pipeline
+				   (error-result [initial-value val])
+				   result)]
+		 (redirect-recur redirect pipeline initial-value (inc err-count))))))))
+     result))
+
 
 ;;;
 
@@ -160,40 +155,13 @@
   (let [opts (apply hash-map (get-opts opts+stages))
 	stages (drop (* 2 (count opts)) opts+stages)
 	pipeline {:stages stages
-		  :error-handler (or (:error-handler opts) (fn [val ex] (log/debug "lamina.core.pipeline" ex)))}]
+		  :error-handler (or
+				   (:error-handler opts)
+				   (fn [val ex] (log/debug "lamina.core.pipeline" ex)))}]
     (when-not (every? fn? stages)
       (throw (Exception. "Every stage in a pipeline must be a function.")))
-    ^{:tag ::pipeline
-      :pipeline pipeline}
     (fn [x]
-      (let [ch (pipeline-channel)]
-	(handle-result
-	  x
-	  (:stages pipeline)
-	  {:outer-error-handler (:error-handler pipeline)
-	   :pipeline pipeline
-	   :outer-result ch
-	   :initial-value x})
-	ch))))
-
-(defn redirect
-  "When returned from a pipeline stage, redirects the execution flow."
-  ([pipeline val]
-     (when-not (pipeline? pipeline)
-       (throw (Exception. "First parameter must be a pipeline.")))
-     ^{:tag ::redirect}
-     {:pipeline (-> pipeline meta :pipeline)
-      :value val}))
-
-(defn restart
-  "Redirects to the beginning of the current pipeline.  If no value is passed in, defaults
-   to the value previously passed into the pipeline."
-  ([]
-     (restart (initial-value)))
-  ([val]
-     ^{:tag ::redirect}
-     {:pipeline (current-pipeline)
-      :value val}))
+      (start-pipeline pipeline x))))
 
 (defn complete
   "Short-circuits the inner-most pipeline, returning the result."
@@ -201,9 +169,9 @@
   (redirect
     (pipeline
       (fn [_]
-	(pipeline-channel
-	  (constant-channel result)
-	  nil-channel)))
+	(let [ch (result-channel)]
+	  (enqueue (:success ch) result))
+	result))
     nil))
 
 (defn run-pipeline
@@ -218,15 +186,13 @@
    and whose invocation will return a pipeline channel."
   [f]
   (fn [x]
-    (let [result (pipeline-channel)
-	  {data :success error :error} result
-	  context *context*]
+    (let [result (result-channel)
+	  {success :success error :error} result]
       (future
-	(with-context context
-	  (try
-	    (enqueue data (f x))
-	    (catch Exception e
-	      (enqueue error [x e])))))
+	(try
+	  (enqueue success (f x))
+	  (catch Exception e
+	    (enqueue error [x e]))))
       result)))
 
 (defn read-channel
@@ -237,16 +203,21 @@
   ([ch timeout]
      (if (closed? ch)
        (throw (Exception. "Cannot read from a closed channel."))
-       (let [result (pipeline-channel)
-	     {success :success error :error} result]
-	 (receive
-	   (poll {:ch ch} timeout)
-	   #(if %
-	      (enqueue success (second %))
-	      (enqueue error [nil (TimeoutException. (str "read-channel timed out after " timeout " ms"))])))
-	 result))))
+       (let [msg (dequeue ch ::none)]
+	 (if-not (= ::none msg)
+	   msg
+	   (let [result (result-channel)
+		 {success :success error :error} result]
+	     (receive
+	       (poll {:ch ch} timeout)
+	       #(if %
+		  (enqueue success
+		    (second %))
+		  (enqueue error
+		    [nil (TimeoutException. (str "read-channel timed out after " timeout " ms"))])))
+	     result))))))
 
-(defn wait
+'(defn wait
   "Creates a pipeline stage that accepts a value, and emits the same value after 'interval' milliseconds."
   [interval]
   (fn [x]
@@ -270,14 +241,14 @@
 
 ;;;
 
-(defn wait-for-pipeline
+(defn wait-for-result
   "Waits for a pipeline to complete.  If it succeeds, returns the result.
    If there was an error, the exception is re-thrown."
-  ([pipeline-channel]
-     (wait-for-pipeline pipeline-channel -1))
-  ([pipeline-channel timeout]
+  ([result-channel]
+     (wait-for-result result-channel -1))
+  ([result-channel timeout]
      (let [value (promise)]
-       (receive (poll pipeline-channel timeout)
+       (receive (poll result-channel timeout)
 	 #(deliver value %))
        (let [value @value]
 	 (if (nil? value)
@@ -287,12 +258,5 @@
 	       :error (throw (second result))
 	       :success result)))))))
 
-;;;
 
-(defmethod print-method ::pipeline-channel [ch writer]
-  (.write writer
-    (str "pipeline-channel\n"
-      "  success: "))
-  (print-method (:success ch) writer)
-  (.write writer "\n  error:   ")
-  (print-method (:error ch) writer))
+

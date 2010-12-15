@@ -64,8 +64,8 @@
 
 (defn queue-seq [q]
   (take-while
-    #(not= % empty-value)
-    (repeatedly #(pop- q))))
+    #(not= % ::none)
+    (repeatedly #(dequeue q ::none))))
 
 (deftest test-copy-queue
   (let [o (o/observable)

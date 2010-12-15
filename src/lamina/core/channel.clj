@@ -17,52 +17,49 @@
     [lamina.core.queue ConstantEventQueue EventQueue]))
 
 (defprotocol ChannelProtocol
-  (consumer [_] "Observable that receives messages enqueued into the channel.")
-  (emitter [_] "Observable that is the source of all messages from the channel.")
-  (queue [_] "The queue paired to the emitter."))
+  (consumer [_] "Observable that receives all messages enqueued into channel.")
+  (queue [_] "The queue paired to the emitting observable."))
 
 (deftype Channel
-  [^Observable consumer ^Observable emitter ^EventQueue queue]
+  [^Observable consumer ^EventQueue queue]
   ChannelProtocol
   (consumer [_] consumer)
-  (emitter [_] emitter)
   (queue [_] queue)
   (toString [_] (str queue)))
 
 (defn channel [& messages]
   (let [source (o/observable)]
-    (Channel. source source (q/queue source messages))))
+    (Channel. source (q/queue source messages))))
 
 (defn channel? [ch]
   (satisfies? ChannelProtocol ch))
 
 (deftype ConstantChannel
-  [^ConstantObservable consumer ^ConstantObservable emitter ^ConstantEventQueue queue]
+  [^ConstantObservable consumer ^ConstantEventQueue queue]
   ChannelProtocol
   (consumer [_] consumer)
-  (emitter [_] emitter)
   (queue [_] queue)
-  (toString [_] (str emitter)))
+  (toString [_] (str (q/source queue))))
 
 (defn constant-channel
   ([]
      (constant-channel o/empty-value))
   ([message]
      (let [source (o/constant-observable message)]
-       (ConstantChannel. source source (q/constant-queue source)))))
+       (ConstantChannel. source (q/constant-queue source)))))
 
 (defn constant-channel? [ch]
   (instance? ConstantChannel ch))
 
 (def nil-channel
-  (Channel. o/nil-observable o/nil-observable q/nil-queue))
+  (Channel. o/nil-observable q/nil-queue))
 
 ;;;
 
 (defn sealed?
   "Returns true if no more messages can be enqueued into the channel."
   [ch]
-  (-> ch emitter o/closed?))
+  (-> ch queue q/source o/closed?))
 
 (defn closed?
   "Returns true if no more messages can be received from the channel."
@@ -83,66 +80,6 @@
   [ch & callbacks]
   (-> ch queue (q/receive callbacks)))
 
-;; bridging atoms and refs ain't easy
-(defn receive-all
-  "Adds one or more callbacks which will receive all messages from the channel."
-  [ch & callbacks]
-  (if (closed? ch)
-    false
-    (let [observers (zipmap
-		      callbacks
-		     (map
-		       (fn [f] (o/observer #(doseq [m %] (f m))))
-		       callbacks))
-	  distributor (-> ch queue q/distributor)]
-      (if (o/constant-observable? distributor)
-	(do
-	  (o/subscribe distributor observers)
-	  true)
-	(let [q (-> ch ^EventQueue queue .q)
-	      spillover (ref [])]
-	  
-	  ;;first, create a temporary observer that either diverts messages
-	  ;;into the queue or into the callbacks
-	  (o/subscribe distributor
-	    {(first callbacks)
-	     (o/observer
-	       (fn [msgs]
-		 (let [msgs (dosync
-			      (ensure q)
-			      (ensure spillover)
-			      (let [s @spillover]
-				(when (= ::done s)
-				  msgs)))]
-		   (doseq [m msgs]
-		     (doseq [c callbacks]
-		       (c m))))))})
-	  
-	  ;;then, empty out the queue into the callbacks
-	  (let [msgs (dosync
-		       (ensure q)
-		       (ensure spillover)
-		       (let [msgs @q]
-			 (ref-set q clojure.lang.PersistentQueue/EMPTY)
-			 (ref-set spillover ::done)
-			 msgs))]
-	    (doseq [m msgs]
-	      (doseq [c callbacks]
-		(c m)))
-	    
-	    ;;finally, replace the temporary observer with the permanent versions
-	    (o/subscribe distributor
-	      (zipmap
-		callbacks
-		(map
-		  #(o/observer
-		     (fn [msgs]
-		       (doseq [m msgs]
-			 (% m))))
-		  callbacks)))
-
-	    true))))))
-
 (defn cancel-callback
   "Cancels one or more callbacks."
   [ch & callbacks]
@@ -162,18 +99,19 @@
 (defn on-sealed
   "Registers callbacks that will be triggered by the channel being sealed."
   [ch & callbacks]
-  (-> ch emitter (o/subscribe (zipmap callbacks (map #(o/observer nil % nil) callbacks)))))
+  (-> ch queue q/source (o/subscribe (zipmap callbacks (map #(o/observer nil % nil) callbacks)))))
 
 (defn enqueue-and-close
   "Enqueues the final messages into the channel, sealing it.  When this message is
    received, the channel will be closed."
   [ch & messages]
-  (-> ch emitter (o/message messages)))
+  (-> ch queue q/source (o/message messages))
+  (-> ch queue q/source o/close))
 
 (defn close
   "Closes the channel."
   [ch]
-  (enqueue-and-close ch nil))
+  (-> ch queue q/source o/close))
 
 (defn sealed-channel
   "Creates a channel which is already sealed."
@@ -182,14 +120,17 @@
     (apply enqueue-and-close ch messages)
     ch))
 
+(defn dequeue [ch empty-value]
+  (-> ch queue (q/dequeue empty-value)))
+
 ;;;
 
-(defn pop-from-channels [channel-map]
+(defn dequeue-from-channels [channel-map]
   (loop [s channel-map]
     (when-not (empty? s)
       (let [[k ch] (first s)]
-	(let [val (-> ch queue q/pop-)]
-	  (if (= o/empty-value val)
+	(let [val (dequeue ch ::none)]
+	  (if (= ::none val)
 	    (recur (rest s))
 	    [k val]))))))
 
@@ -205,8 +146,10 @@
   ([channel-map]
      (poll channel-map -1))
   ([channel-map timeout]
-     (if-let [val (pop-from-channels channel-map)]
-       (constant-channel val)
+     (if-let [val (dequeue-from-channels channel-map)]
+       (if (and (nil? (second val)) (closed? (get channel-map (first val))))
+	 (constant-channel nil)
+	 (constant-channel val))
        (if (zero? timeout)
 	 (constant-channel nil)
 	 (let [latch (ref false)
@@ -216,13 +159,14 @@
 			    (ensure latch)
 			    (when-not @latch
 			      (ref-set latch true)
-			      [false #(enqueue result [key %])])))]
+			      [false #(if (and (nil? %) (closed? (get channel-map key)))
+					(enqueue result nil)
+					(enqueue result [key %]))])))]
 	  (doseq [[k ch] channel-map]
 	    (listen ch (callback k)))
 	  (when (pos? timeout)
 	    (delay-invoke
 	      (fn []
-		(println "timeout")
 		(dosync (ref-set latch true))
 		(enqueue result nil))
 	      timeout))
@@ -236,7 +180,6 @@
   [src dst]
   (Channel.
     (consumer dst)
-    (emitter src)
     (queue src)))
 
 (defn channel-pair
