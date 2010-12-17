@@ -50,14 +50,11 @@
   (closed? [this]))
 
 (defmacro modify-observers [observers closed? false-case f args]
-  `(if ~closed?
-     (do
-       ~false-case
-       nil)
-     (let [observers# (apply swap! ~observers ~f ~args)]
-       (doseq [o# (vals observers#)]
-	 (on-observers-changed o# observers#))
-       observers#)))
+  `(if-let [observers# (when-not ~closed?
+			 (apply swap! ~observers ~f ~args))]
+     (doseq [o# (vals observers#)]
+       (on-observers-changed o# observers#))
+     ~false-case))
 
 (deftype Observable [observers closed?]
   ObservableProtocol
@@ -96,27 +93,36 @@
 (defn observable? [o]
   (instance? Observable o))
 
+(defmacro safe-modify-observers [observers closed? false-case f args]
+  `(if-let [observers# (locking ~observers
+			 (when-not ~closed?
+			   (apply swap! ~observers ~f ~args)))]
+     (doseq [o# (vals observers#)]
+       (on-observers-changed o# observers#))
+     ~false-case))
+
 (deftype ConstantObservable [observers val]
   ObservableProtocol
   (subscribe [_ m]
-    (modify-observers observers (not= ::empty @val)
+    (safe-modify-observers observers (not= ::empty @val)
       (do
 	(doseq [o (vals m)]
 	  (on-message o [@val]))
 	true) 
       merge m))
   (unsubscribe [_ ks]
-    (modify-observers observers (not= ::empty @val)
+    (safe-modify-observers observers (not= ::empty @val)
       false
       dissoc ks))
   (message [_ msgs]
     (when-not (empty? msgs)
       (let [msg (first msgs)]
 	(when (compare-and-set! val ::empty msg)
-	  (let [s (vals @observers)]
-	    (reset! observers nil)
-	    (doseq [o s]
-	      (on-message o [msg]))))))
+	  (locking observers
+	    (let [s (vals @observers)]
+	      (reset! observers nil)
+	      (doseq [o s]
+		(on-message o [msg])))))))
     false)
   (close [_]
     (throw (Exception. "Constant observables cannot be closed.")))

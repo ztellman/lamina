@@ -44,8 +44,11 @@
 
 (defrecord Redirect [pipeline value])
 
-(defn redirect [pipeline value]
-  (Redirect. pipeline value))
+(defn redirect
+  ([pipeline]
+     (Redirect. pipeline ::initial))
+  ([pipeline value]
+     (Redirect. pipeline value)))
 
 (defn redirect? [x]
   (instance? Redirect x))
@@ -54,7 +57,7 @@
   ([]
      (restart ::initial))
   ([value]
-     (redirect ::pipeline)))
+     (redirect ::pipeline value)))
 
 ;;;
 
@@ -70,14 +73,14 @@
 	nil))))
 
 (defmacro redirect-recur [redirect pipeline initial-value err-count]
-  `(let [pipeline# (:pipeline ~redirect)
+  `(let [pipeline# (-> ~redirect :pipeline)
 	 pipeline# (if (= ::pipeline pipeline#)
 		     ~pipeline
-		     pipeline#)
+		     (-> pipeline# meta :pipeline))
 	 value# (:value ~redirect)
-	 value# (if (= ::initial value#)
-		  ~initial-value
-		  value#)]
+	 value# (cond
+		  (= ::initial value#) ~initial-value
+		  :else value#)]
      (recur (:stages pipeline#) pipeline# value# value# ~err-count)))
 
 (defn start-pipeline
@@ -160,6 +163,7 @@
 				   (fn [val ex] (log/debug "lamina.core.pipeline" ex)))}]
     (when-not (every? fn? stages)
       (throw (Exception. "Every stage in a pipeline must be a function.")))
+    ^{:pipeline pipeline}
     (fn [x]
       (start-pipeline pipeline x))))
 

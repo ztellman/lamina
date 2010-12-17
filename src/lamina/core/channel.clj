@@ -156,21 +156,20 @@
 	       result (constant-channel)
 	       callback (fn [key]
 			  (fn [msg]
-			    (ensure latch)
-			    (when-not @latch
+			    (when-not (ensure latch)
 			      (ref-set latch true)
 			      [false #(if (and (nil? %) (closed? (get channel-map key)))
 					(enqueue result nil)
 					(enqueue result [key %]))])))]
-	  (doseq [[k ch] channel-map]
-	    (listen ch (callback k)))
-	  (when (pos? timeout)
-	    (delay-invoke
-	      (fn []
-		(dosync (ref-set latch true))
-		(enqueue result nil))
-	      timeout))
-	  result)))))
+	   (doseq [[k ch] channel-map]
+	     (listen ch (callback k)))
+	   (when (pos? timeout)
+	     (delay-invoke
+	       (fn []
+		 (dosync (ref-set latch true))
+		 (enqueue result nil))
+	       timeout))
+	   result)))))
 
 ;;;
 

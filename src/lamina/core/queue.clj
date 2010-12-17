@@ -66,7 +66,7 @@
        (send-to-callbacks ~q
 	 (dosync
 	   ~@body
-	   (gather-callbacks (deref (.q ~q)) ~q true)))
+	   (gather-callbacks (ensure (.q ~q)) ~q true)))
        true)))
 
 (deftype EventQueue
@@ -96,12 +96,13 @@
       (doseq [c callbacks]
 	(c))))
   (dequeue [_ empty-value]
-    (if (empty? @q)
-      empty-value
-      (dosync
-	(let [msg (first @q)]
-	  (alter q pop)
-	  msg))))
+    (dosync
+      (if (empty? (ensure q))
+	empty-value
+	(dosync
+	  (let [msg (first @q)]
+	    (alter q pop)
+	    msg)))))
   (receive- [this callbacks]
     (update-and-send this
       (apply alter receivers conj callbacks)))
@@ -122,46 +123,43 @@
 
 (defn gather-receivers [^EventQueue q msgs]
   (let [receivers (.receivers q)
-	rc @receivers]
+	rc (ensure receivers)]
     (when-not (or (empty? rc) (empty? msgs))
       (let [msg (first msgs)]
-	(alter receivers difference rc)
+	(ref-set receivers #{})
 	[[msg rc]]))))
 
 (defn gather-listeners [^EventQueue q msgs]
-  (let [listeners (.listeners q)
-	lst @listeners]
-    (loop [msgs msgs, l lst, result []]
+  (let [listeners (.listeners q)]
+    (loop [msgs msgs, l (ensure listeners), result []]
       (if (empty? msgs)
 	(do
-	  (alter listeners difference (difference lst l))
+	  (ref-set listeners l)
 	  result)
 	(let [msg (first msgs)
-	      l (->> l
-		  (map #(when-let [[complete? f] (% msg)]
-			  [f (when complete? %)]))
-		  (remove nil?))]
-	  (if (empty? l)
+	      callbacks (->> l
+			  (map #(when-let [[continue? f] (% msg)]
+				  [f (when continue? %)]))
+			  (remove nil?))]
+	  (if (empty? callbacks)
 	    (do
-	      (alter listeners difference lst)
+	      (ref-set listeners #{})
 	      result)
 	    (recur
 	      (rest msgs)
-	      (set (->> l (map second) (remove nil?)))
-	      (conj result [msg (map first l)]))))))))
+	      (set (->> callbacks (map second) (remove nil?)))
+	      (conj result [msg (map first callbacks)]))))))))
 
 (defn gather-callbacks [msgs ^EventQueue q drop?]
   (let [l (gather-listeners q msgs)
 	r (gather-receivers q msgs)
 	drop-cnt (max (count l) (count r))]
     (when (and drop? (pos? drop-cnt))
-      (let [msgs (.q q)]
-	(ensure msgs)
-	(ref-set msgs
-	  (loop [cnt drop-cnt, msgs @msgs]
-	    (if (zero? cnt)
-	      msgs
-	      (recur (dec cnt) (pop msgs)))))))
+      (ref-set (.q q)
+	(loop [cnt drop-cnt, msgs msgs]
+	  (if (zero? cnt)
+	    msgs
+	    (recur (dec cnt) (pop msgs))))))
     (concat l r)))
 
 (defn send-to-callbacks [^EventQueue q msgs-and-targets]
@@ -221,8 +219,7 @@
 		     copy))
 		 fs)]
     (dosync
-      (ensure (.q q))
-      (let [q @(.q q)]
+      (let [q (ensure (.q q))]
 	(doseq [[f copy] (map list fs copies)]
 	  (ref-set (.q copy) (f q))
 	  (setup-accumulate-bit accumulate copy)))

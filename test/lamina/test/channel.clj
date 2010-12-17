@@ -17,30 +17,81 @@
 
 ;;
 
+
 (defn async-enqueue [ch s slow?]
   (future
-    (doseq [x s]
-      (enqueue ch x)
-      (if slow?
-	(Thread/sleep 1)
-	(Thread/sleep 0 1)))
-    (enqueue-and-close ch nil)))
+    (try
+      (doseq [x s]
+	(enqueue ch x)
+	(if slow?
+	  (Thread/sleep 1)
+	  (Thread/sleep 0 1)))
+      (catch Exception e
+	(.printStackTrace e)))))
+
+;; Register a series of listeners that only receive one value
+(deftest test-simple-listen
+  (println "test-simple-listen")
+  (let [ch (channel)
+	coll (atom [])
+	num 1e3]
+    (async-enqueue ch (range num) true)
+    (dotimes [_ num]
+      (let [latch (promise)]
+	(listen ch (fn [msg]
+		     [false (fn [msg]
+			      (swap! coll conj msg)
+			      (deliver latch nil))]))
+	@latch))
+    (is (= (range num) @coll))))
+
+;; Register large number of listeners, but only let one receive each value
+(deftest test-listen
+  (println "test-listen")
+  (let [ch (channel)
+	coll (atom [])
+	waiting-for (ref 0)
+	num 1e3
+	latch (promise)]
+    (async-enqueue ch (range num) true)
+    (while (< (count @coll) num)
+      (listen ch (fn [msg]
+		   (when (= msg (ensure waiting-for))
+		     (alter waiting-for inc)
+		     [false (fn [msg]
+			      (swap! coll conj msg)
+			      (when (= (dec num) msg)
+				(deliver latch nil)))]))))
+    @latch
+    (is (= (range num) @coll))))
 
 ;; polling
+
+(deftest test-simple-poll
+  (println "test-simple-poll")
+  (let [ch (channel)
+	num 1e3]
+    (let [coll (atom [])]
+      (async-enqueue ch (range num) false)
+      (dotimes [i num]
+	(when-let [[ch msg] (wait-for-message (poll {:ch ch}))]
+	  (swap! coll conj msg)))
+      (is (= (range num) @coll)))))
 
 (deftest test-poll
   (println "test-poll")
   (let [u (channel)
-	v (channel)]
+	v (channel)
+	num 1e3]
     (let [colls {:u (atom [])
 		 :v (atom [])}]
-      (async-enqueue u (range 100) true)
-      (async-enqueue v (range 100) true)
-      (doseq [i (range 200)]
-	(let [[ch msg] (wait-for-message (poll {:u u, :v v}))]
+      (async-enqueue u (range num) false)
+      (async-enqueue v (range num) false)
+      (dotimes [i (* 2 num)]
+	(when-let [[ch msg] (wait-for-message (poll {:u u, :v v}))]
 	  (swap! (colls ch) conj msg)))
-      (is (= (range 100) @(:u colls)))
-      (is (= (range 100) @(:v colls))))))
+      (is (= (range num) @(:u colls)))
+      (is (= (range num) @(:v colls))))))
 
 (deftest test-poll-timeout
   (println "test-poll-timeout")
@@ -63,16 +114,17 @@
   (let [ch (sealed-channel 1 nil)]
     (is (= [1] (channel-seq ch))))
 
-  (let [in (range 1e2)
+  (let [in (range 1e3)
+	target (last in)
 	ch (channel)]
-    (async-enqueue ch in true)
+    (async-enqueue ch in false)
     (is (= in
 	   (loop [out []]
 	     (Thread/sleep 0 1)
 	     (let [n (channel-seq ch)]
-	       (if (seq n)
+	       (if-not (= target (last n))
 		 (recur (concat out n))
-		 out)))))))
+		 (concat out n))))))))
 
 ;; seq-like methods
 
@@ -99,7 +151,7 @@
       (async-enqueue ch s true)
       (= (filter even? s) (channel-seq (filter* even? ch))))))
 
-(deftest test-reduce*
+'(deftest test-reduce*
   (println "test-reduce")
   (let [s (range 10)]
 
@@ -110,7 +162,7 @@
       (async-enqueue ch s true)
       (= (reduce + s) (wait-for-message (reduce* + ch))))))
 
-(deftest test-reductions*
+'(deftest test-reductions*
   (println "test-reductions")
   (let [s (range 10)]
 

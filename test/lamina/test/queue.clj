@@ -47,10 +47,25 @@
     (output-set= [[:a 1] [:a 2]
 		  [:b 2] [:b 3]
 		  [:c 1] [:c 2] [:c 3]]
-      (listen q [(f :a 2) (f :c 3)])
       (o/message o [1])
+      (listen q [(f :a 2) (f :c 3)])
       (listen q [(f :b 2)])
-      (o/message o [2 3]))))
+      (o/message o [2 3 4])))
+
+  (let [f (fn [id cnt]
+	    (let [c (ref cnt)]
+	      (fn [msg]
+		(when (<= 0 (alter c dec))
+		  [true (fn [msg] (swap! accumulator conj [id msg]))]))))
+	o (o/observable)
+	q (queue o)]
+    (output-set= [[:a 1] [:a 2]
+		  [:b 2] [:b 3]
+		  [:c 1] [:c 2] [:c 3]]
+      (o/message o [1])
+      (listen q [(f :a 2) (f :c 3)])
+      (listen q [(f :b 2)])
+      (o/message o [2 3 4]))))
 
 (deftest test-cancel-callback
   (let [f (fn [] #(swap! accumulator conj %))
@@ -72,7 +87,7 @@
 	q (queue o [1])]
     (= [1] (queue-seq q))
     (is (= [] (queue-seq q)))
-    (let [q* (copy-queue identity o q)]
+    (let [q* (first (copy-queue q [identity]))]
       (o/message o [1 2])
       (is (= [1 2] (queue-seq q)))
       (o/message o [3 4])
