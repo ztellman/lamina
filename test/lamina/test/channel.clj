@@ -13,10 +13,10 @@
   (:use
     [clojure.test]
     [clojure.contrib.def]
+    [clojure.walk]
     [clojure.contrib.combinatorics]))
 
 ;;
-
 
 (defn async-enqueue [ch s slow?]
   (future
@@ -26,8 +26,49 @@
 	(if slow?
 	  (Thread/sleep 1)
 	  (Thread/sleep 0 1)))
+      (close ch)
       (catch Exception e
 	(.printStackTrace e)))))
+
+(declare callback)
+
+(defmacro output-of [f & body]
+  `(let [coll# (atom [])]
+     (binding [callback (fn [msg#] (swap! coll# conj (~f msg#)))]
+       ~@body
+       @coll#)))
+
+;;;
+
+(defmacro close-output= [expected ch & body]
+  (let [ch-sym (gensym "ch")
+	body (postwalk-replace {'ch ch-sym} body)]
+    (let [f (fn [ch]
+	      (fn [msg]
+		[msg (closed? ch)]))]
+      `(do
+	 (let [~ch-sym ~ch]
+	   (is (= ~expected (output-of (~f ~ch-sym) (receive-all ~ch-sym callback) ~@body))))
+	 (let [~ch-sym ~ch]
+	   (is (= ~expected (output-of (~f ~ch-sym) (receive-in-order ~ch-sym callback) ~@body))))
+	 (let [~ch-sym ~ch]
+	   (is (= ~expected (output-of (~f ~ch-sym)
+			      (receive ~ch-sym (fn this# [msg#]
+						 (callback msg#)
+						 (when-not (closed? ~ch-sym)
+						   (receive ~ch-sym this#))))
+			      ~@body))))))))
+
+(deftest test-close
+  (close-output= [[1 false] [2 true]]
+    (sealed-channel 1 2))
+  (close-output= [[1 false] [2 false] [nil true]]
+    (channel 1 2)
+    (close ch))
+  (close-output= [[1 false] [2 false] [nil true]]
+    (channel)
+    (enqueue-and-close ch 1 2)))
+;;;
 
 ;; Register a series of listeners that only receive one value
 (deftest test-simple-listen
@@ -65,6 +106,7 @@
     @latch
     (is (= (range num) @coll))))
 
+
 ;; polling
 
 (deftest test-simple-poll
@@ -87,11 +129,11 @@
 		 :v (atom [])}]
       (async-enqueue u (range num) false)
       (async-enqueue v (range num) false)
-      (dotimes [i (* 2 num)]
+      (dotimes [i (+ 2 (* 2 num))]
 	(when-let [[ch msg] (wait-for-message (poll {:u u, :v v}))]
 	  (swap! (colls ch) conj msg)))
-      (is (= (range num) @(:u colls)))
-      (is (= (range num) @(:v colls))))))
+      (is (= (concat (range num) [nil]) @(:u colls)))
+      (is (= (concat (range num) [nil]) @(:v colls))))))
 
 (deftest test-poll-timeout
   (println "test-poll-timeout")
@@ -151,18 +193,18 @@
       (async-enqueue ch s true)
       (= (filter even? s) (channel-seq (filter* even? ch))))))
 
-'(deftest test-reduce*
+(deftest test-reduce*
   (println "test-reduce")
   (let [s (range 10)]
 
     (let [ch (apply sealed-channel s)]
       (= (reduce + s) (wait-for-message (reduce* + ch))))
 
-    (let [ch (channel)]
-      (async-enqueue ch s true)
-      (= (reduce + s) (wait-for-message (reduce* + ch))))))
+    '(let [ch (channel)]
+      (async-enqueue ch s false)
+      (= (reduce + s) (wait-for-message (reduce* + ch) 2500)))))
 
-'(deftest test-reductions*
+(deftest test-reductions*
   (println "test-reductions")
   (let [s (range 10)]
 
@@ -170,5 +212,5 @@
       (= (reductions + s) (channel-seq (reductions* + ch))))
 
     (let [ch (channel)]
-      (async-enqueue ch s true)
+      (async-enqueue ch s false)
       (= (reductions + s) (channel-seq (reductions* + ch))))))

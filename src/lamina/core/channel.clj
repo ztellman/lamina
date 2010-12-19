@@ -147,9 +147,7 @@
      (poll channel-map -1))
   ([channel-map timeout]
      (if-let [val (dequeue-from-channels channel-map)]
-       (if (and (nil? (second val)) (closed? (get channel-map (first val))))
-	 (constant-channel nil)
-	 (constant-channel val))
+       (constant-channel val)
        (if (zero? timeout)
 	 (constant-channel nil)
 	 (let [latch (ref false)
@@ -158,9 +156,7 @@
 			  (fn [msg]
 			    (when-not (ensure latch)
 			      (ref-set latch true)
-			      [false #(if (and (nil? %) (closed? (get channel-map key)))
-					(enqueue result nil)
-					(enqueue result [key %]))])))]
+			      [false #(enqueue result [key %])])))]
 	   (doseq [[k ch] channel-map]
 	     (listen ch (callback k)))
 	   (when (pos? timeout)

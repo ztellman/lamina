@@ -52,15 +52,21 @@
 (defmacro modify-observers [observers closed? false-case f args]
   `(if-let [observers# (when-not ~closed?
 			 (apply swap! ~observers ~f ~args))]
-     (doseq [o# (vals observers#)]
-       (on-observers-changed o# observers#))
-     ~false-case))
+     (do
+       (doseq [o# (vals observers#)]
+	 (on-observers-changed o# observers#))
+       observers#)
+     (do
+       ~false-case
+       nil)))
 
 (deftype Observable [observers closed?]
   ObservableProtocol
   (subscribe [_ m]
     (modify-observers observers @closed?
-      false
+      (do
+	(doseq [o (vals m)]
+	  (on-close o)))
       merge m))
   (unsubscribe [_ ks]
     (modify-observers observers @closed?
@@ -152,25 +158,31 @@
 
 ;;;
 
-(defn siphon [src destination-function-map]
-  (do
-    (subscribe src
-      (zipmap
-	(keys destination-function-map)
-	(map
-	  (fn [[dst f]]
-	    (observer
-	      (fn [msgs] (message dst (f msgs)))))
-	  destination-function-map)))
-    (doseq [dst (keys destination-function-map)]
-      (subscribe dst
-	{src (observer
-	       nil
-	       (fn []
-		 (when (>= 1 (count (unsubscribe src [dst])))
-		   (close src))
-		 (unsubscribe dst [src]))
-	       nil)}))))
+(defn siphon
+  ([src destination-function-map]
+     (siphon src destination-function-map false))
+  ([src destination-function-map propagate-close?]
+     (do
+       (subscribe src
+	 (zipmap
+	   (keys destination-function-map)
+	   (map
+	     (fn [[dst f]]
+	       (observer
+		 (fn [msgs] (message dst (f msgs)))
+		 (when propagate-close?
+		   (fn [] (close dst)))
+		 nil))
+	     destination-function-map)))
+       (doseq [dst (keys destination-function-map)]
+	 (subscribe dst
+	   {src (observer
+		  nil
+		  (fn []
+		    (when (>= 1 (count (unsubscribe src [dst])))
+		      (close src))
+		    (unsubscribe dst [src]))
+		  nil)})))))
 
 
 

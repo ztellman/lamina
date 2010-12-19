@@ -9,6 +9,7 @@
 (ns lamina.core.seq
   (:use
     [lamina.core.channel]
+    [lamina.core.pipeline]
     [clojure.contrib.generic.functor])
   (:require
     [lamina.core.observable :as o]
@@ -125,7 +126,10 @@
 	  observers (zipmap
 		      callbacks
 		      (map
-			(fn [f] (o/observer #(doseq [m %] (f m))))
+			(fn [f] (o/observer
+				  #(doseq [m %] (f m))
+				  #(f nil)
+				  nil))
 			callbacks))
 	  send-to-callbacks (fn [msgs]
 			      (doseq [msg msgs]
@@ -137,10 +141,16 @@
 			      send-to-callbacks
 			      #(-> ch queue (q/enqueue %)))]
 	(locking monitor
+	  (when (sealed? ch)
+	    (send-to-callbacks
+	      (butlast
+		(sample-queue ch latch
+		  #(ref-set % (conj clojure.lang.PersistentQueue/EMPTY (last (deref %))))))))
 	  (send-to-callbacks
 	    (sample-queue ch latch
 	      #(ref-set % clojure.lang.PersistentQueue/EMPTY)))
-	  (o/subscribe distributor observers))
+	  (when-not (sealed? ch)
+	    (o/subscribe distributor observers)))
 	true))))
 
 (defn siphon
@@ -193,6 +203,25 @@
        (let [qs (q/copy-queue (queue ch) (repeat n identity))]
 	 (map #(Channel. nil-channel %) qs)))))
 
+(defn receive-in-order
+  "Consumes messages from a channel one at a time.  The callback will only receive the next
+   message once it has completed processing the previous one.
+
+   This is a lossy iteration over the channel.  Fork the channel if there is another consumer."
+  [ch f]
+  (if (closed? ch)
+    (success-result nil)
+    (run-pipeline ch
+      :error-handler (fn [_ ex]
+		       (when (instance? TimeoutException ex)
+			 (f nil)
+			 nil))
+      read-channel
+      (fn [msg]
+	(f msg)
+	(when-not (closed? ch)
+	  (restart))))))
+
 (defn map* [f ch]
   (let [ch* (channel)]
     (siphon ch {ch* #(map f %)})
@@ -202,3 +231,56 @@
   (let [ch* (channel)]
     (siphon ch {ch* #(filter f %)})
     ch*))
+
+(defn- reduce- [f val ch]
+  (run-pipeline val
+    (read-merge
+      #(read-channel ch)
+      #(if (and (nil? %2) (closed? ch))
+	 %1
+	 (f %1 %2)))
+    (fn [val]
+      (if (closed? ch)
+	val
+	(restart val)))))
+
+(defn reduce*
+  "Returns a constant-channel which will return the result of the reduce once the channel has been exhausted."
+  ([f ch]
+     (let [ch (fork ch)]
+       (:success
+	 (run-pipeline ch
+	   read-channel
+	   #(reduce- f %1 ch)))))
+  ([f val ch]
+     (let [ch (fork ch)]
+       (:success (reduce- f val ch)))))
+
+(defn reductions- [f val ch]
+  (let [ch* (channel)]
+    (run-pipeline val
+      (read-merge
+	#(read-channel ch)
+	#(if (and (nil? %2) (closed? ch))
+	   %1
+	   (f %1 %2)))
+      (fn [val]
+	(if (closed? ch)
+	  (enqueue-and-close ch* val)
+	  (do
+	    (enqueue ch* val)
+	    (restart val)))))
+    ch*))
+
+(defn reductions*
+  "Returns a channel which contains the intermediate results of the reduce operation."
+  ([f ch]
+     (let [ch (fork ch)]
+       (wait-for-message
+	 (:success
+	   (run-pipeline ch
+	     read-channel
+	     #(reductions- f %1 ch))))))
+  ([f val ch]
+     (let [ch (fork ch)]
+       (reductions- f val ch))))

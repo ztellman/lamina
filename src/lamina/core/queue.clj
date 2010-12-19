@@ -60,14 +60,12 @@
 (declare send-to-callbacks)
 
 (defmacro update-and-send [q & body]
-  `(if (o/closed? (.source ~q))
-     false
-     (do
-       (send-to-callbacks ~q
-	 (dosync
-	   ~@body
-	   (gather-callbacks (ensure (.q ~q)) ~q true)))
-       true)))
+  `(do
+     (send-to-callbacks ~q
+       (dosync
+	 ~@body
+	 (gather-callbacks (ensure (.q ~q)) ~q true)))
+     true))
 
 (deftype EventQueue
   [source distributor q
@@ -160,25 +158,32 @@
 	  (if (zero? cnt)
 	    msgs
 	    (recur (dec cnt) (pop msgs))))))
-    (concat l r)))
+    (when (pos? drop-cnt)
+      (list*
+	[(or (ffirst r) (ffirst l))
+	 (concat (-> r first second) (-> l first second))]
+	(rest l)))))
 
 (defn send-to-callbacks [^EventQueue q msgs-and-targets]
-  (doseq [[msg callbacks] msgs-and-targets]
-    (doseq [c callbacks]
-      (c msg)))
-  (when (closed? q)
-    (doseq [c @(.close-callbacks q)]
-      (c))
-    (dosync (ref-set (.close-callbacks q) nil))))
+  (when msgs-and-targets
+    (doseq [[msg callbacks] msgs-and-targets]
+      (doseq [c callbacks]
+	(c msg)))
+    (when (closed? q)
+      (doseq [c @(.close-callbacks q)]
+	(c))
+      (dosync (ref-set (.close-callbacks q) nil)))))
 
-(defn setup-accumulate-bit [accumulate q]
+(defn setup-observable->queue [accumulate ^EventQueue q]
   (let [src (source q)
 	dst (distributor q)]
     (o/subscribe dst
       {q (o/observer
-	      #(enqueue q %)
-	      nil
-	      #(reset! accumulate (= (set (keys %)) #{src q})))})))
+	   #(enqueue q %)
+	   #(dosync
+	      (when (empty? (ensure (.q q)))
+		(enqueue q [nil])))
+	   #(reset! accumulate (= (set (keys %)) #{src q})))})))
 
 (defn queue
   ([source]
@@ -196,8 +201,8 @@
 	       (ref #{})
 	       (ref #{})
 	       accumulate)]
-       (o/siphon source {distributor identity})
-       (setup-accumulate-bit accumulate q)
+       (o/siphon source {distributor identity} true)
+       (setup-observable->queue accumulate q)
        q)))
 
 (defn copy-queue
@@ -222,7 +227,7 @@
       (let [q (ensure (.q q))]
 	(doseq [[f copy] (map list fs copies)]
 	  (ref-set (.q copy) (f q))
-	  (setup-accumulate-bit accumulate copy)))
+	  (setup-observable->queue accumulate copy)))
       copies)))
 
 ;;;

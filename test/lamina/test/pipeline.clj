@@ -53,20 +53,14 @@
 ;;;
 
 (deftest test-basic-pipelines
-  (println "test-basic-pipelines")
-  
   (test-pipeline (apply pipeline (take 1e3 (repeat inc))) 1e3)
   (test-pipeline (apply pipeline (take 1e3 (repeat (blocking inc)))) 1e3)
   (test-pipeline (apply pipeline (take 100 (repeat slow-inc))) 100))
 
 (deftest test-nested-pipelines
-  (println "test-nested-pipelines")
-  
   (test-pipeline (pipeline inc (pipeline inc (pipeline inc) inc) inc) 5))
 
 (deftest test-redirected-pipelines
-  (println "test-redirected-pipelines")
-  
   (test-pipeline (pipeline inc inc #(redirect (pipeline inc inc inc) %)) 5)
   (test-pipeline pipe-b 10)
 
@@ -84,8 +78,6 @@
       (map str (seq "abbcd")))))
 
 (deftest test-error-propagation
-  (println "test-error-propagation")
-  
   (assert-failure (pipeline :error-handler (fn [_ _]) fail))
   (assert-failure (pipeline :error-handler (fn [_ _]) inc fail))
   (assert-failure (pipeline :error-handler (fn [_ _]) inc fail inc))
@@ -94,7 +86,6 @@
   (assert-failure (pipeline :error-handler (fn [_ _]) inc #(redirect (pipeline :error-handler (fn [_ _]) inc fail) %))))
 
 (deftest test-redirection-and-error-handlers
-  (println "test-redirection-and-error-handlers")
 
   (let [n (atom 0)
 	f (fn [n _] (swap! n inc))]
@@ -123,7 +114,6 @@
     (is (= [3] @n))))
 
 (deftest test-error-handling
-  (println "test-error-handling")
 
   (test-pipeline
     (pipeline :error-handler (fn [val ex] (redirect (pipeline inc) val))
@@ -155,7 +145,6 @@
     3))
 
 (deftest test-tail-recursion
-  (println "test-tail-recursion")
   
   (let [ch (apply sealed-channel (range 1e4))]
     (run-pipeline ch
@@ -168,6 +157,7 @@
     #(when (pos? %)
        (restart (dec %))))
 
+  ;;TODO: excessive failures should stop the pipeline at some point
   (run-pipeline nil
     :error-handler (fn [_ _] (restart))
     (fail-times 1e4)))
