@@ -224,12 +224,18 @@
 
 (defn map* [f ch]
   (let [ch* (channel)]
-    (siphon ch {ch* #(map f %)})
+    (siphon ch
+      {ch* #(if (and (closed? ch) (= [nil] %))
+	      %
+	      (map f %))})
     ch*))
 
 (defn filter* [f ch]
   (let [ch* (channel)]
-    (siphon ch {ch* #(filter f %)})
+    (siphon ch
+      {ch* #(if (and (closed? ch) (= [nil] %))
+	      %
+	      (filter f %))})
     ch*))
 
 (defn- reduce- [f val ch]
