@@ -174,7 +174,7 @@
 				   (apply enqueue dst (f msgs))))]
       (let [[latch monitor] (create-temp-subscription
 			      distributor
-			      (-> destination-function-map ffirst queue q/source)
+			      (-> destination-function-map ffirst consumer)
 			      send-to-destinations
 			      #(-> source queue (q/enqueue %)))]
 	(locking monitor
@@ -183,7 +183,7 @@
 	      #(ref-set % clojure.lang.PersistentQueue/EMPTY)))
 	  (o/siphon
 	    distributor
-	    (into {} (map (fn [[ch f]] [(-> ch queue q/source) f]) destination-function-map))))
+	    (into {} (map (fn [[ch f]] [(consumer ch) f]) destination-function-map))))
 	true))))
 
 ;;;
@@ -212,10 +212,6 @@
   (if (closed? ch)
     (success-result nil)
     (run-pipeline ch
-      :error-handler (fn [_ ex]
-		       (when (instance? TimeoutException ex)
-			 (f nil)
-			 nil))
       read-channel
       (fn [msg]
 	(f msg)
@@ -238,6 +234,39 @@
 	      (filter f %))})
     ch*))
 
+(defn take* [n ch]
+  (let [ch* (channel)
+	cnt (ref n)]
+    (listen ch
+      (fn [msg]
+	[(pos? (alter cnt dec))
+	 #(do
+	    (enqueue ch* %)
+	    (when (zero? @cnt)
+	      (close ch*)))]))
+    ch*))
+
+(defn take-while* [f ch]
+  (let [ch* (channel)
+	cnt (ref 0)
+	cnt* (atom 0)
+	final (atom nil)]
+    (listen ch
+      (fn [msg]
+	(if-not (f msg)
+	  (do
+	    (reset! final (ensure cnt))
+	    nil)
+	  (do
+	    (alter cnt inc)
+	    [true (fn [msg]
+		    (let [cnt* (swap! cnt* inc)]
+		      (enqueue ch* msg)
+		      (when-let [final @final]
+			(when (= final cnt*)
+			  (close ch*)))))]))))
+    ch*))
+
 (defn- reduce- [f val ch]
   (run-pipeline val
     (read-merge
@@ -253,14 +282,12 @@
 (defn reduce*
   "Returns a constant-channel which will return the result of the reduce once the channel has been exhausted."
   ([f ch]
-     (let [ch (fork ch)]
-       (:success
-	 (run-pipeline ch
-	   read-channel
-	   #(reduce- f %1 ch)))))
+     (:success
+       (run-pipeline ch
+	 read-channel
+	 #(reduce- f %1 ch))))
   ([f val ch]
-     (let [ch (fork ch)]
-       (:success (reduce- f val ch)))))
+     (:success (reduce- f val ch))))
 
 (defn reductions- [f val ch]
   (let [ch* (channel)]
@@ -281,12 +308,10 @@
 (defn reductions*
   "Returns a channel which contains the intermediate results of the reduce operation."
   ([f ch]
-     (let [ch (fork ch)]
-       (wait-for-message
-	 (:success
-	   (run-pipeline ch
-	     read-channel
-	     #(reductions- f %1 ch))))))
+     (wait-for-message
+       (:success
+	 (run-pipeline ch
+	   read-channel
+	   #(reductions- f %1 ch)))))
   ([f val ch]
-     (let [ch (fork ch)]
-       (reductions- f val ch))))
+     (reductions- f val ch)))

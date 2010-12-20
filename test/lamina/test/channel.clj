@@ -72,7 +72,6 @@
 
 ;; Register a series of listeners that only receive one value
 (deftest test-simple-listen
-  (println "test-simple-listen")
   (let [ch (channel)
 	coll (atom [])
 	num 1e3]
@@ -88,7 +87,6 @@
 
 ;; Register large number of listeners, but only let one receive each value
 (deftest test-listen
-  (println "test-listen")
   (let [ch (channel)
 	coll (atom [])
 	waiting-for (ref 0)
@@ -110,7 +108,6 @@
 ;; polling
 
 (deftest test-simple-poll
-  (println "test-simple-poll")
   (let [ch (channel)
 	num 1e3]
     (let [coll (atom [])]
@@ -121,7 +118,6 @@
       (is (= (range num) @coll)))))
 
 (deftest test-poll
-  (println "test-poll")
   (let [u (channel)
 	v (channel)
 	num 1e3]
@@ -136,23 +132,19 @@
       (is (= (concat (range num) [nil]) @(:v colls))))))
 
 (deftest test-poll-timeout
-  (println "test-poll-timeout")
   (let [ch (channel)]
     (is (= nil (wait-for-message (poll {:ch ch} 0) 0)))))
 
 ;; synchronous methods
 
-'(deftest test-wait-for-message
-  (println "test-wait-for-message")
+(deftest test-wait-for-message
   (let [num 1e2]
     (let [ch (channel)]
       (async-enqueue ch (range num) false)
       (dotimes [i num]
-	(println "wait-for-message" i)
-	(is (= i (wait-for-message ch)))))))
+	(is (= i (wait-for-message ch 100)))))))
 
 (deftest test-channel-seq
-  (println "test-channel-seq")
   (let [ch (sealed-channel 1 nil)]
     (is (= [1] (channel-seq ch))))
 
@@ -171,7 +163,6 @@
 ;; seq-like methods
 
 (deftest test-map*
-  (println "test-map")
   (let [s (range 10)
 	f #(* % 2)]
 
@@ -183,7 +174,6 @@
       (= (map f s) (channel-seq (map* f ch))))))
 
 (deftest test-filter*
-  (println "test-filter")
   (let [s (range 10)]
 
     (let [ch (apply sealed-channel s)]
@@ -194,18 +184,16 @@
       (= (filter even? s) (channel-seq (filter* even? ch))))))
 
 (deftest test-reduce*
-  (println "test-reduce")
   (let [s (range 10)]
 
     (let [ch (apply sealed-channel s)]
       (= (reduce + s) (wait-for-message (reduce* + ch))))
 
-    '(let [ch (channel)]
+    (let [ch (channel)]
       (async-enqueue ch s false)
       (= (reduce + s) (wait-for-message (reduce* + ch) 2500)))))
 
 (deftest test-reductions*
-  (println "test-reductions")
   (let [s (range 10)]
 
     (let [ch (apply sealed-channel s)]

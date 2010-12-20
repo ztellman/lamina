@@ -106,7 +106,8 @@
    received, the channel will be closed."
   [ch & messages]
   (-> ch queue q/source (o/message messages))
-  (-> ch queue q/source o/close))
+  (when-not (constant-channel? ch)
+    (-> ch queue q/source o/close)))
 
 (defn close
   "Closes the channel."

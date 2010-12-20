@@ -160,7 +160,9 @@
 	pipeline {:stages stages
 		  :error-handler (or
 				   (:error-handler opts)
-				   (fn [val ex] (log/debug "lamina.core.pipeline" ex)))}]
+				   (fn [val ex]
+				     (log/error "lamina.core.pipeline" ex)
+				     ))}]
     (when-not (every? fn? stages)
       (throw (Exception. "Every stage in a pipeline must be a function.")))
     ^{:pipeline pipeline}

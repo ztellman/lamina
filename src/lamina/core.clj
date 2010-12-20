@@ -14,7 +14,8 @@
   (:require
     [lamina.core.pipeline :as pipeline]
     [lamina.core.channel :as channel]
-    [lamina.core.seq :as seq])
+    [lamina.core.seq :as seq]
+    [lamina.core.named :as named])
   (:import))
 
 
@@ -45,19 +46,22 @@
 
 ;; channel utility functions
 
-(import-fn seq/siphon)
+(defn siphon
+  [ch & dsts]
+  (seq/siphon ch (zipmap dsts (repeat (count dsts) identity))))
+
 (import-fn seq/fork)
 (import-fn seq/map*)
 (import-fn seq/filter*)
 (import-fn seq/receive-in-order)
 (import-fn seq/reduce*)
 (import-fn seq/reductions*)
-;;(import-fn channel/take*)
-;;(import-fn channel/take-while*)
+(import-fn seq/take*)
+(import-fn seq/take-while*)
 
 ;; named channels
-;;(import-fn channel/named-channel)
-;;(import-fn channel/release-named-channel)
+(import-fn named/named-channel)
+(import-fn named/release-named-channel)
 
 ;; synchronous channel functions
 (import-fn seq/lazy-channel-seq)

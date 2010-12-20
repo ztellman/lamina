@@ -220,7 +220,7 @@
 				(ref #{})
 				(ref #{})
 				accumulate)]
-		     (o/siphon source {distributor f})
+		     (o/siphon source {distributor f} true)
 		     copy))
 		 fs)]
     (dosync
