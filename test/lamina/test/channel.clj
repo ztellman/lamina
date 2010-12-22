@@ -90,7 +90,16 @@
       `(receive-all ch f)
       (map
 	(fn [x] `(enqueue-fn ~x))
-	(range 3)))))
+	(range 3))))
+  (testing "constant-channel"
+    (let [c (constant-channel)]
+      (receive-all c #(is (= 0 %)))
+      (enqueue c 0)
+      )
+    )
+  )
+
+
 
 (deftest test-receive
   (doall

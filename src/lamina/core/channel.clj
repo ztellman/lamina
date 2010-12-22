@@ -133,7 +133,7 @@
 		(f %2)))
 	   true)
 	 (receive-all- [this fs]
-	   (receive this fs)
+	   (receive- this fs)
 	   true)
 	 (receive-while- [this callback-predicate-map]
 	   (doseq [[f pred] callback-predicate-map]
