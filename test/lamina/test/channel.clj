@@ -67,7 +67,11 @@
     (close ch))
   (close-output= [[1 false] [2 false] [nil true]]
     (channel)
-    (enqueue-and-close ch 1 2)))
+    (enqueue-and-close ch 1 2))
+  (close-output= [[1 false] [2 false] [3 false] [nil true]]
+    (channel)
+    (enqueue ch 1 2)
+    (enqueue-and-close ch 3)))
 ;;;
 
 ;; Register a series of listeners that only receive one value

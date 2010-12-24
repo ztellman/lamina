@@ -180,9 +180,8 @@
     (o/subscribe dst
       {q (o/observer
 	   #(enqueue q %)
-	   #(dosync
-	      (when (empty? (ensure (.q q)))
-		(enqueue q [nil])))
+	   #(when (empty? @(.q q))
+	      (enqueue q [nil]))
 	   #(reset! accumulate (= (set (keys %)) #{src q})))})))
 
 (defn queue

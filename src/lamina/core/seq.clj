@@ -205,7 +205,8 @@
 
 (defn receive-in-order
   "Consumes messages from a channel one at a time.  The callback will only receive the next
-   message once it has completed processing the previous one.
+   message once it has completed processing the previous one.  If the callback returns a result
+   channel, the next message will not be received until there is a result.
 
    This is a lossy iteration over the channel.  Fork the channel if there is another consumer."
   [ch f]
@@ -214,7 +215,8 @@
     (run-pipeline ch
       read-channel
       (fn [msg]
-	(f msg)
+	(f msg))
+      (fn [_]
 	(when-not (closed? ch)
 	  (restart))))))
 

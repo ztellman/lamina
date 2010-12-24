@@ -101,18 +101,18 @@
   [ch & callbacks]
   (-> ch queue q/source (o/subscribe (zipmap callbacks (map #(o/observer nil % nil) callbacks)))))
 
+(defn close
+  "Closes the channel."
+  [ch]
+  (-> ch consumer o/close))
+
 (defn enqueue-and-close
   "Enqueues the final messages into the channel, sealing it.  When this message is
    received, the channel will be closed."
   [ch & messages]
-  (-> ch queue q/source (o/message messages))
+  (apply enqueue ch messages)
   (when-not (constant-channel? ch)
-    (-> ch queue q/source o/close)))
-
-(defn close
-  "Closes the channel."
-  [ch]
-  (-> ch queue q/source o/close))
+    (close ch)))
 
 (defn sealed-channel
   "Creates a channel which is already sealed."
