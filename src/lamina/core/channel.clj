@@ -6,7 +6,8 @@
 ;;   the terms of this license.
 ;;   You must not remove this notice, or any other, from this software.
 
-(ns lamina.core.channel
+(ns ^{:skip-wiki true}
+  lamina.core.channel
   (:use
     [lamina.core.timer])
   (:require
@@ -119,6 +120,11 @@
   [& messages]
   (let [ch (channel)]
     (apply enqueue-and-close ch messages)
+    ch))
+
+(defn timed-channel [delay]
+  (let [ch (constant-channel)]
+    (delay-invoke #(enqueue ch nil))
     ch))
 
 (defn dequeue [ch empty-value]

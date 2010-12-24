@@ -6,10 +6,11 @@
 ;;   the terms of this license.
 ;;   You must not remove this notice, or any other, from this software.
 
-(ns lamina.connections
+(ns ^{:author "Zachary Tellman"}
+  lamina.connections
   (:use
     [lamina core]
-    [lamina.core.channel :only (wait-channel)])
+    [lamina.core.pipeline :only (error-result)])
   (:require
     [clojure.contrib.logging :as log]))
 
@@ -46,10 +47,10 @@
     (run-pipeline nil
       (fn [_]
 	(if @latch
-	  (do (reset! connection (pipeline-channel)) nil)
+	  (do (reset! connection (result-channel)) nil)
 	  (complete nil)))
       (pipeline :error-handler (retry-connect delay latch)
-	(fn [_] (read-channel (wait-channel @delay)))
+	(fn [_] (read-channel (timed-channel @delay)))
 	(fn [_] (connection-generator)))
       (handle-connection delay connection-lost-callback connection)
       restart)
@@ -59,7 +60,7 @@
 	(fn [ch] (enqueue-and-close ch nil))))))
 
 (defn persistent-connection
-  "Given a function that generates a connection (a pipeline-channel that yields a channel),
+  "Given a function that generates a connection (a result-channel that yields a channel),
    returns a function that, given zero parameters, returns a connection.
 
    Behind the scenes, this will maintain a single live connection, reconnecting when
@@ -70,9 +71,7 @@
   ([connection-generator]
      (persistent-connection connection-generator nil))
   ([connection-generator connection-lost-callback]
-     (let [connection (atom (pipeline-channel
-			      nil-channel
-			      (constant-channel [nil nil])))
+     (let [connection (atom (error-result [nil nil]))
 	   stop-loop (connect-loop
 		       connection-generator
 		       connection-lost-callback
@@ -99,7 +98,7 @@
     (let [now (System/currentTimeMillis)]
       #(max 0 (- (+ now timeout) (System/currentTimeMillis))))))
 
-(defn- siphon-pipeline-channel [src dst]
+(defn- siphon-result-channel [src dst]
   (doseq [ch [:success :error]]
     (receive (ch src) #(enqueue (ch dst) %))))
 
@@ -146,7 +145,7 @@
 
 (defn client
   "Given a function that returns a connection, returns a function that takes a
-   request value and optionally a timeout, and returns a pipeline-channel
+   request value and optionally a timeout, and returns a result-channel
    representing the response.  This will keep a single live connection to the
    server, reconnecting when necessary.
 
@@ -162,7 +161,7 @@
       ([request timeout]
 	 (if (= ::close request)
 	   (connection-generator true)
-	   (let [response (pipeline-channel)]
+	   (let [response (result-channel)]
 	     (enqueue requests [request response (timeout-fn timeout)])
 	     (check-for-closed response)))))))
 
@@ -175,7 +174,7 @@
       (run-pipeline (read-channel ch (timeout))
 	:error-handler (fn [_ ex]
 			 (if-not (zero? (timeout))
-			   (siphon-pipeline-channel (request-handler request) response)
+			   (siphon-result-channel (request-handler request) response)
 			   (enqueue (:error response) [request ex]))
 			 (complete
 			   (when-not (closed? ch)
@@ -186,7 +185,7 @@
 
 (defn pipelined-client
   "Given a function that returns a connection, returns a function that takes a
-   request value and optionally a timeout, and returns a pipeline-channel
+   request value and optionally a timeout, and returns a result-channel
    representing the response.  This will keep a single live connection to the
    server, reconnecting when necessary.
 
@@ -201,7 +200,7 @@
 			  ([request timeout]
 			     (if (= ::close request)
 			       (connection-generator true)
-			       (let [response (pipeline-channel)]
+			       (let [response (result-channel)]
 				 (run-pipeline (connection-generator)
 				   (fn [ch]
 				     (enqueue ch request)
@@ -245,7 +244,8 @@
 
 ;;
 
-(defn server [ch handler]
+(defn server
+  [ch handler]
   (run-pipeline ch
     read-channel
     #(let [c (constant-channel)]
@@ -258,7 +258,8 @@
   (fn []
     (enqueue-and-close ch)))
 
-(defn pipelined-server [ch handler]
+(defn pipelined-server
+  [ch handler]
   (let [requests (channel)
 	responses (channel)]
     (run-pipeline responses

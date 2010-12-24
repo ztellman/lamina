@@ -41,6 +41,7 @@
 (import-fn channel/channel-pair)
 (import-fn channel/constant-channel)
 (import-fn channel/sealed-channel)
+(import-fn channel/timed-channel)
 
 (def nil-channel channel/nil-channel)
 

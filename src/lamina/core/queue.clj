@@ -6,7 +6,8 @@
 ;;   the terms of this license.
 ;;   You must not remove this notice, or any other, from this software.
 
-(ns lamina.core.queue
+(ns ^{:skip-wiki true}
+  lamina.core.queue
   (:use
     [clojure walk set])
   (:require

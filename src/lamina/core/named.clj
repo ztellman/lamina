@@ -6,7 +6,8 @@
 ;;   the terms of this license.
 ;;   You must not remove this notice, or any other, from this software.
 
-(ns lamina.core.named
+(ns ^{:skip-wiki true}
+  lamina.core.named
   (:use
     [lamina.core.channel]))
 
