@@ -27,7 +27,7 @@
 (import-fn channel/enqueue)
 (import-fn channel/enqueue-and-close)
 (import-fn channel/close)
-(import-fn channel/on-close)
+(import-fn channel/on-closed)
 (import-fn channel/on-sealed)
 (import-fn channel/sealed?)
 (import-fn channel/closed?)
