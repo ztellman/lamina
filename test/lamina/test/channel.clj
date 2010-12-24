@@ -13,144 +13,127 @@
   (:use
     [clojure.test]
     [clojure.contrib.def]
+    [clojure.walk]
     [clojure.contrib.combinatorics]))
 
 ;;
 
-(defn head [ch]
-  (let [val (promise)]
-    (listen ch #(do (deliver val %) false))
-    @val))
-
-(defn slow-enqueue [ch s]
+(defn async-enqueue [ch s slow?]
   (future
-    (doseq [x s]
-      (enqueue ch x)
-      (Thread/sleep 1))
-    (enqueue-and-close ch nil)))
+    (try
+      (doseq [x s]
+	(enqueue ch x)
+	(if slow?
+	  (Thread/sleep 1)
+	  (Thread/sleep 0 1)))
+      (close ch)
+      (catch Exception e
+	(.printStackTrace e)))))
 
-;; permutations
+(declare callback)
 
-(defvar a nil)
-(defvar f nil)
-(defvar ch nil)
-(defvar enqueue-fn nil)
+(defmacro output-of [f & body]
+  `(let [coll# (atom [])]
+     (binding [callback (fn [msg#] (swap! coll# conj (~f msg#)))]
+       ~@body
+       @coll#)))
 
-(defmacro run-test [channel & body]
-  `(let [enqueue-count# (atom 0)]
-     (binding [a (atom [])
-	       ch ~channel
-	       f (fn [x#] (swap! a conj x#) true)
-	       enqueue-fn #(do
-			     (swap! enqueue-count# inc)
-			     (if (= 3 @enqueue-count#)
-			       (enqueue-and-close ch %)
-			       (enqueue ch %)))]
-      ~@body
-      (deref a))))
+;;;
 
-(defn try-all [f exprs]
-  (let [fns (map (fn [expr] (eval `(fn [] ~expr))) exprs)]
-    (map
-      (fn [s]
-	(f
-	  (run-test
-	    (channel)
-	    (doseq [x s] (x))))
-	(f
-	  (run-test
-	    (let [ch (channel)] (splice ch ch))
-	    (doseq [x s] (x)))))
-      (permutations fns))))
+(defmacro close-output= [expected ch & body]
+  (let [ch-sym (gensym "ch")
+	body (postwalk-replace {'ch ch-sym} body)]
+    (let [f (fn [ch]
+	      (fn [msg]
+		[msg (closed? ch)]))]
+      `(do
+	 (let [~ch-sym ~ch]
+	   (is (= ~expected (output-of (~f ~ch-sym) (receive-all ~ch-sym callback) ~@body))))
+	 (let [~ch-sym ~ch]
+	   (is (= ~expected (output-of (~f ~ch-sym) (receive-in-order ~ch-sym callback) ~@body))))
+	 (let [~ch-sym ~ch]
+	   (is (= ~expected (output-of (~f ~ch-sym)
+			      (receive ~ch-sym (fn this# [msg#]
+						 (callback msg#)
+						 (when-not (closed? ~ch-sym)
+						   (receive ~ch-sym this#))))
+			      ~@body))))))))
 
-(defn expected-result [s]
-  (loop [s s, enqueued [], result [], consumed false]
-    (cond
-      (empty? s)
-        result
-      (nil? (first s))
-        (recur
-	  (next s)
-	  (vec (next enqueued))
-	  (conj result (or (first enqueued) (first (filter identity s))))
-	  (not (first enqueued)))
-      :else
-	(recur
-	  (next s)
-	  (if consumed
-	    enqueued
-	    (conj enqueued (first s)))
-	  result
-	  false))))
+(deftest test-close
+  (close-output= [[1 false] [2 true]]
+    (sealed-channel 1 2))
+  (close-output= [[1 false] [2 false] [nil true]]
+    (channel 1 2)
+    (close ch))
+  (close-output= [[1 false] [2 false] [nil true]]
+    (channel)
+    (enqueue-and-close ch 1 2))
+  (close-output= [[1 false] [2 false] [3 false] [nil true]]
+    (channel)
+    (enqueue ch 1 2)
+    (enqueue-and-close ch 3)))
+;;;
 
-(deftest test-receive-all
-  (try-all
-    #(is (= (range 3) %))
-    (list*
-      `(receive-all ch f)
-      (map
-	(fn [x] `(enqueue-fn ~x))
-	(range 3))))
-  (testing "constant-channel"
-    (let [c (constant-channel)]
-      (receive-all c #(is (= 0 %)))
-      (enqueue c 0)
-      )
-    )
-  )
+;; Register a series of listeners that only receive one value
+(deftest test-simple-listen
+  (let [ch (channel)
+	coll (atom [])
+	num 1e3]
+    (async-enqueue ch (range num) true)
+    (dotimes [_ num]
+      (let [latch (promise)]
+	(listen ch (fn [msg]
+		     [false (fn [msg]
+			      (swap! coll conj msg)
+			      (deliver latch nil))]))
+	@latch))
+    (is (= (range num) @coll))))
 
-
-
-(deftest test-receive
-  (doall
-    (map
-      #(is (= %1 %2))
-      (map expected-result (permutations [nil nil nil 0 1 2]))
-      (try-all
-	identity
-	(concat
-	  (map
-	    (fn [_] `(receive ch (fn [x#] (f x#))))
-	    (range 3))
-	  (map
-	    (fn [x] `(enqueue-fn ~x))
-	    (range 3)))))))
-
+;; Register large number of listeners, but only let one receive each value
 (deftest test-listen
-  (doall
-    (map
-      #(is (= %1 %2))
-      (map expected-result (permutations [nil nil nil 0 1 2]))
-      (try-all
-	identity
-	(concat
-	  (map
-	    (fn [_] `(listen ch (constantly f)))
-	    (range 3))
-	  (map
-	    (fn [x] `(enqueue-fn ~x))
-	    (range 3)))))))
+  (let [ch (channel)
+	coll (atom [])
+	waiting-for (ref 0)
+	num 1e3
+	latch (promise)]
+    (async-enqueue ch (range num) true)
+    (while (< (count @coll) num)
+      (listen ch (fn [msg]
+		   (when (= msg (ensure waiting-for))
+		     (alter waiting-for inc)
+		     [false (fn [msg]
+			      (swap! coll conj msg)
+			      (when (= (dec num) msg)
+				(deliver latch nil)))]))))
+    @latch
+    (is (= (range num) @coll))))
+
 
 ;; polling
 
+(deftest test-simple-poll
+  (let [ch (channel)
+	num 1e3]
+    (let [coll (atom [])]
+      (async-enqueue ch (range num) false)
+      (dotimes [i num]
+	(when-let [[ch msg] (wait-for-message (poll {:ch ch}))]
+	  (swap! coll conj msg)))
+      (is (= (range num) @coll)))))
+
 (deftest test-poll
   (let [u (channel)
-	v (channel)]
-    (let [colls {:u (atom #{})
-		 :v (atom #{})}]
-      (future
-	(doseq [i (range 100)]
-	  (Thread/sleep 0 1)
-	  (enqueue u i)))
-      (future
-	(doseq [i (range 100)]
-	  (Thread/sleep 0 1)
-	  (enqueue v i)))
-      (doseq [i (range 200)]
-	(let [[ch msg] (wait-for-message (poll {:u u, :v v}))]
+	v (channel)
+	num 1e3]
+    (let [colls {:u (atom [])
+		 :v (atom [])}]
+      (async-enqueue u (range num) false)
+      (async-enqueue v (range num) false)
+      (dotimes [i (+ 2 (* 2 num))]
+	(when-let [[ch msg] (wait-for-message (poll {:u u, :v v}))]
 	  (swap! (colls ch) conj msg)))
-      (is (= (set (range 100)) @(:u colls)))
-      (is (= (set (range 100)) @(:v colls))))))
+      (is (= (concat (range num) [nil]) @(:u colls)))
+      (is (= (concat (range num) [nil]) @(:v colls))))))
 
 (deftest test-poll-timeout
   (let [ch (channel)]
@@ -159,33 +142,27 @@
 ;; synchronous methods
 
 (deftest test-wait-for-message
-  (let [num 1e3]
+  (let [num 1e2]
     (let [ch (channel)]
-      (future
-	(dotimes [i num]
-	  (if (= i (dec num))
-	    (enqueue-and-close ch i)
-	    (enqueue ch i))
-	  (Thread/sleep 0 1)))
+      (async-enqueue ch (range num) false)
       (dotimes [i num]
-	(is (= i (wait-for-message ch)))))))
+	(is (= i (wait-for-message ch 100)))))))
 
 (deftest test-channel-seq
+  (let [ch (sealed-channel 1 nil)]
+    (is (= [1] (channel-seq ch))))
 
-  (let [ch (apply sealed-channel (concat (range 10) [nil]))]
-    (is (= (range 10) (channel-seq ch))))
-
-  (let [ch (channel)
-        in (range 100)
-        out (do
-	      (slow-enqueue ch in)
-	      (loop [out []]
-		(Thread/sleep 3)
-		(let [n (channel-seq ch)]
-		  (if (seq n)
-		    (recur (concat out n))
-		    out))))]
-    (is (= in out))))
+  (let [in (range 1e3)
+	target (last in)
+	ch (channel)]
+    (async-enqueue ch in false)
+    (is (= in
+	   (loop [out []]
+	     (Thread/sleep 0 1)
+	     (let [n (channel-seq ch)]
+	       (if-not (= target (last n))
+		 (recur (concat out n))
+		 (concat out n))))))))
 
 ;; seq-like methods
 
@@ -197,7 +174,7 @@
       (= (map f s) (channel-seq (map* f ch))))
 
     (let [ch (channel)]
-      (slow-enqueue ch s)
+      (async-enqueue ch s true)
       (= (map f s) (channel-seq (map* f ch))))))
 
 (deftest test-filter*
@@ -207,7 +184,7 @@
       (= (filter even? s) (channel-seq (filter* even? ch))))
 
     (let [ch (channel)]
-      (slow-enqueue ch s)
+      (async-enqueue ch s true)
       (= (filter even? s) (channel-seq (filter* even? ch))))))
 
 (deftest test-reduce*
@@ -217,8 +194,8 @@
       (= (reduce + s) (wait-for-message (reduce* + ch))))
 
     (let [ch (channel)]
-      (slow-enqueue ch s)
-      (= (reduce + s) (wait-for-message (reduce* + ch))))))
+      (async-enqueue ch s false)
+      (= (reduce + s) (wait-for-message (reduce* + ch) 2500)))))
 
 (deftest test-reductions*
   (let [s (range 10)]
@@ -227,5 +204,5 @@
       (= (reductions + s) (channel-seq (reductions* + ch))))
 
     (let [ch (channel)]
-      (slow-enqueue ch s)
+      (async-enqueue ch s false)
       (= (reductions + s) (channel-seq (reductions* + ch))))))
