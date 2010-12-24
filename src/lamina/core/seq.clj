@@ -190,6 +190,11 @@
 ;;;
 
 (defn fork
+  "Creates one or many exact copies of 'ch'.  Messages enqueued into the original channel
+   will appear in all copies, but can be consumed separately.  This allows for multiple
+   consumers to receive the same stream at different rates.
+
+   All copies are receive-only."
   ([ch]
      (first (fork 1 ch)))
   ([n ch]
@@ -221,7 +226,9 @@
 	(when-not (closed? ch)
 	  (restart))))))
 
-(defn map* [f ch]
+(defn map*
+  "Returns a channel which will consume all messages from 'ch', and emit (f msg)."
+  [f ch]
   (let [ch* (channel)]
     (siphon ch
       {ch* #(if (and (closed? ch) (= [nil] %))
@@ -229,7 +236,10 @@
 	      (map f %))})
     ch*))
 
-(defn filter* [f ch]
+(defn filter*
+  "Returns a channel which will consume all messages from 'ch', but only emit messages
+   for which (f msg) is true."
+  [f ch]
   (let [ch* (channel)]
     (siphon ch
       {ch* #(if (and (closed? ch) (= [nil] %))
@@ -237,7 +247,9 @@
 	      (filter f %))})
     ch*))
 
-(defn take* [n ch]
+(defn take*
+  "Returns a channel which will consume 'n' messages from 'ch'."
+  [n ch]
   (let [ch* (channel)
 	cnt (ref n)]
     (listen ch
@@ -249,7 +261,9 @@
 	      (close ch*)))]))
     ch*))
 
-(defn take-while* [f ch]
+(defn take-while*
+  "Returns a channel which will consume messages from 'ch' until (f msg) is false."
+  [f ch]
   (let [ch* (channel)
 	cnt (ref 0)
 	cnt* (atom 0)
