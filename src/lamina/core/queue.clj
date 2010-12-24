@@ -206,29 +206,20 @@
        q)))
 
 (defn copy-queue
-  [^EventQueue q fs]
-  (let [accumulate (atom true)
-	source (source q)
-	copies (map
-		 (fn [f]
-		   (let [distributor (o/observable)
-			 copy (EventQueue.
-				source
-				distributor
-				(ref nil)
-				(ref #{})
-				(ref #{})
-				(ref #{})
-				accumulate)]
-		     (o/siphon source {distributor f} true)
-		     copy))
-		 fs)]
-    (dosync
-      (let [q (ensure (.q q))]
-	(doseq [[f copy] (map list fs copies)]
-	  (ref-set (.q copy) (f q))
-	  (setup-observable->queue accumulate copy)))
-      copies)))
+  ([^EventQueue q]
+     (let [copy ^EventQueue (queue (source q))]
+       (dosync (ref-set (.q copy) (ensure (.q q))))
+       copy))
+  ([^EventQueue q f]
+     (let [copy ^EventQueue (queue (o/observable))]
+       (o/siphon (source q) {(source copy) f} true)
+       (dosync
+	 (let [q (ensure (.q q))]
+	   (ref-set (.q copy)
+	     (if-not (empty? q)
+	       (apply conj clojure.lang.PersistentQueue/EMPTY (f q))
+	       clojure.lang.PersistentQueue/EMPTY))))
+       copy)))
 
 ;;;
 

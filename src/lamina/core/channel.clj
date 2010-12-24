@@ -110,7 +110,7 @@
 (defn enqueue-and-close
   "Enqueues the final messages into the channel, sealing it.  When this message is
    received, the channel will be closed."
-  [ch & messages]
+  [ch & messages]ch
   (apply enqueue ch messages)
   (when-not (constant-channel? ch)
     (close ch)))
@@ -124,7 +124,7 @@
 
 (defn timed-channel [delay]
   (let [ch (constant-channel)]
-    (delay-invoke #(enqueue ch nil))
+    (delay-invoke #(enqueue ch nil) delay)
     ch))
 
 (defn dequeue [ch empty-value]

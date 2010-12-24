@@ -206,8 +206,10 @@
        (repeat n ch)
 
        :else
-       (let [qs (q/copy-queue (queue ch) (repeat n identity))]
-	 (map #(Channel. nil-channel %) qs)))))
+       (doall
+	 (map
+	   (fn [_] (Channel. o/nil-observable (q/copy-queue (queue ch))))
+	   (range n))))))
 
 (defn receive-in-order
   "Consumes messages from a channel one at a time.  The callback will only receive the next

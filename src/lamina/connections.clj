@@ -25,20 +25,20 @@
 
 (defn- handle-connection [delay connection-lost-callback connection]
   (fn [ch]
-    (let [[a b] (fork 2 ch)
+    (let [copy (fork ch)
 	  connection @connection
 	  close-signal (constant-channel)]
       (reset! delay 0)
-      (enqueue (:success connection) (splice a ch))
-      (receive-all b
+      (enqueue (:success connection) ch)
+      (receive-all copy
 	(fn [_]
-	  (when (closed? b)
+	  (when (closed? copy)
 	    (if connection-lost-callback
 	      (connection-lost-callback)
 	      (log/warn "Connection dropped."))
 	    (enqueue close-signal nil)
 	    (enqueue (:error connection)
-	      [b (Exception. "Connection severed.")]))))
+	      [copy (Exception. "Connection severed.")]))))
       (read-channel close-signal))))
 
 (defn- connect-loop [connection-generator connection-lost-callback connection]

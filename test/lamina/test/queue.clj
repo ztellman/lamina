@@ -87,11 +87,16 @@
 	q (queue o [1])]
     (= [1] (queue-seq q))
     (is (= [] (queue-seq q)))
-    (let [q* (first (copy-queue q [identity]))]
+    (let [q* (copy-queue q)]
       (o/message o [1 2])
       (is (= [1 2] (queue-seq q)))
       (o/message o [3 4])
       (is (= [3 4] (queue-seq q)))
-      (is (= [1 2 3 4] (queue-seq q*))))))
+      (is (= [1 2 3 4] (queue-seq q*)))
+      (let [q** (copy-queue q* #(map (partial * 2) %))]
+	(o/message o [1 2])
+	(is (= [1 2] (queue-seq q)))
+	(is (= [1 2] (queue-seq q*)))
+	(is (= [2 4] (queue-seq q**)))))))
 
 
