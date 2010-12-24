@@ -34,4 +34,4 @@ true
 <== [2]
 </code></pre>
 
-To learn more, read the "wiki":https://github.com/ztellman/lamina/wiki/Channels.
+To learn more, read the "wiki":https://github.com/ztellman/lamina/wiki/Channels.  Complete documentation can be found "here":http://ztellman.github.com/lamina/.
