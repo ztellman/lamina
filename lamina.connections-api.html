@@ -1,0 +1,148 @@
+<html>
+  <head>
+    <title>lamina.connections API reference (lamina)</title>
+    <link href="static/favicon.png" rel="icon" />
+    <link href="static/favicon.png" rel="shortcut icon" />
+    <link media="all" type="text/css" href="static/clojure.css" rel="stylesheet" />
+    <link media="all" type="text/css" href="static/wiki.css" rel="stylesheet" />
+    <link media="all" type="text/css" href="static/internal.css" rel="stylesheet" />
+    <!-- TODO: are we using these (from clojure.org)? If so, add the files -->
+    <script src="file/view/code_highlighter.js" type="text/javascript"></script>
+    <script src="file/view/clojure.js" type="text/javascript"></script>
+    <style>.menuWrapper{height: 36px;}</style>
+    <!--[if lte IE 6]>
+    <link rel="stylesheet" href="http://www.wikispaces.com/_/2009051601/s/internal_ie.css" type="text/css" />
+    <![endif]-->
+  </head>
+<!--
+This document was auto-generated from the source by the clojure autodoc system.
+To report errors or ask questions about the overall documentation structure, formatting,
+etc., contact Tom Faulhaber (google mail name: tomfaulhaber).
+For errors in the documentation of a particular namespace, contact the author of that
+namespace.
+-->
+  <body>
+    <div id="AllContentContainer">
+      <div id="Header">
+	<a id="Logo" href="index.html"><img alt="Clojure" height="100" width="100" src="static/clojure-icon.gif" /></a>
+	<h1><a title="page header title" id="page-header" href="index.html">lamina</a></h1>
+      </div>
+      <div id="leftcolumn"><div style="text-align: center;"></div>
+<div class="menu">
+  <div class="WikiCustomNav WikiElement wiki">
+    <a class="wiki_link" href="index.html">Overview</a><br />
+    <a class="wiki_link" href="api-index.html">API Index</a><br />
+    <a class="wiki_link" href="#">Namespaces:</a>
+    <ul id="left-sidebar-list">
+      <li><a href="lamina.connections-api.html" class="wiki_link">lamina.connections</a></li><li><a href="lamina.core-api.html" class="wiki_link">lamina.core</a></li>
+    </ul>
+  </div>
+</div>
+</div>
+      <div id="rightcolumn">
+	<div id="Content">
+	  <div class="contentBox"><div class="innerContentBox">
+              <div id="content_view" class="wiki wikiPage">
+                <div id="right-sidebar"><div id="toc">
+  <h1 class="nopad">Table of Contents</h1>
+  <div style="margin-left: 1em;" class="toc-section">
+    <a href="#toc0">Overview</a>
+    <div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.connections/client">client</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.connections/close-client">close-client</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.connections/persistent-connection">persistent-connection</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.connections/pipelined-client">pipelined-client</a>
+    </div>
+    <br />
+  </div>
+</div>
+</div>
+                <div id="content-tag"><h1 id="overview">API for <span id="namespace-name">lamina.connections</span></h1>
+by <span id="author">Unknown</span><br />
+<br />Usage:
+<pre>
+(ns your-namespace
+  (:require <span id="long-name">lamina.connections</span>))
+</pre><pre>
+</pre><h2>Overview</h2>
+<pre id="namespace-docstr"></pre>
+<br />
+<h2>Public Variables and Functions</h2>
+<div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.connections/client">client</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (client connection-generator)
+</pre>
+  <pre id="var-docstr">Given a function that returns a connection, returns a function that takes a
+request value and optionally a timeout, and returns a result-channel
+representing the response.  This will keep a single live connection to the
+server, reconnecting when necessary.
+
+A new request will only be sent once the response to the previous one has
+been received.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.connections/close-client">close-client</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (close-client client)
+</pre>
+  <pre id="var-docstr">Takes a client function, and closes the connection.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.connections/persistent-connection">persistent-connection</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (persistent-connection connection-generator)
+       (persistent-connection connection-generator connection-lost-callback)
+</pre>
+  <pre id="var-docstr">Given a function that generates a connection (a result-channel that yields a channel),
+returns a function that, given zero parameters, returns a connection.
+
+Behind the scenes, this will maintain a single live connection, reconnecting when
+necessary.  If 'connection-lost-callback' is specified, it will be called every time
+the connection drops.
+
+To close the connection, pass 'true' into the returned function.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.connections/pipelined-client">pipelined-client</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (pipelined-client connection-generator)
+</pre>
+  <pre id="var-docstr">Given a function that returns a connection, returns a function that takes a
+request value and optionally a timeout, and returns a result-channel
+representing the response.  This will keep a single live connection to the
+server, reconnecting when necessary.
+
+Requests will be sent as soon as they're made, with the assumption that
+responses will be returned in the same order.</pre>
+  
+</div>
+
+
+</div>
+              </div>
+            </div>
+          </div>
+	</div>
+	<div id="foot">
+	  <div style="text-align: center;" id="copyright">No copyright info </div>
+	</div>
+      </div>
+      <div id="DesignedBy">Logo &amp; site design by <a title="Visit Tom Hickey's website." href="http://www.tomhickey.com">Tom Hickey</a>.<br />
+      Clojure auto-documentation system by Tom Faulhaber.</div>
+    </div>
+    <!-- /AllContentContainer -->
+  </body>
+
+</html>
