@@ -66,7 +66,13 @@ namespace.
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/enqueue-and-close">enqueue-and-close</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core/filter*">filter*</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core/fork">fork</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/lazy-channel-seq">lazy-channel-seq</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core/map*">map*</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/named-channel">named-channel</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
@@ -101,6 +107,10 @@ namespace.
       <a href="#lamina.core/sealed?">sealed?</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/splice">splice</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core/take*">take*</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core/take-while*">take-while*</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/wait-for-message">wait-for-message</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
@@ -215,6 +225,30 @@ received, the channel will be closed.</pre>
 </div><div id="var-entry">
   <br />
   <hr />
+  <h2 id="lamina.core/filter*">filter*</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (filter* f ch)
+</pre>
+  <pre id="var-docstr">Returns a channel which will consume all messages from 'ch', but only emit messages
+for which (f msg) is true.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.core/fork">fork</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (fork ch)
+       (fork n ch)
+</pre>
+  <pre id="var-docstr">Creates one or many exact copies of 'ch'.  Messages enqueued into the original channel
+will appear in all copies, but can be consumed separately.  This allows for multiple
+consumers to receive the same stream at different rates.
+
+All copies are receive-only.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
   <h2 id="lamina.core/lazy-channel-seq">lazy-channel-seq</h2>
   <span id="var-type">function</span><br />
   <pre id="var-usage">Usage: (lazy-channel-seq ch)
@@ -230,6 +264,15 @@ a message is enqueued.
 'timeout' controls how long (in ms) the sequence will wait for each element.  If
 the timeout is exceeded or the channel is closed, the sequence will end.  By default,
 the sequence will never time out.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.core/map*">map*</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (map* f ch)
+</pre>
+  <pre id="var-docstr">Returns a channel which will consume all messages from 'ch', and emit (f msg).</pre>
   
 </div><div id="var-entry">
   <br />
@@ -416,6 +459,24 @@ Returns a pipeline future.</pre>
 </pre>
   <pre id="var-docstr">Splices together a message source and a message destination
 into a single channel.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.core/take*">take*</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (take* n ch)
+</pre>
+  <pre id="var-docstr">Returns a channel which will consume 'n' messages from 'ch'.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.core/take-while*">take-while*</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (take-while* f ch)
+</pre>
+  <pre id="var-docstr">Returns a channel which will consume messages from 'ch' until (f msg) is false.</pre>
   
 </div><div id="var-entry">
   <br />
