@@ -142,11 +142,14 @@
 			      send-to-callbacks
 			      #(-> ch queue (q/enqueue %)))]
 	(locking monitor
-	  (when (sealed? ch)
+	  (when (sealed? ch) 
 	    (send-to-callbacks
 	      (butlast
 		(sample-queue ch latch
-		  #(ref-set % (conj clojure.lang.PersistentQueue/EMPTY (last (deref %))))))))
+		  #(ref-set %
+		     (if (empty? (deref %))
+		       clojure.lang.PersistentQueue/EMPTY
+		       (conj clojure.lang.PersistentQueue/EMPTY (last (deref %)))))))))
 	  (send-to-callbacks
 	    (sample-queue ch latch
 	      #(ref-set % clojure.lang.PersistentQueue/EMPTY)))

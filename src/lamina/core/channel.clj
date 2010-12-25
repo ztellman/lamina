@@ -110,10 +110,11 @@
 (defn enqueue-and-close
   "Enqueues the final messages into the channel, sealing it.  When this message is
    received, the channel will be closed."
-  [ch & messages]ch
-  (apply enqueue ch messages)
-  (when-not (constant-channel? ch)
-    (close ch)))
+  [ch & messages]
+  (let [result (apply enqueue ch messages)]
+    (when-not (constant-channel? ch)
+      (close ch))
+    result))
 
 (defn sealed-channel
   "Creates a channel which is already sealed."
