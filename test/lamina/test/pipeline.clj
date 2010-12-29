@@ -136,7 +136,7 @@
     2)
 
   (test-pipeline
-    (pipeline :error-handler (fn [_ _])
+    (pipeline
       inc
       (pipeline :error-handler (fn [val ex] (restart val))
 	inc

@@ -197,7 +197,7 @@
    will appear in all copies, but can be consumed separately.  This allows for multiple
    consumers to receive the same stream at different rates.
 
-   All copies are receive-only."
+   Any message enqueued into one channel will be enqueued into all other copies."
   ([ch]
      (first (fork 1 ch)))
   ([n ch]
@@ -211,7 +211,7 @@
        :else
        (doall
 	 (map
-	   (fn [_] (Channel. o/nil-observable (q/copy-queue (queue ch))))
+	   (fn [_] (Channel. (-> ch queue q/source)  (q/copy-queue (queue ch))))
 	   (range n))))))
 
 (defn receive-in-order
@@ -226,7 +226,8 @@
     (run-pipeline ch
       read-channel
       (fn [msg]
-	(f msg))
+	(when-not (and (nil? msg) (closed? ch))
+	  (f msg)))
       (fn [_]
 	(when-not (closed? ch)
 	  (restart))))))

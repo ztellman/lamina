@@ -82,6 +82,24 @@
 (import-fn pipeline/read-merge)
 (import-fn pipeline/blocking)
 
+(defmacro do*
+  "Creates a pipeline stage that emits the same value it receives, but performs some side-effect
+   in between.  Useful for debug prints and logging."
+  [& body]
+  `(fn [x#]
+     ~@body
+     x#))
+
+(defmacro wait
+  "Creates a pipeline stage that accepts a value, and emits the same value after 'interval' milliseconds."
+  [interval]
+  `(fn [x#]
+     (run-pipeline
+       (let [interval# ~interval]
+	 (when (pos? interval#)
+	   (read-channel (timed-channel interval#))))
+       (fn [_#] x#))))
+
 ;; redirect signals
 (import-fn pipeline/redirect)
 (import-fn pipeline/restart)
@@ -89,5 +107,6 @@
 
 ;; pipeline result hooks
 (import-fn pipeline/wait-for-result)
+(import-fn pipeline/siphon-result)
 
 ;;;

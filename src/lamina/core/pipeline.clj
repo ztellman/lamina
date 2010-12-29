@@ -20,6 +20,10 @@
 
 ;;;
 
+(def *inside-pipeline?* false)
+
+;;;
+
 (defrecord ResultChannel [success error]
   Object
   (toString [_]
@@ -71,15 +75,19 @@
 	(enqueue (.error outer-result) err)
 	nil))))
 
+(defn process-redirect [redirect pipeline initial-value]
+  (let [pipeline* (-> redirect :pipeline)
+	pipeline* (if (= ::pipeline pipeline*)
+		    pipeline
+		    (-> pipeline* meta :pipeline))
+	value (:value redirect)
+	value (if (= ::initial value)
+		initial-value
+		value)]
+    [pipeline* value]))
+
 (defmacro redirect-recur [redirect pipeline initial-value err-count]
-  `(let [pipeline# (-> ~redirect :pipeline)
-	 pipeline# (if (= ::pipeline pipeline#)
-		     ~pipeline
-		     (-> pipeline# meta :pipeline))
-	 value# (:value ~redirect)
-	 value# (cond
-		  (= ::initial value#) ~initial-value
-		  :else value#)]
+  `(let [[pipeline# value#] (process-redirect ~redirect ~pipeline ~initial-value)]
      (recur (:stages pipeline#) pipeline# value# value# ~err-count)))
 
 (defn start-pipeline
@@ -88,54 +96,57 @@
   ([pipeline initial-value result]
      (start-pipeline pipeline (:stages pipeline) initial-value initial-value result))
   ([pipeline fns value initial-value ^ResultChannel result]
-     (loop [fns fns, pipeline pipeline, initial-value initial-value, value value, err-count 0]
-       (cond
-	 (< 100 err-count)
-	 (enqueue (.error result) [initial-value (Exception. "Error loop detected in pipeline.")])
-
-	 (redirect? value)
-	 (redirect-recur value pipeline initial-value err-count)
-
-	 (result-channel? value)
-	 (let [ch ^ResultChannel value]
-	   (cond
-	     (not= ::none (dequeue (.error ch) ::none))
-	     (if-let [redirect (handle-error pipeline ch result)]
-	       (redirect-recur redirect pipeline initial-value (inc err-count)))
-
-	     (not= ::none (dequeue (.success ch) ::none))
-	     (recur fns pipeline initial-value (dequeue (.success ch) nil) 0)
-
-	     :else
-	     (receive (poll ch)
-	       (fn [[outcome value]]
-		 (case outcome
-		   :error (if-let [redirect (handle-error pipeline ch result)]
-			    (start-pipeline
-			      (:pipeline redirect)
-			      (:value redirect)
-			      result))
-		   :success (start-pipeline
-			      pipeline fns
-			      value initial-value
-			      result))))))
-
-	 (empty? fns)
-	 (enqueue (.success result) value)
-
-	 :else
-	 (let [f (first fns)]
-	   (let [[success val] (try
-				 [true (f value)]
-				 (catch Exception e
-				   [false e]))]
-	     (if success
-	       (recur (rest fns) pipeline initial-value val 0)
-	       (if-let [redirect (handle-error
-				   pipeline
-				   (error-result [initial-value val])
-				   result)]
-		 (redirect-recur redirect pipeline initial-value (inc err-count))))))))
+     (binding [*inside-pipeline?* true]
+       (loop [fns fns, pipeline pipeline, initial-value initial-value, value value, err-count 0]
+	 (cond
+	   (< 100 err-count)
+	   (enqueue (.error result)
+	     [initial-value (Exception. "Error loop detected in pipeline.")])
+	   
+	   (redirect? value)
+	   (redirect-recur value pipeline initial-value err-count)
+	   
+	   (result-channel? value)
+	   (let [ch ^ResultChannel value]
+	     (cond
+	       (not= ::none (dequeue (.error ch) ::none))
+	       (if-let [redirect (handle-error pipeline ch result)]
+		 (redirect-recur redirect pipeline initial-value (inc err-count)))
+	       
+	       (not= ::none (dequeue (.success ch) ::none))
+	       (recur fns pipeline initial-value (dequeue (.success ch) nil) 0)
+	       
+	       :else
+	       (receive (poll ch)
+		 (fn [[outcome value]]
+		   (case outcome
+		     :error (when-let [redirect (handle-error pipeline ch result)]
+			      (let [[pipeline value] (process-redirect
+						       redirect
+						       pipeline
+						       initial-value)]
+				(start-pipeline pipeline value result)))
+		     :success (start-pipeline
+				pipeline fns
+				value initial-value
+				result))))))
+	   
+	   (empty? fns)
+	   (enqueue (.success result) value)
+	   
+	   :else
+	   (let [f (first fns)]
+	     (let [[success val] (try
+				   [true (f value)]
+				   (catch Exception e
+				     [false e]))]
+	       (if success
+		 (recur (rest fns) pipeline initial-value val 0)
+		 (if-let [redirect (handle-error
+				     pipeline
+				     (error-result [initial-value val])
+				     result)]
+		   (redirect-recur redirect pipeline initial-value (inc err-count)))))))))
      result))
 
 
@@ -157,16 +168,19 @@
   (let [opts (apply hash-map (get-opts opts+stages))
 	stages (drop (* 2 (count opts)) opts+stages)
 	pipeline {:stages stages
-		  :error-handler (or
-				   (:error-handler opts)
-				   (fn [val ex]
-				     (log/error "lamina.core.pipeline" ex)
-				     ))}]
+		  :error-handler (:error-handler opts)}]
     (when-not (every? fn? stages)
       (throw (Exception. "Every stage in a pipeline must be a function.")))
     ^{:pipeline pipeline}
     (fn [x]
-      (start-pipeline pipeline x))))
+      (start-pipeline
+	(update-in pipeline [:error-handler]
+	  #(or %
+	     (when-not *inside-pipeline?*
+	       (fn [val ex]
+		 (when (instance? Throwable ex)
+		   (log/error "lamina.core.pipeline" ex))))))
+	x))))
 
 (defn complete
   "Short-circuits the inner-most pipeline, returning the result."
@@ -222,14 +236,6 @@
 		    [nil (TimeoutException. (str "read-channel timed out after " timeout " ms"))])))
 	     result))))))
 
-'(defn wait
-  "Creates a pipeline stage that accepts a value, and emits the same value after 'interval' milliseconds."
-  [interval]
-  (fn [x]
-    (run-pipeline
-      (read-channel (wait-channel interval))
-      (fn [_] x))))
-
 (defn read-merge
   "For merging asynchronous reads into a pipeline.
 
@@ -262,6 +268,11 @@
 	     (case k
 	       :error (throw (second result))
 	       :success result)))))))
+
+(defn siphon-result
+  [src dst]
+  (receive (:success src) #(enqueue (:success dst) %))
+  (receive (:error src) #(enqueue (:error dst) %)))
 
 
 
