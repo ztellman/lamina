@@ -10,7 +10,9 @@
   (:use
     [clojure test walk]
     [lamina core connections]
-    [lamina.core.pipeline :only (success-result error-result)]))
+    [lamina.core.pipeline :only (success-result error-result)])
+  (:require
+    [clojure.contrib.logging :as log]))
 
 (defn simple-echo-server []
   (let [[a b] (channel-pair)]
@@ -57,20 +59,20 @@
 
 (defn simple-response [client-fn]
   (with-server simple-echo-server
-    (let [f (client-fn #(connect))]
+    (let [f (client-fn #(connect) "simple-response")]
       (try
 	(dotimes [i 10]
 	  (is (= i (wait-for-result (f i) 1000))))
 	(finally
 	  (close-connection f))))))
 
-'(deftest test-simple-response
+(deftest test-simple-response
   (simple-response client)
   (simple-response pipelined-client))
 
 (defn dropped-connection [client-fn]
   (with-server simple-echo-server
-    (let [f (client-fn #(connect))]
+    (let [f (client-fn #(connect) "dropped-connection")]
       (try
 	(stop-server)
 	(let [results (map #(f %) (range 10))]
@@ -80,5 +82,5 @@
 	(finally
 	  (close-connection f))))))
 
-'(deftest test-dropped-connection
+(deftest test-dropped-connection
   (dropped-connection client))

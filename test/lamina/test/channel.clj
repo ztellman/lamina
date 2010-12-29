@@ -40,6 +40,13 @@
 
 ;;;
 
+(defn receive-in-order* [ch callback]
+  (receive ch
+    (fn this [msg]
+      (callback msg)
+      (when-not (closed? ch)
+	(receive ch this)))))
+
 (defmacro close-output= [expected ch & body]
   (let [ch-sym (gensym "ch")
 	body (postwalk-replace {'ch ch-sym} body)]
@@ -50,7 +57,7 @@
 	 (let [~ch-sym ~ch]
 	   (is (= ~expected (output-of (~f ~ch-sym) (receive-all ~ch-sym callback) ~@body))))
 	 (let [~ch-sym ~ch]
-	   (is (= ~expected (output-of (~f ~ch-sym) (receive-in-order ~ch-sym callback) ~@body))))
+	   (is (= ~expected (output-of (~f ~ch-sym) (receive-in-order* ~ch-sym callback) ~@body))))
 	 (let [~ch-sym ~ch]
 	   (is (= ~expected (output-of (~f ~ch-sym)
 			      (receive ~ch-sym (fn this# [msg#]

@@ -84,6 +84,11 @@
 	    (when (= ::close signal)
 	      (enqueue close-signal nil)))))))
 
+(defn close-connection
+  "Takes a client function, and closes the connection."
+  [f]
+  (f ::close))
+
 ;;
 
 (defn- timeout-fn [timeout]
@@ -102,41 +107,44 @@
        (receive-in-order requests
 	 (fn [[request result-channel timeout]]
 
-	   ;; set up timeout
-	   (when-not (neg? timeout)
-	     (run-pipeline nil
-	       (wait timeout)
-	       (fn [_]
-		 (enqueue (:success result-channel) (TimeoutException.)))))
+	   (if (= ::close request)
+	     (close-connection connection)
+	     (do
+	       ;; set up timeout
+	       (when-not (neg? timeout)
+		 (run-pipeline nil
+		   (wait timeout)
+		   (fn [_]
+		     (enqueue (:success result-channel) (TimeoutException.)))))
 
-	   ;; make request
-	   (let [timeout (timeout-fn timeout)]
-	     (siphon-result
-	       (run-pipeline nil
-		 :error-handler (fn [_ _] (restart))
-		 (fn [_]
-		   (if (neg? (timeout))
-
-		     ;; if timeout has already elapsed, don't bother
-		     nil
-		   
-		    ;; send the request
-		    (run-pipeline (connection)
-		      (fn [ch]
-			(if (= ::close ch)
+	       ;; make request
+	       (let [timeout (timeout-fn timeout)]
+		 (siphon-result
+		   (run-pipeline nil
+		     :error-handler (fn [_ _] (restart))
+		     (fn [_]
+		       (if (neg? (timeout))
 			 
-			  ;; (close-connection ...) has already been called
-			  (complete (Exception. "Client has been deactivated."))
+			 ;; if timeout has already elapsed, don't bother
+			 nil
 			 
-			  ;; send request, and wait for response
-			  (do
-			    (enqueue ch request)
-			    [ch (read-channel ch)]))))))
-		 (fn [[ch response]]
-		   (if-not (and (nil? response) (closed? ch))
-		     response
-		     (restart))))
-	      result-channel))))
+			 ;; send the request
+			 (run-pipeline (connection)
+			   (fn [ch]
+			     (if (= ::close ch)
+			       
+			       ;; (close-connection ...) has already been called
+			       (complete (Exception. "Client has been deactivated."))
+			       
+			       ;; send request, and wait for response
+			       (do
+				 (enqueue ch request)
+				 [ch (read-channel ch)]))))))
+		     (fn [[ch response]]
+		       (if-not (and (nil? response) (closed? ch))
+			 response
+			 (restart))))
+		   result-channel))))))
 
        ;; request function
        (fn this
@@ -151,14 +159,51 @@
   ([connection-generator]
      (pipelined-client connection-generator "unknown"))
   ([connection-generator description]
-     ))
+     (let [connection (persistent-connection connection-generator description)
+	   requests (channel)
+	   responses (channel)]
 
-;;
+       ;; handle requests
+       (receive-in-order requests
+	 (fn [[request result timeout]]
+	   (if (= ::close request)
+	     (close-connection connection)
+	     (do
+	       ;; setup timeout
+	       (when-not (neg? timeout)
+		 (run-pipeline nil
+		   (wait timeout)
+		   (enqueue (:error result) [request (TimeoutException.)])))
+	       
+	       ;; send requests
+	       (run-pipeline (connection)
+		 (fn [ch]
+		   (enqueue ch request)
+		   (enqueue responses [request result (timeout-fn timeout) ch])))))))
+       
+       ;; handle responses
+       (receive-in-order responses
+	 (fn [[request result timeout ch]]
+	   (run-pipeline ch
+	     :error-handler (fn [_ _]
+			      ;; re-send request
+			      (when-not (neg? (timeout))
+				(enqueue requests [request result]))
+			      (complete nil))
+	     read-channel
+	     (fn [response]
+	       (if (and (nil? response) (closed? ch))
+		 (throw (Exception. "Connection closed"))
+		 (enqueue (:success result) response))))))
 
-(defn close-connection
-  "Takes a client function, and closes the connection."
-  [f]
-  (f ::close))
+       ;; request function
+       (fn this
+	 ([request]
+	    (this request -1))
+	 ([request timeout]
+	    (let [result (result-channel)]
+	      (enqueue requests [request result timeout])
+	      result))))))
 
 ;;
 
