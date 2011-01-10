@@ -261,10 +261,11 @@
     (listen ch
       (fn [msg]
 	[(pos? (alter cnt dec))
-	 #(do
-	    (enqueue ch* %)
-	    (when (zero? @cnt)
-	      (close ch*)))]))
+	 (let [zero-cnt? (zero? @cnt)]
+	   #(do
+	      (enqueue ch* %)
+	      (when zero-cnt?
+		(close ch*))))]))
     ch*))
 
 (defn take-while*
