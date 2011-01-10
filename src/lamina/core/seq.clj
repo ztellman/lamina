@@ -315,15 +315,17 @@
 
 (defn reductions- [f val ch]
   (let [ch* (channel)]
+    (enqueue ch* val)
     (run-pipeline val
       (read-merge
 	#(read-channel ch)
 	#(if (and (nil? %2) (closed? ch))
-	   %1
+	   nil
 	   (f %1 %2)))
       (fn [val]
 	(if (closed? ch)
-	  (enqueue-and-close ch* val)
+	  (when val
+	    (enqueue-and-close ch* val))
 	  (do
 	    (enqueue ch* val)
 	    (restart val)))))

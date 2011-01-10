@@ -173,43 +173,56 @@
 
 ;; seq-like methods
 
+(deftest test-take*
+  (let [s (range 10)]
+    (let [ch (apply sealed-channel s)
+	  ch* (take* 5 ch)]
+      (is (= (range 5) (channel-seq ch*)))
+      (is (= (range 5 10) (channel-seq ch))))
+
+    (let [ch (channel)
+	  ch* (take* 5 ch)]
+      (async-enqueue ch s true)
+      (is (= (range 5) (channel-seq ch* 2500)))
+      (is (= (range 5 10) (channel-seq ch 2500))))))
+
 (deftest test-map*
   (let [s (range 10)
 	f #(* % 2)]
 
     (let [ch (apply sealed-channel s)]
-      (= (map f s) (channel-seq (map* f ch))))
+      (is (= (map f s) (channel-seq (map* f ch)))))
 
     (let [ch (channel)]
       (async-enqueue ch s true)
-      (= (map f s) (channel-seq (map* f ch))))))
+      (is (= (map f s) (channel-seq (map* f ch) 2500))))))
 
 (deftest test-filter*
   (let [s (range 10)]
 
     (let [ch (apply sealed-channel s)]
-      (= (filter even? s) (channel-seq (filter* even? ch))))
+      (is (= (filter even? s) (channel-seq (filter* even? ch)))))
 
     (let [ch (channel)]
       (async-enqueue ch s true)
-      (= (filter even? s) (channel-seq (filter* even? ch))))))
+      (is (= (filter even? s) (channel-seq (filter* even? ch) 2500))))))
 
 (deftest test-reduce*
   (let [s (range 10)]
 
     (let [ch (apply sealed-channel s)]
-      (= (reduce + s) (wait-for-message (reduce* + ch))))
+      (is (= (reduce + s) (wait-for-message (reduce* + ch)))))
 
     (let [ch (channel)]
       (async-enqueue ch s false)
-      (= (reduce + s) (wait-for-message (reduce* + ch) 2500)))))
+      (is (= (reduce + s) (wait-for-message (reduce* + ch) 2500))))))
 
 (deftest test-reductions*
   (let [s (range 10)]
 
     (let [ch (apply sealed-channel s)]
-      (= (reductions + s) (channel-seq (reductions* + ch))))
+      (is (= (reductions + s) (channel-seq (reductions* + ch)))))
 
     (let [ch (channel)]
       (async-enqueue ch s false)
-      (= (reductions + s) (channel-seq (reductions* + ch))))))
+      (is (= (reductions + s) (channel-seq (reductions* + ch) 2500))))))
