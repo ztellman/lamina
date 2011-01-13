@@ -154,7 +154,8 @@
 	    (sample-queue ch latch
 	      #(ref-set % clojure.lang.PersistentQueue/EMPTY)))
 	  (when-not (sealed? ch)
-	    (o/subscribe distributor observers)))
+	    (o/subscribe distributor observers))
+	  (q/check-for-close (queue ch)))
 	true))))
 
 (defn siphon

@@ -60,6 +60,8 @@
 
 (declare send-to-callbacks)
 
+(declare check-for-close)
+
 (defmacro update-and-send [q & body]
   `(do
      (send-to-callbacks ~q
@@ -84,23 +86,24 @@
       (send-to-callbacks this
 	(dosync
 	  (gather-callbacks msgs this false)))))
-  (on-close [_ callbacks]
+  (on-close [this callbacks]
     (when (dosync
 	    (ensure close-callbacks)
-	    (if (o/closed? source)
+	    (if (closed? this)
 	      true
 	      (do
 		(apply alter close-callbacks conj callbacks)
 		false)))
       (doseq [c callbacks]
 	(c))))
-  (dequeue [_ empty-value]
+  (dequeue [this empty-value]
     (dosync
       (if (empty? (ensure q))
 	empty-value
 	(dosync
-	  (let [msg (first @q)]
+	  (let [msg (first (ensure q))]
 	    (alter q pop)
+	    (check-for-close this)
 	    msg)))))
   (receive- [this callbacks]
     (update-and-send this
@@ -112,6 +115,7 @@
     (and (o/closed? source) (empty? @q)))
   (cancel-callbacks [_ callbacks]
     (dosync
+      (apply alter close-callbacks disj callbacks)
       (apply alter listeners disj callbacks)
       (apply alter receivers disj callbacks)))
   clojure.lang.Counted
@@ -165,15 +169,18 @@
 	 (concat (-> r first second) (-> l first second))]
 	(rest l)))))
 
+(defn check-for-close [^EventQueue q]
+  (when (closed? q)
+    (doseq [c @(.close-callbacks q)]
+      (c))
+    (dosync (ref-set (.close-callbacks q) nil))))
+
 (defn send-to-callbacks [^EventQueue q msgs-and-targets]
   (when msgs-and-targets
     (doseq [[msg callbacks] msgs-and-targets]
       (doseq [c callbacks]
-	(c msg)))
-    (when (closed? q)
-      (doseq [c @(.close-callbacks q)]
-	(c))
-      (dosync (ref-set (.close-callbacks q) nil)))))
+	(c msg))))
+  (check-for-close q))
 
 (defn setup-observable->queue [accumulate ^EventQueue q]
   (let [src (source q)

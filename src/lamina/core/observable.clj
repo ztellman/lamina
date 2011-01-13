@@ -97,6 +97,9 @@
 (defn observable []
   (Observable. (atom {}) (atom false)))
 
+(defn permanent-observable []
+  (with-meta (observable) {::permanent true}))
+
 (defn observable? [o]
   (instance? Observable o))
 
@@ -180,7 +183,9 @@
 	   {src (observer
 		  nil
 		  (fn []
-		    (when (>= 1 (count (unsubscribe src [dst])))
+		    (when (and
+			    (not (::permanent (meta src)))
+			    (>= 1 (count (unsubscribe src [dst]))))
 		      (close src))
 		    (unsubscribe dst [src]))
 		  nil)})))))

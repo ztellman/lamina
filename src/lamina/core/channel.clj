@@ -32,6 +32,10 @@
   (let [source (o/observable)]
     (Channel. source (q/queue source messages))))
 
+(defn permanent-channel [& messages]
+  (let [source (o/permanent-observable)]
+    (Channel. source (q/queue source messages))))
+
 (defn channel? [ch]
   (satisfies? ChannelProtocol ch))
 
