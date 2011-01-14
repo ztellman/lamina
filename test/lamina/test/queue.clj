@@ -93,7 +93,7 @@
       (o/message o [3 4])
       (is (= [3 4] (queue-seq q)))
       (is (= [1 2 3 4] (queue-seq q*)))
-      (let [q** (copy-queue q* #(map (partial * 2) %))]
+      (let [q** (copy-and-alter-queue q* #(map (partial * 2) %))]
 	(o/message o [1 2])
 	(is (= [1 2] (queue-seq q)))
 	(is (= [1 2] (queue-seq q*)))

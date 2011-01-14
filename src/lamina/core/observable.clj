@@ -186,7 +186,7 @@
 		  (fn []
 		    (when (and
 			    (not (::permanent (meta src)))
-			    (<= observer-threshold (count (unsubscribe src [dst]))))
+			    (<= (count (unsubscribe src [dst])) observer-threshold))
 		      (close src))
 		    (unsubscribe dst [src]))
 		  nil)})))))

@@ -213,13 +213,19 @@
        q)))
 
 (defn copy-queue
-  ([^EventQueue q]
-     (let [copy ^EventQueue (queue (source q))]
+  ([q]
+     (copy-queue q (source q)))
+  ([^EventQueue q src]
+     (let [copy ^EventQueue (queue src)]
        (dosync (ref-set (.q copy) (ensure (.q q))))
-       copy))
-  ([^EventQueue q f]
+       copy)))
+
+(defn copy-and-alter-queue
+  ([q f]
+     (copy-and-alter-queue q (source q) f))
+  ([^EventQueue q src f]
      (let [copy ^EventQueue (queue (o/observable))]
-       (o/siphon (source q) {(source copy) f} -1 true)
+       (o/siphon src {(source copy) f} -1 true)
        (dosync
 	 (let [q (ensure (.q q))]
 	   (ref-set (.q copy)

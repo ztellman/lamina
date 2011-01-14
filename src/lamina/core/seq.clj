@@ -214,7 +214,10 @@
        :else
        (doall
 	 (map
-	   (fn [_] (Channel. (-> ch queue q/source)  (q/copy-queue (queue ch))))
+	   (fn [_]
+	     (let [o (o/observable)]
+	       (o/siphon (-> ch queue q/source) {o identity} -1 true)
+	       (Channel. o (q/copy-queue (queue ch) o))))
 	   (range n))))))
 
 (defn receive-in-order
