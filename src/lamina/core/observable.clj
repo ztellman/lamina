@@ -61,7 +61,7 @@
        ~false-case
        nil)))
 
-(deftype Observable [observers closed?]
+(defrecord Observable [observers closed?]
   ObservableProtocol
   (subscribe [_ m]
     (modify-observers observers @closed?
@@ -70,7 +70,7 @@
 	  (on-close o)))
       merge m))
   (unsubscribe [_ ks]
-    (modify-observers observers @closed?
+    (modify-observers observers false
       false
       dissoc ks))
   (message [_ msgs]
@@ -84,12 +84,13 @@
 	      (doseq [o s]
 		(on-message o msgs))
 	      true))))))
-  (close [_]
+  (close [this]
     (if-not (compare-and-set! closed? false true)
       false
       (do
 	(doseq [o (vals @observers)]
 	  (on-close o))
+	(unsubscribe this (keys @observers))
 	true)))
   (closed? [_]
     @closed?))
@@ -111,7 +112,7 @@
        (on-observers-changed o# observers#))
      ~false-case))
 
-(deftype ConstantObservable [observers val]
+(defrecord ConstantObservable [observers val]
   ObservableProtocol
   (subscribe [_ m]
     (safe-modify-observers observers (not= ::empty @val)
@@ -164,8 +165,8 @@
 
 (defn siphon
   ([src destination-function-map]
-     (siphon src destination-function-map false))
-  ([src destination-function-map propagate-close?]
+     (siphon src destination-function-map 0 false))
+  ([src destination-function-map observer-threshold propagate-close?]
      (do
        (subscribe src
 	 (zipmap
@@ -185,7 +186,7 @@
 		  (fn []
 		    (when (and
 			    (not (::permanent (meta src)))
-			    (>= 1 (count (unsubscribe src [dst]))))
+			    (<= observer-threshold (count (unsubscribe src [dst]))))
 		      (close src))
 		    (unsubscribe dst [src]))
 		  nil)})))))

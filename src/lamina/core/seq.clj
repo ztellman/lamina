@@ -188,7 +188,9 @@
 	      #(ref-set % clojure.lang.PersistentQueue/EMPTY)))
 	  (o/siphon
 	    distributor
-	    (into {} (map (fn [[ch f]] [(consumer ch) f]) destination-function-map))))
+	    (into {} (map (fn [[ch f]] [(consumer ch) f]) destination-function-map))
+	    2
+	    false))
 	true))))
 
 ;;;

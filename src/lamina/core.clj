@@ -39,6 +39,7 @@
 (import-fn channel/splice)
 (import-fn channel/channel)
 (import-fn channel/channel-pair)
+(import-fn channel/permanent-channel)
 (import-fn channel/constant-channel)
 (import-fn channel/sealed-channel)
 (import-fn channel/timed-channel)

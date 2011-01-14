@@ -208,7 +208,7 @@
 	       (ref #{})
 	       (ref #{})
 	       accumulate)]
-       (o/siphon source {distributor identity} true)
+       (o/siphon source {distributor identity} 0 true)
        (setup-observable->queue accumulate q)
        q)))
 
@@ -219,7 +219,7 @@
        copy))
   ([^EventQueue q f]
      (let [copy ^EventQueue (queue (o/observable))]
-       (o/siphon (source q) {(source copy) f} true)
+       (o/siphon (source q) {(source copy) f} -1 true)
        (dosync
 	 (let [q (ensure (.q q))]
 	   (ref-set (.q copy)
