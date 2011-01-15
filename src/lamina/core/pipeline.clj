@@ -27,9 +27,7 @@
 (defrecord ResultChannel [success error]
   Object
   (toString [_]
-    (str "result:\n"
-      "  success: " (str success) "\n"
-      "  error: " (str error) "\n")))
+    (str {:success success, :error error})))
 
 (defn result-channel []
   (ResultChannel. (constant-channel) (constant-channel)))
@@ -274,5 +272,5 @@
   (receive (:success src) #(enqueue (:success dst) %))
   (receive (:error src) #(enqueue (:error dst) %)))
 
-
-
+(defmethod print-method ResultChannel [ch writer]
+  (.write writer (str ch)))

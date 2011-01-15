@@ -9,7 +9,7 @@
 (ns lamina.core.fn
   (:use [lamina.core channel pipeline]))
 
-(defmacro async-fn [& fn-args]
+(defmacro afn [& fn-args]
   `(let [f# (fn ~@fn-args)]
      (fn [& args#]
        (apply run-pipeline []
