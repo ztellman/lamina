@@ -9,13 +9,16 @@
 (ns lamina.core.fn
   (:use [lamina.core channel pipeline]))
 
+(defn async [f]
+  (fn [& args]
+    (apply run-pipeline []
+      (concat
+	(map (fn [x] (read-merge (constantly x) conj)) args)
+	[#(apply f %)]))))
+
 (defmacro afn [& fn-args]
   `(let [f# (fn ~@fn-args)]
-     (fn [& args#]
-       (apply run-pipeline []
-	 (concat
-	   (map (fn [x#] (read-merge (constantly x#) conj)) args#)
-	   [#(apply f# %)])))))
+     (async f#)))
 
 (defmacro future* [& body]
   `(let [result# (result-channel)]
