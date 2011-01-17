@@ -48,13 +48,7 @@ namespace.
   <div style="margin-left: 1em;" class="toc-section">
     <a href="#toc0">Overview</a>
     <div style="margin-left: 1em;" class="toc-entry">
-      <a href="#lamina.connections/client">client</a>
-    </div><div style="margin-left: 1em;" class="toc-entry">
-      <a href="#lamina.connections/close-client">close-client</a>
-    </div><div style="margin-left: 1em;" class="toc-entry">
-      <a href="#lamina.connections/persistent-connection">persistent-connection</a>
-    </div><div style="margin-left: 1em;" class="toc-entry">
-      <a href="#lamina.connections/pipelined-client">pipelined-client</a>
+      <a href="#lamina.connections/close-connection">close-connection</a>
     </div>
     <br />
   </div>
@@ -74,58 +68,11 @@ by <span id="author">Zachary Tellman</span><br />
 <div id="var-entry">
   <br />
   <hr />
-  <h2 id="lamina.connections/client">client</h2>
+  <h2 id="lamina.connections/close-connection">close-connection</h2>
   <span id="var-type">function</span><br />
-  <pre id="var-usage">Usage: (client connection-generator)
-</pre>
-  <pre id="var-docstr">Given a function that returns a connection, returns a function that takes a
-request value and optionally a timeout, and returns a result-channel
-representing the response.  This will keep a single live connection to the
-server, reconnecting when necessary.
-
-A new request will only be sent once the response to the previous one has
-been received.</pre>
-  
-</div><div id="var-entry">
-  <br />
-  <hr />
-  <h2 id="lamina.connections/close-client">close-client</h2>
-  <span id="var-type">function</span><br />
-  <pre id="var-usage">Usage: (close-client client)
+  <pre id="var-usage">Usage: (close-connection f)
 </pre>
   <pre id="var-docstr">Takes a client function, and closes the connection.</pre>
-  
-</div><div id="var-entry">
-  <br />
-  <hr />
-  <h2 id="lamina.connections/persistent-connection">persistent-connection</h2>
-  <span id="var-type">function</span><br />
-  <pre id="var-usage">Usage: (persistent-connection connection-generator)
-       (persistent-connection connection-generator connection-lost-callback)
-</pre>
-  <pre id="var-docstr">Given a function that generates a connection (a result-channel that yields a channel),
-returns a function that, given zero parameters, returns a connection.
-
-Behind the scenes, this will maintain a single live connection, reconnecting when
-necessary.  If 'connection-lost-callback' is specified, it will be called every time
-the connection drops.
-
-To close the connection, pass 'true' into the returned function.</pre>
-  
-</div><div id="var-entry">
-  <br />
-  <hr />
-  <h2 id="lamina.connections/pipelined-client">pipelined-client</h2>
-  <span id="var-type">function</span><br />
-  <pre id="var-usage">Usage: (pipelined-client connection-generator)
-</pre>
-  <pre id="var-docstr">Given a function that returns a connection, returns a function that takes a
-request value and optionally a timeout, and returns a result-channel
-representing the response.  This will keep a single live connection to the
-server, reconnecting when necessary.
-
-Requests will be sent as soon as they're made, with the assumption that
-responses will be returned in the same order.</pre>
   
 </div>
 

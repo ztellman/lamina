@@ -48,6 +48,10 @@ namespace.
   <div style="margin-left: 1em;" class="toc-section">
     <a href="#toc0">Overview</a>
     <div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core/afn">afn</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core/async">async</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/blocking">blocking</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/cancel-callback">cancel-callback</a>
@@ -62,6 +66,8 @@ namespace.
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/complete">complete</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core/do*">do*</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/enqueue">enqueue</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/enqueue-and-close">enqueue-and-close</a>
@@ -69,6 +75,8 @@ namespace.
       <a href="#lamina.core/filter*">filter*</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/fork">fork</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core/future*">future*</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/lazy-channel-seq">lazy-channel-seq</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
@@ -112,9 +120,17 @@ namespace.
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/take-while*">take-while*</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core/wait">wait</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/wait-for-message">wait-for-message</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/wait-for-result">wait-for-result</a>
+    </div>
+    <br />
+  </div><div style="margin-left: 1em;" class="toc-section">
+    <a href="#lamina.core.fn">lamina.core.fn</a>
+    <div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core.fn/async">async</a>
     </div>
     <br />
   </div>
@@ -132,6 +148,31 @@ by <span id="author">Zachary Tellman</span><br />
 <br />
 <h2>Public Variables and Functions</h2>
 <div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.core/afn">afn</h2>
+  <span id="var-type">macro</span><br />
+  <pre id="var-usage">Usage: (afn &amp; fn-args)
+</pre>
+  <pre id="var-docstr">An asynchronous variation on 'fn'.  See 'async' for more details.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.core/async">async</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (async f)
+</pre>
+  <pre id="var-docstr">Given a function, returns an asynchronous variant of that function.
+
+An asynchronous function returns a result-channel instead of a value.  If any
+parameters that it is passed are result-channels, it will delay execution until
+all result channels have emitted a value.
+
+If any of the input result-channels emit errors, the function will not execute
+and simply emit the input error.</pre>
+  
+</div><div id="var-entry">
   <br />
   <hr />
   <h2 id="lamina.core/blocking">blocking</h2>
@@ -206,6 +247,16 @@ is closed.</pre>
 </div><div id="var-entry">
   <br />
   <hr />
+  <h2 id="lamina.core/do*">do*</h2>
+  <span id="var-type">macro</span><br />
+  <pre id="var-usage">Usage: (do* &amp; body)
+</pre>
+  <pre id="var-docstr">Creates a pipeline stage that emits the same value it receives, but performs some side-effect
+in between.  Useful for debug prints and logging.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
   <h2 id="lamina.core/enqueue">enqueue</h2>
   <span id="var-type">function</span><br />
   <pre id="var-usage">Usage: (enqueue ch &amp; messages)
@@ -244,7 +295,17 @@ for which (f msg) is true.</pre>
 will appear in all copies, but can be consumed separately.  This allows for multiple
 consumers to receive the same stream at different rates.
 
-All copies are receive-only.</pre>
+Any message enqueued into one channel will be enqueued into all other copies.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.core/future*">future*</h2>
+  <span id="var-type">macro</span><br />
+  <pre id="var-usage">Usage: (future* &amp; body)
+</pre>
+  <pre id="var-docstr">A variation of 'future' that returns a result-channel instead of a synchronous
+future object.</pre>
   
 </div><div id="var-entry">
   <br />
@@ -481,6 +542,15 @@ into a single channel.</pre>
 </div><div id="var-entry">
   <br />
   <hr />
+  <h2 id="lamina.core/wait">wait</h2>
+  <span id="var-type">macro</span><br />
+  <pre id="var-usage">Usage: (wait interval)
+</pre>
+  <pre id="var-docstr">Creates a pipeline stage that accepts a value, and emits the same value after 'interval' milliseconds.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
   <h2 id="lamina.core/wait-for-message">wait-for-message</h2>
   <span id="var-type">function</span><br />
   <pre id="var-usage">Usage: (wait-for-message ch)
@@ -500,6 +570,25 @@ not time out.</pre>
 </pre>
   <pre id="var-docstr">Waits for a pipeline to complete.  If it succeeds, returns the result.
 If there was an error, the exception is re-thrown.</pre>
+  
+</div>
+<h2 id="namespace-name">lamina.core.fn</h2>
+<pre id="namespace-docstr"></pre>
+<br />
+<div id="var-entry">
+  <hr />
+  <h2 id="lamina.core.fn/async">async</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (async f)
+</pre>
+  <pre id="var-docstr">Given a function, returns an asynchronous variant of that function.
+
+An asynchronous function returns a result-channel instead of a value.  If any
+parameters that it is passed are result-channels, it will delay execution until
+all result channels have emitted a value.
+
+If any of the input result-channels emit errors, the function will not execute
+and simply emit the input error.</pre>
   
 </div>
 
