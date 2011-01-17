@@ -15,7 +15,8 @@
     [lamina.core.pipeline :as pipeline]
     [lamina.core.channel :as channel]
     [lamina.core.seq :as seq]
-    [lamina.core.named :as named])
+    [lamina.core.named :as named]
+    [lamina.core.fn :as f])
   (:import))
 
 
@@ -111,3 +112,23 @@
 (import-fn pipeline/siphon-result)
 
 ;;;
+
+(import-fn f/async)
+
+(defmacro afn
+  "An asynchronous variation on 'fn'.  See 'async' for more details."
+  [& fn-args]
+  `(let [f# (fn ~@fn-args)]
+     (async f#)))
+
+(defmacro future*
+  "A variation of 'future' that returns a result-channel instead of a synchronous
+   future object."
+  [& body]
+  `(let [result# (result-channel)]
+     (future
+       (try
+	 (enqueue (:success result#) (do ~@body))
+	 (catch Throwable t#
+	   (enqueue (:error result#) [nil t#]))))
+     result#))

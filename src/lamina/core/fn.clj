@@ -9,22 +9,20 @@
 (ns lamina.core.fn
   (:use [lamina.core channel pipeline]))
 
-(defn async [f]
+(defn async
+  "Given a function, returns an asynchronous variant of that function.
+
+   An asynchronous function returns a result-channel instead of a value.  If any
+   parameters that it is passed are result-channels, it will delay execution until
+   all result channels have emitted a value.
+
+   If any of the input result-channels emit errors, the function will not execute
+   and simply emit the input error."
+  [f]
   (fn [& args]
     (apply run-pipeline []
       (concat
 	(map (fn [x] (read-merge (constantly x) conj)) args)
 	[#(apply f %)]))))
 
-(defmacro afn [& fn-args]
-  `(let [f# (fn ~@fn-args)]
-     (async f#)))
 
-(defmacro future* [& body]
-  `(let [result# (result-channel)]
-     (future
-       (try
-	 (enqueue (:success result#) (do ~@body))
-	 (catch Throwable t#
-	   (enqueue (:error result#) [nil t#]))))
-     result#))
