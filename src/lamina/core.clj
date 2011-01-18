@@ -127,8 +127,9 @@
   [& body]
   `(let [result# (result-channel)]
      (future
-       (try
-	 (enqueue (:success result#) (do ~@body))
-	 (catch Throwable t#
-	   (enqueue (:error result#) [nil t#]))))
+       (siphon-result
+	 (run-pipeline nil
+	   (fn [_#]
+	     ~@body))
+	 result#))
      result#))
