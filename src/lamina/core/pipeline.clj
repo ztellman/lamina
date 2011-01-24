@@ -46,6 +46,11 @@
 (defrecord Redirect [pipeline value])
 
 (defn redirect
+  "Returns a redirect signal, which if returned by a pipeline stage will
+   skip all remaining stages in the current pipeline, and begin executing
+   the stages in 'pipeline'.  'value' describes the initial value passed into
+   the new pipeline, and defaults to the initial value passed into the current
+   pipeline."
   ([pipeline]
      (Redirect. pipeline ::initial))
   ([pipeline value]
@@ -55,6 +60,9 @@
   (instance? Redirect x))
 
 (defn restart
+  "A special form of redirect, which simply restarts the current pipeline.  'value'
+   describe sthe initial value passed into the first stage of the current pipeline,
+   and defaults to the value that was previously passed into the first stage."
   ([]
      (restart ::initial))
   ([value]
@@ -181,7 +189,7 @@
 	x))))
 
 (defn complete
-  "Short-circuits the inner-most pipeline, returning the result."
+  "Skips to the end of the inner-most pipeline, causing it to emit 'result'."
   [result]
   (redirect
     (pipeline
@@ -214,7 +222,8 @@
 
 (defn read-channel
   "For reading channels within pipelines.  Takes a simple channel, and returns
-   a pipeline channel."
+   a result channel representing the next message from the channel.  If the timeout
+   elapses, the result channel will emit an error."
   ([ch]
      (read-channel ch -1))
   ([ch timeout]
@@ -251,8 +260,10 @@
 ;;;
 
 (defn wait-for-result
-  "Waits for a pipeline to complete.  If it succeeds, returns the result.
-   If there was an error, the exception is re-thrown."
+  "Waits for a result-channel to emit a result.  If it succeeds, returns the result.
+   If there was an error, the exception is re-thrown.
+
+   If the timeout elapses, a java.util.concurrent.TimeoutException is thrown."
   ([result-channel]
      (wait-for-result result-channel -1))
   ([result-channel timeout]
@@ -268,6 +279,7 @@
 	       :success result)))))))
 
 (defn siphon-result
+  "Siphons the result from one result-channel to another."
   [src dst]
   (receive (:success src) #(enqueue (:success dst) %))
   (receive (:error src) #(enqueue (:error dst) %)))
