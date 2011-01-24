@@ -102,17 +102,23 @@ namespace.
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/receive-in-order">receive-in-order</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core/redirect">redirect</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/reduce*">reduce*</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/reductions*">reductions*</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/release-named-channel">release-named-channel</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core/restart">restart</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/run-pipeline">run-pipeline</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/sealed-channel">sealed-channel</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/sealed?">sealed?</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core/siphon-result">siphon-result</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/splice">splice</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
@@ -242,7 +248,7 @@ is closed.</pre>
   <span id="var-type">function</span><br />
   <pre id="var-usage">Usage: (complete result)
 </pre>
-  <pre id="var-docstr">Short-circuits the inner-most pipeline, returning the result.</pre>
+  <pre id="var-docstr">Skips to the end of the inner-most pipeline, causing it to emit 'result'.</pre>
   
 </div><div id="var-entry">
   <br />
@@ -404,7 +410,8 @@ is not specified, the poll will never time out.</pre>
        (read-channel ch timeout)
 </pre>
   <pre id="var-docstr">For reading channels within pipelines.  Takes a simple channel, and returns
-a pipeline channel.</pre>
+a result channel representing the next message from the channel.  If the timeout
+elapses, the result channel will emit an error.</pre>
   
 </div><div id="var-entry">
   <br />
@@ -456,6 +463,20 @@ This is a lossy iteration over the channel.  Fork the channel if there is anothe
 </div><div id="var-entry">
   <br />
   <hr />
+  <h2 id="lamina.core/redirect">redirect</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (redirect pipeline)
+       (redirect pipeline value)
+</pre>
+  <pre id="var-docstr">Returns a redirect signal, which if returned by a pipeline stage will
+skip all remaining stages in the current pipeline, and begin executing
+the stages in 'pipeline'.  'value' describes the initial value passed into
+the new pipeline, and defaults to the initial value passed into the current
+pipeline.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
   <h2 id="lamina.core/reduce*">reduce*</h2>
   <span id="var-type">function</span><br />
   <pre id="var-usage">Usage: (reduce* f ch)
@@ -485,6 +506,18 @@ This is a lossy iteration over the channel.  Fork the channel if there is anothe
 </div><div id="var-entry">
   <br />
   <hr />
+  <h2 id="lamina.core/restart">restart</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (restart)
+       (restart value)
+</pre>
+  <pre id="var-docstr">A special form of redirect, which simply restarts the current pipeline.  'value'
+describe sthe initial value passed into the first stage of the current pipeline,
+and defaults to the value that was previously passed into the first stage.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
   <h2 id="lamina.core/run-pipeline">run-pipeline</h2>
   <span id="var-type">function</span><br />
   <pre id="var-usage">Usage: (run-pipeline initial-value &amp; opts+stages)
@@ -510,6 +543,15 @@ Returns a pipeline future.</pre>
   <pre id="var-usage">Usage: (sealed? ch)
 </pre>
   <pre id="var-docstr">Returns true if no more messages can be enqueued into the channel.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.core/siphon-result">siphon-result</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (siphon-result src dst)
+</pre>
+  <pre id="var-docstr">Siphons the result from one result-channel to another.</pre>
   
 </div><div id="var-entry">
   <br />
@@ -568,8 +610,10 @@ not time out.</pre>
   <pre id="var-usage">Usage: (wait-for-result result-channel)
        (wait-for-result result-channel timeout)
 </pre>
-  <pre id="var-docstr">Waits for a pipeline to complete.  If it succeeds, returns the result.
-If there was an error, the exception is re-thrown.</pre>
+  <pre id="var-docstr">Waits for a result-channel to emit a result.  If it succeeds, returns the result.
+If there was an error, the exception is re-thrown.
+
+If the timeout elapses, a java.util.concurrent.TimeoutException is thrown.</pre>
   
 </div>
 <h2 id="namespace-name">lamina.core.fn</h2>
