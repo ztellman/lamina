@@ -26,7 +26,9 @@
   ChannelProtocol
   (consumer [_] consumer)
   (queue [_] queue)
-  (toString [_] (str queue)))
+  (toString [_] (str queue))
+  clojure.lang.Counted
+  (count [q] (count queue)))
 
 (defn channel [& messages]
   (let [source (o/observable)]
