@@ -94,14 +94,13 @@
 		  (on-message o msgs))
 		true)))))))
   (close [this]
-    (with-observable this
-      (if-not (compare-and-set! closed? false true)
-	false
-	(do
-	  (doseq [o (vals @observers)]
-	    (on-close o))
-	  (unsubscribe this (keys @observers))
-	  true))))
+    (if-not (compare-and-set! closed? false true)
+      false
+      (do
+	(doseq [o (vals @observers)]
+	  (on-close o))
+	(unsubscribe this (keys @observers))
+	true)))
   (closed? [_]
     @closed?))
 
