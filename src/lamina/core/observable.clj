@@ -82,10 +82,10 @@
       false
       dissoc ks))
   (message [this msgs]
-    (with-observable this
-      (when-not (empty? msgs)
-	(if @closed?
-	  false
+    (when-not (empty? msgs)
+      (if @closed?
+	false
+	(with-observable this
 	  (let [s (vals @observers)]
 	    (if (= 1 (count s))
 	      (not= ::false (on-message (first s) msgs))
