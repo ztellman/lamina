@@ -13,13 +13,14 @@
   (:import
     [java.util.concurrent
      ScheduledThreadPoolExecutor
-     TimeUnit]))
+     TimeUnit
+     Semaphore]))
 
 ;;;
 
 (def empty-value ::empty)
 
-(defprotocol Observer
+(defprotocol ObserverProtocol
   (on-message [this msgs])
   (on-close [this])
   (on-observers-changed [this observers]))
@@ -30,7 +31,7 @@
   ([message-callback close-callback]
      (observer message-callback close-callback nil))
   ([message-callback close-callback observers-callback]
-     (reify Observer
+     (reify ObserverProtocol
        (on-message [_ msgs]
 	 (when message-callback
 	   (message-callback msgs)))
@@ -61,7 +62,14 @@
        ~false-case
        nil)))
 
-(defrecord Observable [observers closed?]
+(defmacro with-observable [observable & body]
+  `(try
+     (.acquire ^Semaphore (.semaphore ~observable))
+     ~@body
+     (finally
+       (.release ^Semaphore (.semaphore ~observable)))))
+
+(defrecord Observable [observers closed? ^Semaphore semaphore]
   ObservableProtocol
   (subscribe [_ m]
     (modify-observers observers @closed?
@@ -73,30 +81,39 @@
     (modify-observers observers false
       false
       dissoc ks))
-  (message [_ msgs]
-    (when-not (empty? msgs)
-      (if @closed?
-	false
-	(let [s (vals @observers)]
-	  (if (= 1 (count s))
-	    (not= ::false (on-message (first s) msgs))
-	    (do
-	      (doseq [o s]
-		(on-message o msgs))
-	      true))))))
+  (message [this msgs]
+    (with-observable this
+      (when-not (empty? msgs)
+	(if @closed?
+	  false
+	  (let [s (vals @observers)]
+	    (if (= 1 (count s))
+	      (not= ::false (on-message (first s) msgs))
+	      (do
+		(doseq [o s]
+		  (on-message o msgs))
+		true)))))))
   (close [this]
-    (if-not (compare-and-set! closed? false true)
-      false
-      (do
-	(doseq [o (vals @observers)]
-	  (on-close o))
-	(unsubscribe this (keys @observers))
-	true)))
+    (with-observable this
+      (if-not (compare-and-set! closed? false true)
+	false
+	(do
+	  (doseq [o (vals @observers)]
+	    (on-close o))
+	  (unsubscribe this (keys @observers))
+	  true))))
   (closed? [_]
     @closed?))
 
+(defmacro lock-observable [^Observable observable & body]
+  `(try
+     (.acquire ^Semaphore (:semaphore ~observable) Integer/MAX_VALUE)
+     ~@body
+     (finally
+       (.release ^Semaphore (:semaphore ~observable) Integer/MAX_VALUE))))
+
 (defn observable []
-  (Observable. (atom {}) (atom false)))
+  (Observable. (atom {}) (atom false) (Semaphore. Integer/MAX_VALUE)))
 
 (defn permanent-observable []
   (with-meta (observable) {::permanent true}))

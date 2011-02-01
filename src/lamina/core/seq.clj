@@ -87,33 +87,15 @@
 	    (throw (TimeoutException. "Timed out waiting for message from channel."))))))))
 ;;;
 
-(defn- create-temp-subscription [source key true-handler false-handler]
-  (let [latch (ref false)
-	monitor (Object.)]
-    (o/subscribe source
-      {key
-       (o/observer
-	 (fn [msgs]
-	   (if @latch
-	     (locking monitor
-	       (true-handler msgs))
-	     (when false-handler
-	       (false-handler msgs)))))})
-    [latch monitor]))
-
-(defn- sample-queue [ch latch finalizer]
+(defn- sample-queue [ch finalizer]
   (let [q (-> ch ^EventQueue queue .q)]
-    (let [msgs (dosync
-		 (ensure q)
-		 (let [msgs @q]
-		   (finalizer q)
-		   (ref-set latch true)
-		   msgs))]
-      msgs)))
+    (dosync
+      (ensure q)
+      (let [msgs @q]
+	(finalizer q)
+	msgs))))
 
-;;TODO: these two functions are very similar, but subtly different - factor out the commonalities
 (defn receive-all
-  "Adds one or more callbacks which will receive all messages from the channel."
   [ch & callbacks]
   (cond
     (closed? ch)
@@ -124,39 +106,35 @@
 
     :else
     (let [distributor (-> ch queue q/distributor)
-	  observers (zipmap
-		      callbacks
-		      (map
-			(fn [f] (o/observer
-				  #(doseq [m %] (f m))
-				  #(f nil)
-				  nil))
-			callbacks))
 	  send-to-callbacks (fn [msgs]
 			      (doseq [msg msgs]
 				(doseq [c callbacks]
 				  (c msg))))]
-      (let [[latch monitor] (create-temp-subscription
-			      distributor
-			      (first callbacks)
-			      send-to-callbacks
-			      #(-> ch queue (q/enqueue %)))]
-	(locking monitor
-	  (when (sealed? ch) 
-	    (send-to-callbacks
-	      (butlast
-		(sample-queue ch latch
-		  #(ref-set %
-		     (if (empty? (deref %))
-		       clojure.lang.PersistentQueue/EMPTY
-		       (conj clojure.lang.PersistentQueue/EMPTY (last (deref %)))))))))
+      (o/lock-observable distributor
+	(when (sealed? ch) 
 	  (send-to-callbacks
-	    (sample-queue ch latch
-	      #(ref-set % clojure.lang.PersistentQueue/EMPTY)))
-	  (when-not (sealed? ch)
-	    (o/subscribe distributor observers))
-	  (q/check-for-close (queue ch)))
-	true))))
+	    (butlast
+	      (sample-queue ch
+		#(ref-set %
+		   (if (empty? (deref %))
+		     clojure.lang.PersistentQueue/EMPTY
+		     (conj clojure.lang.PersistentQueue/EMPTY (last (deref %)))))))))
+	(send-to-callbacks
+	  (sample-queue ch
+	    #(ref-set % clojure.lang.PersistentQueue/EMPTY)))
+	(when-not (sealed? ch)
+	  (o/subscribe distributor
+	    (zipmap
+	      callbacks
+	      (map
+		(fn [f]
+		  (o/observer
+		    #(doseq [m %] (f m))
+		    #(f nil)
+		    nil))
+		callbacks)))))
+      (q/check-for-close (queue ch))
+      true)))
 
 (defn siphon
   [source destination-function-map]
@@ -173,25 +151,24 @@
       true)
 
     :else
-    (let [distributor (-> source queue q/distributor)
+    
+    (let [distributor ^Observable (-> source queue q/distributor)
 	  send-to-destinations (fn [msgs]
 				 (doseq [[dst f] destination-function-map]
 				   (apply enqueue dst (f msgs))))]
-      (let [[latch monitor] (create-temp-subscription
-			      distributor
-			      (-> destination-function-map ffirst consumer)
-			      send-to-destinations
-			      #(-> source queue (q/enqueue %)))]
-	(locking monitor
-	  (send-to-destinations
-	    (sample-queue source latch
-	      #(ref-set % clojure.lang.PersistentQueue/EMPTY)))
-	  (o/siphon
-	    distributor
-	    (into {} (map (fn [[ch f]] [(consumer ch) f]) destination-function-map))
-	    2
-	    false))
-	true))))
+      (o/lock-observable distributor
+	(send-to-destinations
+	  (sample-queue source
+	    #(ref-set % clojure.lang.PersistentQueue/EMPTY)))
+	(o/siphon
+	  distributor
+	  (zipmap
+	    (map consumer (keys destination-function-map))
+	    (vals destination-function-map))
+	  2
+	  false))
+      (q/check-for-close (queue source))
+      true)))
 
 ;;;
 
@@ -212,13 +189,14 @@
        (repeat n ch)
 
        :else
-       (doall
-	 (map
-	   (fn [_]
-	     (let [o (o/observable)]
-	       (o/siphon (-> ch queue q/source) {o identity} -1 true)
-	       (Channel. o (q/copy-queue (queue ch) o))))
-	   (range n))))))
+       (o/lock-observable (-> ch queue q/source)
+	 (doall
+	   (map
+	     (fn [_]
+	       (let [o (o/observable)]
+		 (o/siphon (-> ch queue q/source) {o identity} -1 true)
+		 (Channel. o (q/copy-queue (queue ch) o))))
+	     (range n)))))))
 
 (defn receive-in-order
   "Consumes messages from a channel one at a time.  The callback will only receive the next

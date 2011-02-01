@@ -171,6 +171,47 @@
 		 (recur (concat out n))
 		 (concat out n))))))))
 
+;; fork
+
+(deftest test-receive-all
+  (dotimes [i 1e2]
+    (let [result (atom [])]
+      (let [s (range 10)]
+	(let [ch (channel)]
+	  (async-enqueue ch s false)
+	  (Thread/sleep (rand-int 10))
+	  (let [latch (promise)]
+	    (receive-all ch #(when %
+			       (when (= 10 (count (swap! result conj %)))
+				 (deliver latch nil))))
+	    @latch
+	    (is (= @result s))))))))
+
+(deftest test-fork
+  (dotimes [i 1e2]
+    (let [s (range 10)]
+      (let [ch (channel)]
+	(async-enqueue ch s false)
+	(Thread/sleep (rand-int 10))
+	(let [ch* (fork ch)]
+	  (is (= s (lazy-channel-seq ch)))
+	  (is (= s (lazy-channel-seq ch*))))))))
+
+(deftest test-fork-receive-all
+  (dotimes [i 1e2]
+    (let [result (atom [])]
+      (let [s (range 10)]
+	(let [ch (channel)]
+	  (async-enqueue ch s false)
+	  (Thread/sleep (rand-int 10))
+	  (let [ch* (fork ch)]
+	    (let [latch (promise)]
+	      (receive-all ch* #(when %
+				  (when (= 10 (count (swap! result conj %)))
+				    (deliver latch nil))))
+	      @latch
+	      (is (= @result s)))))))))
+
 ;; seq-like methods
 
 (deftest test-take*
@@ -182,6 +223,19 @@
 
     (let [ch (channel)
 	  ch* (take* 5 ch)]
+      (async-enqueue ch s true)
+      (is (= (range 5) (channel-seq ch* 2500)))
+      (is (= (range 5 10) (channel-seq ch 2500))))))
+
+(deftest test-take-while*
+  (let [s (range 10)]
+    (let [ch (apply sealed-channel s)
+	  ch* (take-while* #(< % 5) ch)]
+      (is (= (range 5) (channel-seq ch*)))
+      (is (= (range 5 10) (channel-seq ch))))
+
+    (let [ch (channel)
+	  ch* (take-while* #(< % 5) ch)]
       (async-enqueue ch s true)
       (is (= (range 5) (channel-seq ch* 2500)))
       (is (= (range 5 10) (channel-seq ch 2500))))))
