@@ -280,3 +280,39 @@
     (let [ch (channel)]
       (async-enqueue ch s false)
       (is (= (reductions + s) (channel-seq (reductions* + ch) 2500))))))
+
+(defn- priority-compose-channels
+  "Uses the order defined in the channels seq to fully consume the first channels
+   messages before consuming the messages from the rest of the channels.  All results
+   are enqueued into an output channel that is returned"
+  ([channels channel-end-marker]
+     (priority-compose-channels channels channel-end-marker (channel)))
+  ([[fchan & rchans ] channel-end-marker output-channel]
+     (if fchan
+       (do
+         (on-sealed fchan
+                       (fn [] 
+                         (enqueue output-channel channel-end-marker)
+                         (priority-compose-channels rchans channel-end-marker output-channel)))
+         (siphon fchan output-channel))
+       (close output-channel))
+     output-channel))
+
+(deftest test-multi-channel-close
+    (testing "Composing two channels with priority"
+    (let [chan1 (channel) ;; Should have priority over chan2
+          chan2 (channel)
+          out-chan (priority-compose-channels [chan1 chan2] :done)]
+      (enqueue chan1 [1 1])
+      (enqueue chan2 [2 1])
+      (enqueue chan1 [1 2])
+      (enqueue chan2 [2 2])
+      (println "Closing channel 2")
+      (close chan2)
+
+      (is (= [[1 1] [1 2]] (channel-seq out-chan)))
+      (println "Channel 1 messages drained, now closing channel 1")
+      (close chan1)
+      (println "Closed channel 1")
+      (is (= [:done [2 1] [2 2]] (channel-seq out-chan)))
+      (is (every? sealed? [chan1 chan2 out-chan])))))
