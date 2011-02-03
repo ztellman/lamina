@@ -62,11 +62,15 @@ namespace.
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/close">close</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core/closed-channel">closed-channel</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/closed?">closed?</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/complete">complete</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/do*">do*</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core/drained?">drained?</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/enqueue">enqueue</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
@@ -86,7 +90,7 @@ namespace.
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/on-closed">on-closed</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
-      <a href="#lamina.core/on-sealed">on-sealed</a>
+      <a href="#lamina.core/on-drained">on-drained</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/pipeline">pipeline</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
@@ -111,10 +115,6 @@ namespace.
       <a href="#lamina.core/restart">restart</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/run-pipeline">run-pipeline</a>
-    </div><div style="margin-left: 1em;" class="toc-entry">
-      <a href="#lamina.core/sealed-channel">sealed-channel</a>
-    </div><div style="margin-left: 1em;" class="toc-entry">
-      <a href="#lamina.core/sealed?">sealed?</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/siphon-result">siphon-result</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
@@ -219,7 +219,7 @@ can be received from the other.</pre>
 currently within the channel.
 
 This call is synchronous, and will hang the thread until the timeout is reached or the channel
-is closed.</pre>
+is drained.</pre>
   
 </div><div id="var-entry">
   <br />
@@ -233,11 +233,20 @@ is closed.</pre>
 </div><div id="var-entry">
   <br />
   <hr />
+  <h2 id="lamina.core/closed-channel">closed-channel</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (closed-channel &amp; messages)
+</pre>
+  <pre id="var-docstr">Creates a channel which is already sealed.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
   <h2 id="lamina.core/closed?">closed?</h2>
   <span id="var-type">function</span><br />
   <pre id="var-usage">Usage: (closed? ch)
 </pre>
-  <pre id="var-docstr">Returns true if no more messages can be received from the channel.</pre>
+  <pre id="var-docstr">Returns true if no more messages can be enqueued into the channel.</pre>
   
 </div><div id="var-entry">
   <br />
@@ -257,6 +266,15 @@ is closed.</pre>
 </pre>
   <pre id="var-docstr">Creates a pipeline stage that emits the same value it receives, but performs some side-effect
 in between.  Useful for debug prints and logging.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.core/drained?">drained?</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (drained? ch)
+</pre>
+  <pre id="var-docstr">Returns true if no more messages can be received from the channel.</pre>
   
 </div><div id="var-entry">
   <br />
@@ -362,11 +380,11 @@ a channel is created, and 'creation-callback' is invoked.</pre>
 </div><div id="var-entry">
   <br />
   <hr />
-  <h2 id="lamina.core/on-sealed">on-sealed</h2>
+  <h2 id="lamina.core/on-drained">on-drained</h2>
   <span id="var-type">function</span><br />
-  <pre id="var-usage">Usage: (on-sealed ch &amp; callbacks)
+  <pre id="var-usage">Usage: (on-drained ch &amp; callbacks)
 </pre>
-  <pre id="var-docstr">Registers callbacks that will be triggered by the channel being sealed.</pre>
+  <pre id="var-docstr">Registers callbacks that will be triggered by the channel being drained.</pre>
   
 </div><div id="var-entry">
   <br />
@@ -514,24 +532,6 @@ and defaults to the value that was previously passed into the first stage.</pre>
   <pre id="var-docstr">Equivalent to ((pipeline opts+stages) initial-value).
 
 Returns a pipeline future.</pre>
-  
-</div><div id="var-entry">
-  <br />
-  <hr />
-  <h2 id="lamina.core/sealed-channel">sealed-channel</h2>
-  <span id="var-type">function</span><br />
-  <pre id="var-usage">Usage: (sealed-channel &amp; messages)
-</pre>
-  <pre id="var-docstr">Creates a channel which is already sealed.</pre>
-  
-</div><div id="var-entry">
-  <br />
-  <hr />
-  <h2 id="lamina.core/sealed?">sealed?</h2>
-  <span id="var-type">function</span><br />
-  <pre id="var-usage">Usage: (sealed? ch)
-</pre>
-  <pre id="var-docstr">Returns true if no more messages can be enqueued into the channel.</pre>
   
 </div><div id="var-entry">
   <br />
