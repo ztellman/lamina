@@ -227,8 +227,8 @@
   ([ch]
      (read-channel ch -1))
   ([ch timeout]
-     (if (closed? ch)
-       (throw (Exception. "Cannot read from a closed channel."))
+     (if (drained? ch)
+       (throw (Exception. "Cannot read from a drained channel."))
        (let [msg (dequeue ch ::none)]
 	 (if-not (= ::none msg)
 	   msg

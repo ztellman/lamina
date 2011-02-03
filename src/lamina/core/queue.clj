@@ -24,8 +24,8 @@
   (dequeue [this empty-value])
   (receive- [this callback])
   (listen [this callbacks])
-  (on-close [this callbacks])
-  (closed? [this])
+  (on-drained [this callbacks])
+  (drained? [this])
   (cancel-callbacks [this callbacks]))
 
 (defn receive [q callbacks]
@@ -45,8 +45,8 @@
    (dequeue [_ empty-value] empty-value)
    (receive- [_ _] false)
    (listen [_ _] false)
-   (on-close [_ _] false)
-   (closed? [_] true)
+   (on-drained [_ _] false)
+   (drained? [_] true)
    (cancel-callbacks [_ _])
    (toString [_] "")))
 
@@ -60,7 +60,7 @@
 
 (declare send-to-callbacks)
 
-(declare check-for-close)
+(declare check-for-drained)
 
 (defmacro update-and-send [q & body]
   `(do
@@ -72,7 +72,7 @@
 
 (deftype EventQueue
   [source distributor q
-   receivers listeners close-callbacks
+   receivers listeners drained-callbacks
    accumulate]
   EventQueueProto
   (source [_]
@@ -86,13 +86,13 @@
       (send-to-callbacks this
 	(dosync
 	  (gather-callbacks msgs this false)))))
-  (on-close [this callbacks]
+  (on-drained [this callbacks]
     (when (dosync
-	    (ensure close-callbacks)
-	    (if (closed? this)
+	    (ensure drained-callbacks)
+	    (if (drained? this)
 	      true
 	      (do
-		(apply alter close-callbacks conj callbacks)
+		(apply alter drained-callbacks conj callbacks)
 		false)))
       (doseq [c callbacks]
 	(c))))
@@ -103,7 +103,7 @@
 	(dosync
 	  (let [msg (first (ensure q))]
 	    (alter q pop)
-	    (check-for-close this)
+	    (check-for-drained this)
 	    msg)))))
   (receive- [this callbacks]
     (update-and-send this
@@ -111,11 +111,11 @@
   (listen [this callbacks]
     (update-and-send this
       (apply alter listeners conj callbacks)))
-  (closed? [_]
+  (drained? [_]
     (and (o/closed? source) (empty? @q)))
   (cancel-callbacks [_ callbacks]
     (dosync
-      (apply alter close-callbacks disj callbacks)
+      (apply alter drained-callbacks disj callbacks)
       (apply alter listeners disj callbacks)
       (apply alter receivers disj callbacks)))
   clojure.lang.Counted
@@ -169,18 +169,18 @@
 	 (concat (-> r first second) (-> l first second))]
 	(rest l)))))
 
-(defn check-for-close [^EventQueue q]
-  (when (closed? q)
-    (doseq [c @(.close-callbacks q)]
+(defn check-for-drained [^EventQueue q]
+  (when (drained? q)
+    (doseq [c @(.drained-callbacks q)]
       (c))
-    (dosync (ref-set (.close-callbacks q) nil))))
+    (dosync (ref-set (.drained-callbacks q) nil))))
 
 (defn send-to-callbacks [^EventQueue q msgs-and-targets]
   (when msgs-and-targets
     (doseq [[msg callbacks] msgs-and-targets]
       (doseq [c callbacks]
 	(c msg))))
-  (check-for-close q))
+  (check-for-drained q))
 
 (defn setup-observable->queue [accumulate ^EventQueue q]
   (let [src (source q)
@@ -264,13 +264,10 @@
 		 (when-let [f* (second (dosync (f msg)))]
 		   (f* msg)))))
 	  callbacks))))
-  (on-close [_ callbacks]
-    (o/subscribe source
-      (zipmap
-	callbacks
-	(map #(o/observer nil % nil) callbacks))))
-  (closed? [_]
-    (o/closed? source))
+  (on-drained [_ callbacks]
+    )
+  (drained? [_]
+    false)
   (cancel-callbacks [_ callbacks]
     (o/unsubscribe source callbacks)))
 

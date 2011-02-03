@@ -26,12 +26,12 @@
 
 (defn- wait-for-close [ch description]
   (let [ch (fork ch)]
-    (if (closed? ch)
+    (if (drained? ch)
       (constant-channel nil)
       (let [signal (constant-channel)]
 	(receive-all ch
 	  (fn [msg]
-	    (when (closed? ch)
+	    (when (drained? ch)
 	      (log/warn (str "Connection to " description " lost."))
 	      (enqueue signal nil))))
 	(read-channel signal)))))
@@ -141,7 +141,7 @@
 				 (enqueue ch request)
 				 [ch (read-channel ch)]))))))
 		     (fn [[ch response]]
-		       (if-not (and (nil? response) (closed? ch))
+		       (if-not (and (nil? response) (drained? ch))
 			 response
 			 (restart))))
 		   result-channel))))))
@@ -192,7 +192,7 @@
 			      (complete nil))
 	     read-channel
 	     (fn [response]
-	       (if (and (nil? response) (closed? ch))
+	       (if (and (nil? response) (drained? ch))
 		 (throw (Exception. "Connection closed"))
 		 (enqueue (:success result) response))))))
 
@@ -216,7 +216,7 @@
        (read-channel c))
     #(enqueue ch %)
     (fn [_]
-      (when-not (closed? ch)
+      (when-not (drained? ch)
 	(restart))))
   (fn []
     (close ch)))
@@ -236,7 +236,7 @@
 	 (handler c %)
 	 (enqueue responses c))
       (fn [_]
-	(when-not (closed? ch)
+	(when-not (drained? ch)
 	  (restart)))))
   (fn []
     (close ch)))

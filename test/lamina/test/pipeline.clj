@@ -146,7 +146,7 @@
 
 (deftest test-tail-recursion
   
-  (let [ch (apply sealed-channel (range 1e4))]
+  (let [ch (apply closed-channel (range 1e4))]
     (run-pipeline ch
       read-channel
       (fn [x]

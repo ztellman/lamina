@@ -63,15 +63,15 @@
 
 ;;;
 
-(defn sealed?
+(defn closed?
   "Returns true if no more messages can be enqueued into the channel."
   [ch]
   (-> ch consumer o/closed?))
 
-(defn closed?
+(defn drained?
   "Returns true if no more messages can be received from the channel."
   [ch]
-  (-> ch queue q/closed?))
+  (-> ch queue q/drained?))
 
 (defn listen 
   "Adds one or more callback which will receive all new messages.  If a callback returns a
@@ -98,13 +98,13 @@
   [ch & messages]
   (-> ch consumer (o/message messages)))
 
+(defn on-drained
+  "Registers callbacks that will be triggered by the channel being drained."
+  [ch & callbacks]
+  (-> ch queue (q/on-drained callbacks)))
+
 (defn on-closed
   "Registers callbacks that will be triggered by the channel closing."
-  [ch & callbacks]
-  (-> ch queue (q/on-close callbacks)))
-
-(defn on-sealed
-  "Registers callbacks that will be triggered by the channel being sealed."
   [ch & callbacks]
   (-> ch consumer (o/subscribe (zipmap callbacks (map #(o/observer nil % nil) callbacks)))))
 
@@ -122,7 +122,7 @@
       (close ch))
     result))
 
-(defn sealed-channel
+(defn closed-channel
   "Creates a channel which is already sealed."
   [& messages]
   (let [ch (channel)]

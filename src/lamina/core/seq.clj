@@ -40,7 +40,7 @@
 			timeout
 			(constantly timeout))]
        (lazy-seq
-	 (when-not (closed? ch)
+	 (when-not (drained? ch)
 	   (let [value (promise)]
 	     (receive (poll {:ch ch} (timeout-fn))
 	       #(deliver value
@@ -49,7 +49,7 @@
 	     (let [val @value]
 	       (when (and val
 		       (or
-			 (not (closed? ch))
+			 (not (drained? ch))
 			 (not (nil? (first val)))))
 		 (concat val (lazy-channel-seq ch timeout-fn))))))))))
 
@@ -59,7 +59,7 @@
    currently within the channel.
 
    This call is synchronous, and will hang the thread until the timeout is reached or the channel
-   is closed."
+   is drained."
   ([ch]
      (channel-seq ch 0))
   ([ch timeout]
@@ -98,7 +98,7 @@
 (defn receive-all
   [ch & callbacks]
   (cond
-    (closed? ch)
+    (drained? ch)
     false
 
     (constant-channel? ch)
@@ -111,7 +111,7 @@
 				(doseq [c callbacks]
 				  (c msg))))]
       (o/lock-observable distributor
-	(when (sealed? ch) 
+	(when (closed? ch) 
 	  (send-to-callbacks
 	    (butlast
 	      (sample-queue ch
@@ -122,7 +122,7 @@
 	(send-to-callbacks
 	  (sample-queue ch
 	    #(ref-set % clojure.lang.PersistentQueue/EMPTY)))
-	(when-not (sealed? ch)
+	(when-not (drained? ch)
 	  (o/subscribe distributor
 	    (zipmap
 	      callbacks
@@ -133,13 +133,13 @@
 		    #(f nil)
 		    nil))
 		callbacks)))))
-      (q/check-for-close (queue ch))
+      (q/check-for-drained (queue ch))
       true)))
 
 (defn siphon
   [source destination-function-map]
   (cond
-    (closed? source)
+    (drained? source)
     false
 
     (constant-channel? source)
@@ -167,7 +167,7 @@
 	    (vals destination-function-map))
 	  2
 	  false))
-      (q/check-for-close (queue source))
+      (q/check-for-drained (queue source))
       true)))
 
 ;;;
@@ -182,7 +182,7 @@
      (first (fork 1 ch)))
   ([n ch]
      (cond
-       (closed? ch)
+       (drained? ch)
        (repeat n ch)
 
        (constant-channel? ch)
@@ -205,15 +205,15 @@
 
    This is a lossy iteration over the channel.  Fork the channel if there is another consumer."
   [ch f]
-  (if (closed? ch)
+  (if (drained? ch)
     (success-result nil)
     (run-pipeline ch
       read-channel
       (fn [msg]
-	(when-not (and (nil? msg) (closed? ch))
+	(when-not (and (nil? msg) (drained? ch))
 	  (f msg)))
       (fn [_]
-	(when-not (closed? ch)
+	(when-not (drained? ch)
 	  (restart))))))
 
 (defn map*
@@ -221,7 +221,7 @@
   [f ch]
   (let [ch* (channel)]
     (siphon ch
-      {ch* #(if (and (closed? ch) (= [nil] %))
+      {ch* #(if (and (drained? ch) (= [nil] %))
 	      %
 	      (map f %))})
     ch*))
@@ -232,7 +232,7 @@
   [f ch]
   (let [ch* (channel)]
     (siphon ch
-      {ch* #(if (and (closed? ch) (= [nil] %))
+      {ch* #(if (and (drained? ch) (= [nil] %))
 	      %
 	      (filter f %))})
     ch*))
@@ -279,11 +279,11 @@
   (run-pipeline val
     (read-merge
       #(read-channel ch)
-      #(if (and (nil? %2) (closed? ch))
+      #(if (and (nil? %2) (drained? ch))
 	 %1
 	 (f %1 %2)))
     (fn [val]
-      (if (closed? ch)
+      (if (drained? ch)
 	val
 	(restart val)))))
 
@@ -303,11 +303,11 @@
     (run-pipeline val
       (read-merge
 	#(read-channel ch)
-	#(if (and (nil? %2) (closed? ch))
+	#(if (and (nil? %2) (drained? ch))
 	   nil
 	   (f %1 %2)))
       (fn [val]
-	(if (closed? ch)
+	(if (drained? ch)
 	  (when val
 	    (enqueue-and-close ch* val))
 	  (do

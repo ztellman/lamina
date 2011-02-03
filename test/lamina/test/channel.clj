@@ -44,7 +44,7 @@
   (receive ch
     (fn this [msg]
       (callback msg)
-      (when-not (closed? ch)
+      (when-not (drained? ch)
 	(receive ch this)))))
 
 (defmacro close-output= [expected ch & body]
@@ -52,7 +52,7 @@
 	body (postwalk-replace {'ch ch-sym} body)]
     (let [f (fn [ch]
 	      (fn [msg]
-		[msg (closed? ch)]))]
+		[msg (drained? ch)]))]
       `(do
 	 (let [~ch-sym ~ch]
 	   (is (= ~expected (output-of (~f ~ch-sym) (receive-all ~ch-sym callback) ~@body))))
@@ -60,15 +60,16 @@
 	   (is (= ~expected (output-of (~f ~ch-sym) (receive-in-order* ~ch-sym callback) ~@body))))
 	 (let [~ch-sym ~ch]
 	   (is (= ~expected (output-of (~f ~ch-sym)
-			      (receive ~ch-sym (fn this# [msg#]
-						 (callback msg#)
-						 (when-not (closed? ~ch-sym)
-						   (receive ~ch-sym this#))))
+			      (receive ~ch-sym
+				(fn this# [msg#]
+				  (callback msg#)
+				  (when-not (drained? ~ch-sym)
+				    (receive ~ch-sym this#))))
 			      ~@body))))))))
 
 (deftest test-close
   (close-output= [[1 false] [2 true]]
-    (sealed-channel 1 2))
+    (closed-channel 1 2))
   (close-output= [[1 false] [2 false] [nil true]]
     (channel 1 2)
     (close ch))
@@ -156,7 +157,7 @@
 	(is (= i (wait-for-message ch 100)))))))
 
 (deftest test-channel-seq
-  (let [ch (sealed-channel 1 nil)]
+  (let [ch (closed-channel 1 nil)]
     (is (= [1] (channel-seq ch))))
 
   (let [in (range 1e3)
@@ -216,7 +217,7 @@
 
 (deftest test-take*
   (let [s (range 10)]
-    (let [ch (apply sealed-channel s)
+    (let [ch (apply closed-channel s)
 	  ch* (take* 5 ch)]
       (is (= (range 5) (channel-seq ch*)))
       (is (= (range 5 10) (channel-seq ch))))
@@ -229,7 +230,7 @@
 
 (deftest test-take-while*
   (let [s (range 10)]
-    (let [ch (apply sealed-channel s)
+    (let [ch (apply closed-channel s)
 	  ch* (take-while* #(< % 5) ch)]
       (is (= (range 5) (channel-seq ch*)))
       (is (= (range 5 10) (channel-seq ch))))
@@ -244,7 +245,7 @@
   (let [s (range 10)
 	f #(* % 2)]
 
-    (let [ch (apply sealed-channel s)]
+    (let [ch (apply closed-channel s)]
       (is (= (map f s) (channel-seq (map* f ch)))))
 
     (let [ch (channel)]
@@ -254,7 +255,7 @@
 (deftest test-filter*
   (let [s (range 10)]
 
-    (let [ch (apply sealed-channel s)]
+    (let [ch (apply closed-channel s)]
       (is (= (filter even? s) (channel-seq (filter* even? ch)))))
 
     (let [ch (channel)]
@@ -264,7 +265,7 @@
 (deftest test-reduce*
   (let [s (range 10)]
 
-    (let [ch (apply sealed-channel s)]
+    (let [ch (apply closed-channel s)]
       (is (= (reduce + s) (wait-for-message (reduce* + ch)))))
 
     (let [ch (channel)]
@@ -274,7 +275,7 @@
 (deftest test-reductions*
   (let [s (range 10)]
 
-    (let [ch (apply sealed-channel s)]
+    (let [ch (apply closed-channel s)]
       (is (= (reductions + s) (channel-seq (reductions* + ch)))))
 
     (let [ch (channel)]
@@ -293,10 +294,10 @@
      (if fchan
        (do
 	 (siphon fchan output-channel)
-         (on-sealed fchan
-                       (fn [] 
-                         (enqueue output-channel channel-end-marker)
-                         (priority-compose-channels rchans channel-end-marker output-channel))))
+         (on-drained fchan
+	   (fn [] 
+	     (enqueue output-channel channel-end-marker)
+	     (priority-compose-channels rchans channel-end-marker output-channel))))
        (close output-channel))
      output-channel))
 
@@ -314,4 +315,4 @@
       (is (= [[1 1] [1 2]] (channel-seq out-chan)))
       (close chan1)
       (is (= [:done [2 1] [2 2] :done] (channel-seq out-chan)))
-      (is (every? sealed? [chan1 chan2 out-chan])))))
+      (is (every? closed? [chan1 chan2 out-chan])))))
