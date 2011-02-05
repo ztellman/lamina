@@ -48,10 +48,6 @@ namespace.
   <div style="margin-left: 1em;" class="toc-section">
     <a href="#toc0">Overview</a>
     <div style="margin-left: 1em;" class="toc-entry">
-      <a href="#lamina.core/afn">afn</a>
-    </div><div style="margin-left: 1em;" class="toc-entry">
-      <a href="#lamina.core/async">async</a>
-    </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/blocking">blocking</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/cancel-callback">cancel-callback</a>
@@ -135,6 +131,8 @@ namespace.
     <a href="#lamina.core.fn">lamina.core.fn</a>
     <div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core.fn/async">async</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core.fn/pfn">pfn</a>
     </div>
     <br />
   </div>
@@ -152,31 +150,6 @@ by <span id="author">Zachary Tellman</span><br />
 <br />
 <h2>Public Variables and Functions</h2>
 <div id="var-entry">
-  <br />
-  <hr />
-  <h2 id="lamina.core/afn">afn</h2>
-  <span id="var-type">macro</span><br />
-  <pre id="var-usage">Usage: (afn &amp; fn-args)
-</pre>
-  <pre id="var-docstr">An asynchronous variation on 'fn'.  See 'async' for more details.</pre>
-  
-</div><div id="var-entry">
-  <br />
-  <hr />
-  <h2 id="lamina.core/async">async</h2>
-  <span id="var-type">function</span><br />
-  <pre id="var-usage">Usage: (async f)
-</pre>
-  <pre id="var-docstr">Given a function, returns an asynchronous variant of that function.
-
-An asynchronous function returns a result-channel instead of a value.  If any
-parameters that it is passed are result-channels, it will delay execution until
-all result channels have emitted a value.
-
-If any of the input result-channels emit errors, the function will not execute
-and simply emit the input error.</pre>
-  
-</div><div id="var-entry">
   <br />
   <hr />
   <h2 id="lamina.core/blocking">blocking</h2>
@@ -611,17 +584,52 @@ If the timeout elapses, a java.util.concurrent.TimeoutException is thrown.</pre>
 <div id="var-entry">
   <hr />
   <h2 id="lamina.core.fn/async">async</h2>
-  <span id="var-type">function</span><br />
-  <pre id="var-usage">Usage: (async f)
+  <span id="var-type">macro</span><br />
+  <pre id="var-usage">Usage: (async &amp; body)
 </pre>
-  <pre id="var-docstr">Given a function, returns an asynchronous variant of that function.
+  <pre id="var-docstr">Performs magic.
 
-An asynchronous function returns a result-channel instead of a value.  If any
-parameters that it is passed are result-channels, it will delay execution until
-all result channels have emitted a value.
+Any expression in a block wrapped by (async ...) can use a result-channel instead of an
+actual value, and defer its own execution (and the execution of all code that depends on
+its value) until the result-channel has emitted a value.  The value returned from an
+(async ...) block is always a result-channel.
 
-If any of the input result-channels emit errors, the function will not execute
-and simply emit the input error.</pre>
+This means that we can write code that looks like a normal function, but is actually several
+distinct callbacks stitched together.  Consider the function 'read-channel', which returns a
+result-channel representing the next message from the channel.  To read two messages from the
+channel, we can compose callbacks:
+
+(receive ch
+  (fn [first-message]
+    (receive ch
+      (fn [second-message]
+        (perform-action [first-message second-message])))))
+
+However, using async, this becomes a lot more straightforward:
+
+(async
+  (let [first-message (read-channel ch)
+        second-message (read-channel ch)]
+    [first-message second-message]))
+
+This will return a result-channel which will emit a vector of the next two messages from the
+channel, once they've both arrived.
+
+This is very, very experimental, and may be subject to change.</pre>
+  
+</div><div id="var-entry">
+  <hr />
+  <h2 id="lamina.core.fn/pfn">pfn</h2>
+  <span id="var-type">macro</span><br />
+  <pre id="var-usage">Usage: (pfn &amp; args)
+</pre>
+  <pre id="var-docstr">A variant of fn that optionally accepts result-channels instead of parameters, and
+returns a result-channel representing the returned value.
+
+The function will always immediately return a result-channel, but the result-channel
+will only emit a value once all input result-channels have emitted their value.  If any of
+the input result-channels emit errors, the function will not execute and simply emit the
+input error.</pre>
   
 </div>
 
