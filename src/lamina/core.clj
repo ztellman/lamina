@@ -113,14 +113,6 @@
 
 ;;;
 
-(import-fn f/async)
-
-(defmacro afn
-  "An asynchronous variation on 'fn'.  See 'async' for more details."
-  [& fn-args]
-  `(let [f# (fn ~@fn-args)]
-     (async f#)))
-
 (defmacro future*
   "A variation of 'future' that returns a result-channel instead of a synchronous
    future object."

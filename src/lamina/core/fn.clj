@@ -23,9 +23,8 @@
    (async ...) block is always a result-channel.
 
    This means that we can write code that looks like a normal function, but is actually several
-   distinct callbacks stitched together.  Consider the function 'read-channel', which returns a
-   result-channel representing the next message from the channel.  To read two messages from the
-   channel, we can compose callbacks:
+   distinct callbacks stitched together.  Consider a situation where we want to read two messages
+   from a channel.  We could compose nested callbacks:
 
    (receive ch
      (fn [first-message]
@@ -33,7 +32,8 @@
          (fn [second-message]
            (perform-action [first-message second-message])))))
 
-   However, using async, this becomes a lot more straightforward:
+   However, using async and read-channel (which returns a result-channel representing the next
+   message in the channel), this becomes a lot more straightforward:
 
    (async
      (let [first-message (read-channel ch)
