@@ -48,7 +48,7 @@
 	     (reset! result ::close)))
 	(reset! latch false)))
     (run-pipeline nil
-      :error-handler (fn [val ex]
+      :error-handler (fn [ex]
 		       (swap! delay incr-delay)
 		       (restart))
       (do*
@@ -121,7 +121,7 @@
 	       (let [timeout (timeout-fn timeout)]
 		 (siphon-result
 		   (run-pipeline nil
-		     :error-handler (fn [_ _] (restart))
+		     :error-handler (fn [_] (restart))
 		     (fn [_]
 		       (if (neg? (timeout))
 			 
@@ -173,7 +173,7 @@
 	       (when-not (neg? timeout)
 		 (run-pipeline nil
 		   (wait timeout)
-		   (enqueue (:error result) [request (TimeoutException.)])))
+		   (enqueue (:error result) (TimeoutException.))))
 	       
 	       ;; send requests
 	       (run-pipeline (connection)
@@ -185,7 +185,7 @@
        (receive-in-order responses
 	 (fn [[request result timeout ch]]
 	   (run-pipeline ch
-	     :error-handler (fn [_ _]
+	     :error-handler (fn [_]
 			      ;; re-send request
 			      (when-not (neg? (timeout))
 				(enqueue requests [request result]))

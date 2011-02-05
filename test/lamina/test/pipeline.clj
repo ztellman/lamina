@@ -78,19 +78,19 @@
       (map str (seq "abbcd")))))
 
 (deftest test-error-propagation
-  (assert-failure (pipeline :error-handler (fn [_ _]) fail))
-  (assert-failure (pipeline :error-handler (fn [_ _]) inc fail))
-  (assert-failure (pipeline :error-handler (fn [_ _]) inc fail inc))
-  (assert-failure (pipeline :error-handler (fn [_ _]) slow-inc slow-fail))
-  (assert-failure (pipeline :error-handler (fn [_ _]) inc (pipeline :error-handler (fn [_ _]) inc fail) inc))
-  (assert-failure (pipeline :error-handler (fn [_ _]) inc #(redirect (pipeline :error-handler (fn [_ _]) inc fail) %))))
+  (assert-failure (pipeline :error-handler (fn [_]) fail))
+  (assert-failure (pipeline :error-handler (fn [_]) inc fail))
+  (assert-failure (pipeline :error-handler (fn [_]) inc fail inc))
+  (assert-failure (pipeline :error-handler (fn [_]) slow-inc slow-fail))
+  (assert-failure (pipeline :error-handler (fn [_]) inc (pipeline :error-handler (fn [_ _]) inc fail) inc))
+  (assert-failure (pipeline :error-handler (fn [_]) inc #(redirect (pipeline :error-handler (fn [_ _]) inc fail) %))))
 
 (deftest test-redirection-and-error-handlers
 
   (let [n (atom 0)
-	f (fn [n _] (swap! n inc))]
+	f (fn [_] (swap! n inc))]
     (run-pipeline n
-      :error-handler (fn [_ _])
+      :error-handler (fn [_])
       (pipeline :error-handler f
 	(pipeline :error-handler f
 	  (pipeline :error-handler f
@@ -98,9 +98,9 @@
     (is (= 3 @n)))
 
   (let [n (atom [])
-	f (fn [val] (fn [n _] (swap! n conj val)))]
+	f (fn [val] (fn [_] (swap! n conj val)))]
     (run-pipeline n
-      :error-handler (fn [_ _])
+      :error-handler (fn [_])
       (pipeline :error-handler (f 1)
 	(fn [x]
 	  (redirect
@@ -116,20 +116,13 @@
 (deftest test-error-handling
 
   (test-pipeline
-    (pipeline :error-handler (fn [val ex] (redirect (pipeline inc) val))
+    (pipeline :error-handler (fn [ex] (redirect (pipeline inc) 0))
       inc
       fail)
     1)
 
   (test-pipeline
-    (pipeline :error-handler (fn [val ex] (restart (inc val)))
-      inc
-      (fail-times 3)
-      inc)
-    4)
-
-  (test-pipeline
-    (pipeline :error-handler (fn [val ex] (restart))
+    (pipeline :error-handler (fn [ex] (restart))
       inc
       (fail-times 3)
       inc)
@@ -138,7 +131,7 @@
   (test-pipeline
     (pipeline
       inc
-      (pipeline :error-handler (fn [val ex] (restart val))
+      (pipeline :error-handler (fn [ex] (restart))
 	inc
 	(fail-times 3))
       inc)
@@ -159,5 +152,5 @@
 
   ;;TODO: excessive failures should stop the pipeline at some point
   (run-pipeline nil
-    :error-handler (fn [_ _] (restart))
+    :error-handler (fn [_] (restart))
     (fail-times 1e4)))

@@ -71,14 +71,14 @@
 ;;;
 
 (defn handle-error [pipeline ^ResultChannel result ^ResultChannel outer-result]
-  (let [[_ ex :as err] (dequeue (.error result) nil)]
+  (let [ex (dequeue (.error result) nil)]
     (if-let [redirect (if-let [handler (:error-handler pipeline)]
-			(let [result (apply handler err)]
+			(let [result (handler ex)]
 			  (when (redirect? result)
 			    result)))]
       redirect
       (do
-	(enqueue (.error outer-result) err)
+	(enqueue (.error outer-result) ex)
 	nil))))
 
 (defn process-redirect [redirect pipeline initial-value]
@@ -150,7 +150,7 @@
 		 (recur (rest fns) pipeline initial-value val 0)
 		 (if-let [redirect (handle-error
 				     pipeline
-				     (error-result [initial-value val])
+				     (error-result val)
 				     result)]
 		   (redirect-recur redirect pipeline initial-value (inc err-count)))))))))
      result))
@@ -240,7 +240,7 @@
 		  (enqueue success
 		    (second %))
 		  (enqueue error
-		    [nil (TimeoutException. (str "read-channel timed out after " timeout " ms"))])))
+		    (TimeoutException. (str "read-channel timed out after " timeout " ms")))))
 	     result))))))
 
 (defn read-merge
