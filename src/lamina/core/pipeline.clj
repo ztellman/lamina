@@ -183,7 +183,7 @@
 	(update-in pipeline [:error-handler]
 	  #(or %
 	     (when-not *inside-pipeline?*
-	       (fn [val ex]
+	       (fn [ex]
 		 (when (instance? Throwable ex)
 		   (log/error "lamina.core.pipeline" ex))))))
 	x))))

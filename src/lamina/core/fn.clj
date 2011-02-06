@@ -11,65 +11,96 @@
     [lamina.core channel pipeline]
     [clojure walk]))
 
+;;;
+
 (def special-form?
-  (set '(let if do let fn quote var def)))
+  (set '(let if do let fn quote var throw loop recur try catch finally)))
 
-(defmacro async
-  "Performs magic.
+(defn first= [symbol expr]
+  (and (list? expr) (= symbol (first expr))))
 
-   Any expression in a block wrapped by (async ...) can use a result-channel instead of an
-   actual value, and defer its own execution (and the execution of all code that depends on
-   its value) until the result-channel has emitted a value.  The value returned from an
-   (async ...) block is always a result-channel.
+(declare async)
 
-   This means that we can write code that looks like a normal function, but is actually several
-   distinct callbacks stitched together.  Consider a situation where we want to read two messages
-   from a channel.  We could compose nested callbacks:
+(defn valid-expr? [expr]
+  (and
+    (list? expr)
+    (< 1 (count expr))
+    (not (special-form? (first expr)))))
 
-   (receive ch
-     (fn [first-message]
-       (receive ch
-         (fn [second-message]
-           (perform-action [first-message second-message])))))
+(defn transform-expr [expr]
+  (let [args (map #(gensym (str "arg" % "-")) (-> expr count dec range))]
+    `(run-pipeline []
+       ~@(map
+	   (fn [arg] `(read-merge (constantly ~arg) conj))
+	   (rest expr))
+       (fn [[~@args]]
+	 (~(first expr) ~@args)))))
 
-   However, using async and read-channel (which returns a result-channel representing the next
-   message in the channel), this becomes a lot more straightforward:
+(defn transform-if [[_ predicate true-clause false-clause]]
+  `(run-pipeline ~predicate
+     (fn [predicate#]
+       (if predicate#
+	 ~true-clause
+	 ~@(when false-clause [false-clause])))))
 
-   (async
-     (let [first-message (read-channel ch)
-           second-message (read-channel ch)]
-       [first-message second-message]))
+(defn transform-throw [[_ exception]]
+  `(run-pipeline ~exception
+     (fn [exception#]
+       (throw exception#))))
 
-   This will return a result-channel which will emit a vector of the next two messages from the
-   channel, once they've both arrived.
+(defn transform-finally [transformed-body [_ & finally-exprs]]
+  `(run-pipeline nil
+     (pipeline 
+       :error-handler
+       (fn [ex#]
+	 (run-pipeline nil
+	   :error-handler (fn [ex##] (redirect (pipeline (fn [_] (throw ex##))) nil))
+	   (fn [_]
+	     ~finally-exprs)
+	   (fn [_]
+	     (throw ex#))))
+       (fn [_]
+	 ~transformed-body))
+     (fn [_]
+       ~finally-exprs)))
 
-   This is very, very experimental, and may be subject to change."
-  [& body]
+(defn transform-try [[_ & exprs]]
+  (let [finally-clause (when (->> exprs last (first= 'finally)) (last exprs))
+	exprs (if finally-clause (butlast exprs) exprs)
+	catch-clauses (->> exprs reverse (take-while #(first= 'catch %)) reverse)
+	exprs (drop-last (count catch-clauses) exprs)
+	transformed-body
+	`(run-pipeline nil
+	   :error-handler
+	   (fn [ex#]
+	     (try
+	       (let [result# (try
+			       (throw ex#)
+			       ~@catch-clauses)]
+		 (complete result#))
+	       (catch Exception e#
+		 (redirect (pipeline (fn [_#] (throw e#))) nil))))
+	   (fn [_#]
+	     ~@exprs))]
+    (if finally-clause
+      (transform-finally transformed-body finally-clause)
+      transformed-body)))
+
+(defn async [body]
   `(do
      ~@(postwalk
 	 (fn [expr]
-	   (if-not (and
-		     (list? expr)
-		     (< 1 (count expr))
-		     (not (special-form? (first expr))))
-	     expr
-	     `(run-pipeline []
-		~@(map
-		    (fn [arg] `(read-merge (constantly ~arg) conj))
-		    (rest expr))
-		(fn [args#]
-		  (apply ~(first expr) args#)))))
+	   (cond
+	     (valid-expr? expr) (transform-expr expr)
+	     (first= 'if expr) (transform-if expr)
+	     (first= 'throw expr) (transform-throw expr)
+	     (first= 'try expr) (transform-try expr)
+	     :else expr))
 	 body)))
 
-(defmacro pfn
-  "A variant of fn that optionally accepts result-channels instead of parameters, and
-   returns a result-channel representing the returned value.
+;;;
 
-   The function will always immediately return a result-channel, but the result-channel
-   will only emit a value once all input result-channels have emitted their value.  If any of
-   the input result-channels emit errors, the function will not execute and simply emit the
-   input error."
-  [& args]
+(defn pfn [args]
   `(let [f# (fn ~@args)]
      (fn ~@(when (symbol? (first args)) (take 1 args))
        [~'& args#]
@@ -78,4 +109,13 @@
 	   (map (fn [x#] (read-merge (constantly x#) conj)) args#)
 	   [#(apply f# %)])))))
 
+(defn future* [body]
+  `(let [result# (result-channel)]
+     (future
+       (siphon-result
+	 (run-pipeline nil
+	   (fn [_#]
+	     ~@body))
+	 result#))
+     result#))
 

@@ -113,15 +113,52 @@
 
 ;;;
 
+(defmacro async
+  "Performs magic.
+
+   Any expression in a block wrapped by (async ...) can use a result-channel instead of an
+   actual value, and defer its own execution (and the execution of all code that depends on
+   its value) until the result-channel has emitted a value.  The value returned from an
+   (async ...) block is always a result-channel.
+
+   This means that we can write code that looks like a normal function, but is actually several
+   distinct callbacks stitched together.  Consider a situation where we want to read two messages
+   from a channel.  We could compose nested callbacks:
+
+   (receive ch
+     (fn [first-message]
+       (receive ch
+         (fn [second-message]
+           (perform-action [first-message second-message])))))
+
+   However, using async and read-channel (which returns a result-channel representing the next
+   message in the channel), this becomes a lot more straightforward:
+
+   (async
+     (let [first-message (read-channel ch)
+           second-message (read-channel ch)]
+       [first-message second-message]))
+
+   This will return a result-channel which will emit a vector of the next two messages from the
+   channel, once they've both arrived.
+
+   This is very, very experimental, and may be subject to change."
+  [& body]
+  (f/async body))
+
+(defmacro pfn
+  "A variant of fn that optionally accepts result-channels instead of parameters, and
+   returns a result-channel representing the returned value.
+
+   The function will always immediately return a result-channel, but the result-channel
+   will only emit a value once all input result-channels have emitted their value.  If any of
+   the input result-channels emit errors, the function will not execute and simply emit the
+   input error."
+  [& args]
+  (f/pfn args))
+
 (defmacro future*
   "A variation of 'future' that returns a result-channel instead of a synchronous
    future object."
   [& body]
-  `(let [result# (result-channel)]
-     (future
-       (siphon-result
-	 (run-pipeline nil
-	   (fn [_#]
-	     ~@body))
-	 result#))
-     result#))
+  (f/future* body))
