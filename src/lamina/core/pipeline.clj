@@ -24,10 +24,14 @@
 
 ;;;
 
+(declare wait-for-result)
+
 (defrecord ResultChannel [success error]
   Object
   (toString [_]
-    (str {:success success, :error error})))
+    (str {:success success, :error error}))
+  clojure.lang.IDeref
+  (deref [this] (wait-for-result this)))
 
 (defn result-channel []
   (ResultChannel. (constant-channel) (constant-channel)))
@@ -275,7 +279,7 @@
 	   (throw (TimeoutException. "Timed out waiting for result from pipeline."))
 	   (let [[k result] value]
 	     (case k
-	       :error (throw (second result))
+	       :error (throw result)
 	       :success result)))))))
 
 (defn siphon-result

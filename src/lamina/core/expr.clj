@@ -6,7 +6,7 @@
 ;;   the terms of this license.
 ;;   You must not remove this notice, or any other, from this software.
 
-(ns lamina.core.fn
+(ns lamina.core.expr
   (:use
     [lamina.core channel pipeline]
     [clojure walk]))
@@ -14,27 +14,53 @@
 ;;;
 
 (def special-form?
-  (set '(let if do let fn quote var throw loop recur try catch finally)))
+  (set '(let if do let let* fn fn* quote var throw loop recur try catch finally new)))
+
+(defn constant? [x]
+  (and (number? x)))
 
 (defn first= [symbol expr]
-  (and (list? expr) (= symbol (first expr))))
+  (and (seq? expr) (= symbol (first expr))))
 
 (declare async)
+(declare pfn)
+
+(defn to-pfn [f]
+  (fn [& args]
+    (apply run-pipeline []
+      (concat
+	(map
+	  (fn [x]
+	    (read-merge
+	      (fn []
+		(if (fn? x)
+		  (to-pfn x)
+		  x))
+	      conj))
+	  args)
+	[#(apply f %)]))))
 
 (defn valid-expr? [expr]
   (and
-    (list? expr)
+    (seq? expr)
     (< 1 (count expr))
     (not (special-form? (first expr)))))
 
 (defn transform-expr [expr]
-  (let [args (map #(gensym (str "arg" % "-")) (-> expr count dec range))]
+  (let [args (map vector (map #(when-not (constant? %) (gensym "arg")) (rest expr)) (rest expr))]
     `(run-pipeline []
        ~@(map
-	   (fn [arg] `(read-merge (constantly ~arg) conj))
-	   (rest expr))
-       (fn [[~@args]]
-	 (~(first expr) ~@args)))))
+	   (fn [arg]
+	     `(read-merge
+		(fn []
+		  (let [val# ~arg]
+		    (if (fn? val#)
+		      (to-pfn val#)
+		      val#)))
+		conj))
+	   (->> args (remove (complement first)) (map second)))
+       (fn [[~@(->> args (map first) (remove nil?))]]
+	 (~(first expr) ~@(map #(if-let [x (first %)] x (second %)) args))))))
 
 (defn transform-if [[_ predicate true-clause false-clause]]
   `(run-pipeline ~predicate
@@ -54,15 +80,15 @@
        :error-handler
        (fn [ex#]
 	 (run-pipeline nil
-	   :error-handler (fn [ex##] (redirect (pipeline (fn [_] (throw ex##))) nil))
-	   (fn [_]
-	     ~finally-exprs)
-	   (fn [_]
+	   :error-handler (fn [ex##] (redirect (pipeline (fn [_#] (throw ex##))) nil))
+	   (fn [_#]
+	     ~@finally-exprs)
+	   (fn [_#]
 	     (throw ex#))))
-       (fn [_]
+       (fn [_#]
 	 ~transformed-body))
-     (fn [_]
-       ~finally-exprs)))
+     (fn [_#]
+       ~@finally-exprs)))
 
 (defn transform-try [[_ & exprs]]
   (let [finally-clause (when (->> exprs last (first= 'finally)) (last exprs))
@@ -79,7 +105,9 @@
 			       ~@catch-clauses)]
 		 (complete result#))
 	       (catch Exception e#
-		 (redirect (pipeline (fn [_#] (throw e#))) nil))))
+		 (redirect
+		   (pipeline (fn [_#] (throw e#)))
+		   nil))))
 	   (fn [_#]
 	     ~@exprs))]
     (if finally-clause
@@ -96,7 +124,7 @@
 	     (first= 'throw expr) (transform-throw expr)
 	     (first= 'try expr) (transform-try expr)
 	     :else expr))
-	 body)))
+	 (prewalk macroexpand body))))
 
 ;;;
 

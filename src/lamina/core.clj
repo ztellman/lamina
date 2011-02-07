@@ -16,7 +16,7 @@
     [lamina.core.channel :as channel]
     [lamina.core.seq :as seq]
     [lamina.core.named :as named]
-    [lamina.core.fn :as f])
+    [lamina.core.expr :as x])
   (:import))
 
 
@@ -144,7 +144,7 @@
 
    This is very, very experimental, and may be subject to change."
   [& body]
-  (f/async body))
+  (x/async body))
 
 (defmacro pfn
   "A variant of fn that optionally accepts result-channels instead of parameters, and
@@ -155,10 +155,10 @@
    the input result-channels emit errors, the function will not execute and simply emit the
    input error."
   [& args]
-  (f/pfn args))
+  (x/pfn args))
 
 (defmacro future*
   "A variation of 'future' that returns a result-channel instead of a synchronous
    future object."
   [& body]
-  (f/future* body))
+  (x/future* body))
