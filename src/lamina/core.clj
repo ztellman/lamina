@@ -114,6 +114,9 @@
 
 ;;;
 
+(import-fn x/set-default-executor)
+(import-fn x/set-local-executor)
+
 (defmacro async
   "Performs magic.
 

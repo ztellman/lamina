@@ -167,10 +167,14 @@
 (def default-executor (atom nil))
 (def ns-executors (atom {}))
 
-(defn set-default-executor [executor]
+(defn set-default-executor
+  "Sets the default executor used by future*."
+  [executor]
   (reset! default-executor executor))
 
-(defn set-local-executor [executor]
+(defn set-local-executor
+  "Sets the executor used by future* when called within the current namespace."
+  [executor]
   (swap! ns-executors assoc *ns* executor))
 
 (defmacro current-executor []
