@@ -114,6 +114,10 @@ namespace.
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/run-pipeline">run-pipeline</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core/set-default-executor">set-default-executor</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core/set-local-executor">set-local-executor</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/siphon-result">siphon-result</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/splice">splice</a>
@@ -127,6 +131,14 @@ namespace.
       <a href="#lamina.core/wait-for-message">wait-for-message</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/wait-for-result">wait-for-result</a>
+    </div>
+    <br />
+  </div><div style="margin-left: 1em;" class="toc-section">
+    <a href="#lamina.core.expr">lamina.core.expr</a>
+    <div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core.expr/set-default-executor">set-default-executor</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core.expr/set-local-executor">set-local-executor</a>
     </div>
     <br />
   </div>
@@ -540,6 +552,24 @@ Returns a pipeline future.</pre>
 </div><div id="var-entry">
   <br />
   <hr />
+  <h2 id="lamina.core/set-default-executor">set-default-executor</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (set-default-executor executor)
+</pre>
+  <pre id="var-docstr">Sets the default executor used by future*.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.core/set-local-executor">set-local-executor</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (set-local-executor executor)
+</pre>
+  <pre id="var-docstr">Sets the executor used by future* when called within the current namespace.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
   <h2 id="lamina.core/siphon-result">siphon-result</h2>
   <span id="var-type">function</span><br />
   <pre id="var-usage">Usage: (siphon-result src dst)
@@ -607,6 +637,26 @@ not time out.</pre>
 If there was an error, the exception is re-thrown.
 
 If the timeout elapses, a java.util.concurrent.TimeoutException is thrown.</pre>
+  
+</div>
+<h2 id="namespace-name">lamina.core.expr</h2>
+<pre id="namespace-docstr"></pre>
+<br />
+<div id="var-entry">
+  <hr />
+  <h2 id="lamina.core.expr/set-default-executor">set-default-executor</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (set-default-executor executor)
+</pre>
+  <pre id="var-docstr">Sets the default executor used by future*.</pre>
+  
+</div><div id="var-entry">
+  <hr />
+  <h2 id="lamina.core.expr/set-local-executor">set-local-executor</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (set-local-executor executor)
+</pre>
+  <pre id="var-docstr">Sets the executor used by future* when called within the current namespace.</pre>
   
 </div>
 
