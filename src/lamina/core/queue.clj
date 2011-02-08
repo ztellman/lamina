@@ -48,7 +48,7 @@
    (on-drained [_ _] false)
    (drained? [_] true)
    (cancel-callbacks [_ _])
-   (toString [_] "")))
+   (toString [_] "[]")))
 
 ;;;
 

@@ -16,46 +16,73 @@
 (def special-form?
   (set '(let if do let let* fn fn* quote var throw loop recur try catch finally new)))
 
+(def unsupported-form?
+  (set '(loop recur)))
+
 (defn constant? [x]
   (and (number? x)))
 
 (defn first= [symbol expr]
   (and (seq? expr) (= symbol (first expr))))
 
-(declare async)
-(declare pfn)
+(defn converge [val]
+  (cond
+    (result-channel? val) val
+    (not (or (sequential? val) (map? val) (set? val))) (success-result val)
+    :else
+    (let [results (atom [])]
+      (prewalk
+	(fn [x]
+	  (when (result-channel? x)
+	    (swap! results conj x))
+	  x)
+	val)
+      (apply run-pipeline nil
+	(concat
+	  (map #(constantly %) @results)
+	  [(fn [_]
+	     (prewalk
+	       #(if (result-channel? %)
+		  (wait-for-result %)
+		  %)
+	       val))])))))
 
-(defn to-pfn [f]
-  (fn [& args]
-    (apply run-pipeline []
-      (concat
-	(map
-	  (fn [x]
-	    (read-merge
-	      (fn []
-		(if (fn? x)
-		  (to-pfn x)
-		  x))
-	      conj))
-	  args)
-	[#(apply f %)]))))
+(defn transform-fn [f]
+  (if (-> f meta ::original)
+    f
+    ^{::original f}
+    (fn [& args]
+      (apply run-pipeline []
+	(concat
+	  (map
+	    (fn [x]
+	      (read-merge
+		(fn []
+		  (if (fn? x)
+		    (transform-fn x)
+		    x))
+		conj))
+	    args)
+	  [#(apply f %)])))))
 
 (defn valid-expr? [expr]
   (and
     (seq? expr)
     (< 1 (count expr))
+    (symbol? (first expr))
     (not (special-form? (first expr)))))
 
 (defn transform-expr [expr]
   (let [args (map vector (map #(when-not (constant? %) (gensym "arg")) (rest expr)) (rest expr))]
     `(run-pipeline []
+       :executor *current-executor*
        ~@(map
 	   (fn [arg]
 	     `(read-merge
 		(fn []
 		  (let [val# ~arg]
 		    (if (fn? val#)
-		      (to-pfn val#)
+		      (transform-fn val#)
 		      val#)))
 		conj))
 	   (->> args (remove (complement first)) (map second)))
@@ -64,6 +91,8 @@
 
 (defn transform-if [[_ predicate true-clause false-clause]]
   `(run-pipeline ~predicate
+     :executor *current-executor*
+     :error-handler *current-executor*
      (fn [predicate#]
        (if predicate#
 	 ~true-clause
@@ -76,10 +105,12 @@
 
 (defn transform-finally [transformed-body [_ & finally-exprs]]
   `(run-pipeline nil
-     (pipeline 
+     (pipeline
+       :executor *current-executor*
        :error-handler
        (fn [ex#]
 	 (run-pipeline nil
+	   :executor *current-executor*
 	   :error-handler (fn [ex##] (redirect (pipeline (fn [_#] (throw ex##))) nil))
 	   (fn [_#]
 	     ~@finally-exprs)
@@ -115,35 +146,51 @@
       transformed-body)))
 
 (defn async [body]
-  `(do
-     ~@(postwalk
-	 (fn [expr]
-	   (cond
-	     (valid-expr? expr) (transform-expr expr)
-	     (first= 'if expr) (transform-if expr)
-	     (first= 'throw expr) (transform-throw expr)
-	     (first= 'try expr) (transform-try expr)
-	     :else expr))
-	 (prewalk macroexpand body))))
+  (let [body (postwalk
+	       (fn [expr]
+		 (when (and (seq? expr) (unsupported-form? (first expr)))
+		   (throw (Exception. (str (first expr) " not supported within (async ...)"))))
+		 (cond		   
+		   (valid-expr? expr) (transform-expr expr)
+		   (first= 'if expr) (transform-if expr)
+		   (first= 'throw expr) (transform-throw expr)
+		   (first= 'try expr) (transform-try expr)
+		   :else expr))
+	       (prewalk macroexpand body))]
+    `(do
+       ~@(butlast body)
+       ~(last body))))
 
 ;;;
 
-(defn pfn [args]
-  `(let [f# (fn ~@args)]
-     (fn ~@(when (symbol? (first args)) (take 1 args))
-       [~'& args#]
-       (apply run-pipeline []
-	 (concat
-	   (map (fn [x#] (read-merge (constantly x#) conj)) args#)
-	   [#(apply f# %)])))))
+(def *current-executor* nil)
+(def default-executor (atom nil))
+(def ns-executors (atom {}))
+
+(defn set-default-executor [executor]
+  (reset! default-executor executor))
+
+(defn set-local-executor [executor]
+  (swap! ns-executors assoc *ns* executor))
+
+(defmacro current-executor []
+  (let [ns *ns*]
+    `(or
+       *current-executor*
+       (@ns-executors ~ns)
+       @default-executor
+       clojure.lang.Agent/soloExecutor)))
 
 (defn future* [body]
-  `(let [result# (result-channel)]
-     (future
-       (siphon-result
-	 (run-pipeline nil
-	   (fn [_#]
-	     ~@body))
-	 result#))
+  `(let [result# (result-channel)
+	 executor# (current-executor)]
+     (.submit executor#
+       (fn []
+	 (binding [*current-executor* executor#]
+	   (siphon-result
+	     (run-pipeline nil
+	       (fn [_#]
+		 ~@body))
+	     result#))))
      result#))
 

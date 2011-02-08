@@ -11,8 +11,8 @@
     [lamina.core]
     [clojure.test]))
 
-(defmacro is= [result expr]
-  `(is (= ~result (deref (async ~expr)))))
+(defmacro is= [expected expr]
+  `(is (= ~expected @(async ~expr))))
 
 (deftest test-basic-exprs
   (is= 6 (+ 1 (+ 2 3)))
@@ -36,3 +36,7 @@
 	   (finally
 	     (+ 2 3)))))
 
+'(deftest test-channels
+  (is= [1 2 3]
+    (let [ch (channel 1 2 3)]
+      (repeatedly (fn [] 1)))))

@@ -16,7 +16,15 @@
     [clojure.contrib.logging :as log])
   (:import
     [java.util.concurrent
-     TimeoutException]))
+     TimeoutException
+     Executor]))
+
+;;;
+
+(defmacro with-executor [executor & body]
+  `(if-let [executor# ~executor]
+     (.submit ^Executor executor# (fn [] ~@body))
+     (do ~@body)))
 
 ;;;
 
@@ -111,7 +119,7 @@
 	 (cond
 	   (< 100 err-count)
 	   (enqueue (.error result)
-	     [initial-value (Exception. "Error loop detected in pipeline.")])
+	     (Exception. "Error loop detected in pipeline."))
 	   
 	   (redirect? value)
 	   (redirect-recur value pipeline initial-value err-count)
@@ -127,19 +135,23 @@
 	       (recur fns pipeline initial-value (dequeue (.success ch) nil) 0)
 	       
 	       :else
-	       (receive (poll ch)
-		 (fn [[outcome value]]
-		   (case outcome
-		     :error (when-let [redirect (handle-error pipeline ch result)]
-			      (let [[pipeline value] (process-redirect
-						       redirect
-						       pipeline
-						       initial-value)]
-				(start-pipeline pipeline value result)))
-		     :success (start-pipeline
-				pipeline fns
-				value initial-value
-				result))))))
+	       (let [bindings (get-thread-bindings)]
+		 (receive (poll ch)
+		   (fn [[outcome value]]
+		     (case outcome
+		       :error (with-bindings bindings
+				(when-let [redirect (handle-error pipeline ch result)]
+				  (let [[pipeline value] (process-redirect
+							   redirect
+							   pipeline
+							   initial-value)]
+				    (start-pipeline pipeline value result))))
+		       :success (with-executor (:executor pipeline)
+				  (with-bindings bindings
+				    (start-pipeline
+				      pipeline fns
+				      value initial-value
+				      result)))))))))
 	   
 	   (empty? fns)
 	   (enqueue (.success result) value)
@@ -178,7 +190,8 @@
   (let [opts (apply hash-map (get-opts opts+stages))
 	stages (drop (* 2 (count opts)) opts+stages)
 	pipeline {:stages stages
-		  :error-handler (:error-handler opts)}]
+		  :error-handler (:error-handler opts)
+		  :executor (:executor opts)}]
     (when-not (every? fn? stages)
       (throw (Exception. "Every stage in a pipeline must be a function.")))
     ^{:pipeline pipeline}
@@ -235,7 +248,7 @@
        (throw (Exception. "Cannot read from a drained channel."))
        (let [msg (dequeue ch ::none)]
 	 (if-not (= ::none msg)
-	   msg
+	   (success-result msg)
 	   (let [result (result-channel)
 		 {success :success error :error} result]
 	     (receive

@@ -80,6 +80,7 @@
 (import-fn pipeline/run-pipeline)
 
 ;; pipeline stage helpers
+(import-fn pipeline/result-channel?)
 (import-fn pipeline/read-channel)
 (import-fn pipeline/read-merge)
 (import-fn pipeline/blocking)
@@ -145,17 +146,6 @@
    This is very, very experimental, and may be subject to change."
   [& body]
   (x/async body))
-
-(defmacro pfn
-  "A variant of fn that optionally accepts result-channels instead of parameters, and
-   returns a result-channel representing the returned value.
-
-   The function will always immediately return a result-channel, but the result-channel
-   will only emit a value once all input result-channels have emitted their value.  If any of
-   the input result-channels emit errors, the function will not execute and simply emit the
-   input error."
-  [& args]
-  (x/pfn args))
 
 (defmacro future*
   "A variation of 'future' that returns a result-channel instead of a synchronous
