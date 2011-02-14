@@ -192,7 +192,7 @@
 	pipeline {:stages stages
 		  :error-handler (:error-handler opts)
 		  :executor (:executor opts)}]
-    (when-not (every? fn? stages)
+    (when-not (every? ifn? stages)
       (throw (Exception. "Every stage in a pipeline must be a function.")))
     ^{:pipeline pipeline}
     (fn [x]

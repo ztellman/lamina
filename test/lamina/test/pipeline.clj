@@ -55,7 +55,8 @@
 (deftest test-basic-pipelines
   (test-pipeline (apply pipeline (take 1e3 (repeat inc))) 1e3)
   (test-pipeline (apply pipeline (take 1e3 (repeat (blocking inc)))) 1e3)
-  (test-pipeline (apply pipeline (take 100 (repeat slow-inc))) 100))
+  (test-pipeline (apply pipeline (take 100 (repeat slow-inc))) 100)
+  (test-pipeline (pipeline #(assoc {} :result %) :result) 0))
 
 (deftest test-nested-pipelines
   (test-pipeline (pipeline inc (pipeline inc (pipeline inc) inc) inc) 5))
