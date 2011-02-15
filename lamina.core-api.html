@@ -78,8 +78,6 @@ namespace.
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/fork">fork</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
-      <a href="#lamina.core/future*">future*</a>
-    </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/lazy-channel-seq">lazy-channel-seq</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/map*">map*</a>
@@ -125,6 +123,8 @@ namespace.
       <a href="#lamina.core/take*">take*</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/take-while*">take-while*</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core/task">task</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/wait">wait</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
@@ -338,16 +338,6 @@ Any message enqueued into one channel will be enqueued into all other copies.</p
 </div><div id="var-entry">
   <br />
   <hr />
-  <h2 id="lamina.core/future*">future*</h2>
-  <span id="var-type">macro</span><br />
-  <pre id="var-usage">Usage: (future* &amp; body)
-</pre>
-  <pre id="var-docstr">A variation of 'future' that returns a result-channel instead of a synchronous
-future object.</pre>
-  
-</div><div id="var-entry">
-  <br />
-  <hr />
   <h2 id="lamina.core/lazy-channel-seq">lazy-channel-seq</h2>
   <span id="var-type">function</span><br />
   <pre id="var-usage">Usage: (lazy-channel-seq ch)
@@ -556,7 +546,7 @@ Returns a pipeline future.</pre>
   <span id="var-type">function</span><br />
   <pre id="var-usage">Usage: (set-default-executor executor)
 </pre>
-  <pre id="var-docstr">Sets the default executor used by future*.</pre>
+  <pre id="var-docstr">Sets the default executor used by task.</pre>
   
 </div><div id="var-entry">
   <br />
@@ -565,7 +555,7 @@ Returns a pipeline future.</pre>
   <span id="var-type">function</span><br />
   <pre id="var-usage">Usage: (set-local-executor executor)
 </pre>
-  <pre id="var-docstr">Sets the executor used by future* when called within the current namespace.</pre>
+  <pre id="var-docstr">Sets the executor used by task when called within the current namespace.</pre>
   
 </div><div id="var-entry">
   <br />
@@ -603,6 +593,19 @@ into a single channel.</pre>
   <pre id="var-usage">Usage: (take-while* f ch)
 </pre>
   <pre id="var-docstr">Returns a channel which will consume messages from 'ch' until (f msg) is false.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.core/task">task</h2>
+  <span id="var-type">macro</span><br />
+  <pre id="var-usage">Usage: (task &amp; body)
+</pre>
+  <pre id="var-docstr">A variation of 'future' that returns a result-channel instead of a synchronous
+future object.
+
+When used within (async ...), it's simply an annotation that the body should be executed
+on a separate thread.</pre>
   
 </div><div id="var-entry">
   <br />
@@ -648,7 +651,7 @@ If the timeout elapses, a java.util.concurrent.TimeoutException is thrown.</pre>
   <span id="var-type">function</span><br />
   <pre id="var-usage">Usage: (set-default-executor executor)
 </pre>
-  <pre id="var-docstr">Sets the default executor used by future*.</pre>
+  <pre id="var-docstr">Sets the default executor used by task.</pre>
   
 </div><div id="var-entry">
   <hr />
@@ -656,7 +659,7 @@ If the timeout elapses, a java.util.concurrent.TimeoutException is thrown.</pre>
   <span id="var-type">function</span><br />
   <pre id="var-usage">Usage: (set-local-executor executor)
 </pre>
-  <pre id="var-docstr">Sets the executor used by future* when called within the current namespace.</pre>
+  <pre id="var-docstr">Sets the executor used by task when called within the current namespace.</pre>
   
 </div>
 
