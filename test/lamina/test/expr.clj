@@ -21,22 +21,45 @@
   (is= 6 (->> (range 3) (map #(+ 1 %)) (reduce #(+ %1 %2)))))
 
 (deftest test-exceptions
-  (is= 3 (try
-	   (throw (Exception.))
-	   (catch Exception e
-	     3)))
-  (is= 4 (try
-	   (throw (Exception.))
-	   (catch RuntimeException e
-	     3)
-	   (catch Exception e
-	     4)))
-  (is= 5 (try
-	   (+ 1 2)
-	   (finally
-	     (+ 2 3)))))
+  (is= 3
+    (try
+      (throw (Exception.))
+      (catch Exception e
+	3)))
+  (is= 4
+    (try
+      (throw (Exception.))
+      (catch RuntimeException e
+	3)
+      (catch Exception e
+	4)))
+  (is= 5
+    (try
+      (+ 1 2)
+      (finally
+	(+ 2 3)))))
 
-'(deftest test-channels
+(deftest test-channels
   (is= [1 2 3]
     (let [ch (channel 1 2 3)]
-      (repeatedly (fn [] 1)))))
+      [(read-channel ch) (read-channel ch) (read-channel ch)]))
+  (is= [1 2 3]
+    (let [ch (channel 1 2 3)]
+      (converge (take 3 (repeatedly #(read-channel ch))))))
+  (is= 3
+    (let [ch (channel 1 2 3)
+	  a (read-channel ch)
+	  b (+ 1 (read-channel ch))]
+      b)))
+
+(deftest test-task
+  (is= [1 2 3]
+    (let [[a b c] [(task 1) (task 2) (task 3)]]
+      [a b c])))
+
+(deftest test-loop
+  (is= [0 1 2]
+    (loop [accum []]
+      (if (< (count accum) 3)
+	(recur (conj accum (count accum)))
+	accum))))

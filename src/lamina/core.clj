@@ -117,6 +117,8 @@
 (import-fn x/set-default-executor)
 (import-fn x/set-local-executor)
 
+(import-fn x/converge)
+
 (defmacro async
   "Performs magic.
 
@@ -150,8 +152,11 @@
   [& body]
   (x/async body))
 
-(defmacro future*
+(defmacro task
   "A variation of 'future' that returns a result-channel instead of a synchronous
-   future object."
+   future object.
+
+   When used within (async ...), it's simply an annotation that the body should be executed
+   on a separate thread."
   [& body]
-  (x/future* body))
+  (x/task body))
