@@ -50,7 +50,13 @@
     (let [ch (channel 1 2 3)
 	  a (read-channel ch)
 	  b (+ 1 (read-channel ch))]
-      b)))
+      b))
+  (is= [1 2 3]
+    (let [ch (closed-channel 1 2 3)]
+      (loop [accum []]
+	(if (drained? ch)
+	  accum
+	  (recur (conj accum (read-channel ch))))))))
 
 (deftest test-task
   (is= [1 2 3]
@@ -59,7 +65,5 @@
 
 (deftest test-loop
   (is= [0 1 2]
-    (loop [accum []]
-      (if (< (count accum) 3)
-	(recur (conj accum (count accum)))
-	accum))))
+    (for [x (range 3)] x)))
+

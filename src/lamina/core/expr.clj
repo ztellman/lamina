@@ -85,7 +85,7 @@
 			  (first= x 'fn 'fn*) (walk-fn-form f x)
 			  (first= x 'let 'let*) (walk-special-form f x)
 			  (first= x 'loop 'loop*) (walk-loop-form f x)
-			  (first= x 'recur) `(redirect (deref ~*recur-point*) [~@(rest x)])
+			  (first= x 'recur) `(redirect (deref ~*recur-point*) [~@(map f* (rest x))])
 			  :else (f (map f* x)))
 	:else (f x)))))
 

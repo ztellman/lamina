@@ -44,6 +44,32 @@
 
 ;;;
 
+(def *locked-observables* #{})
+
+(defmacro with-observable [observable & body]
+  `(try
+     (.acquire ^Semaphore (.semaphore ~observable))
+     ~@body
+     (finally
+       (.release ^Semaphore (.semaphore ~observable)))))
+
+(defmacro with-lockable-observable [observable & body]
+  `(if (*locked-observables* ~observable)
+     (do ~@body)
+     (with-observable ~observable ~@body)))
+
+(defmacro lock-observable [observable & body]
+  `(if (*locked-observables* ~observable)
+     (do ~@body)
+     (try
+       (.acquire ^Semaphore (:semaphore ~observable) Integer/MAX_VALUE)
+       (binding [*locked-observables* (conj *locked-observables* ~observable)]
+	 ~@body)
+       (finally
+	 (.release ^Semaphore (:semaphore ~observable) Integer/MAX_VALUE)))))
+
+;;;
+
 (defprotocol ObservableProtocol
   (subscribe [this observer-map])
   (unsubscribe [this keys])
@@ -62,21 +88,15 @@
        ~false-case
        nil)))
 
-(defmacro with-observable [observable & body]
-  `(try
-     (.acquire ^Semaphore (.semaphore ~observable))
-     ~@body
-     (finally
-       (.release ^Semaphore (.semaphore ~observable)))))
-
 (defrecord Observable [observers closed? ^Semaphore semaphore]
   ObservableProtocol
-  (subscribe [_ m]
-    (modify-observers observers @closed?
-      (do
-	(doseq [o (vals m)]
-	  (on-close o)))
-      merge m))
+  (subscribe [this m]
+    (with-lockable-observable this
+      (modify-observers observers @closed?
+	(do
+	  (doseq [o (vals m)]
+	    (on-close o)))
+	merge m)))
   (unsubscribe [_ ks]
     (modify-observers observers false
       false
@@ -96,20 +116,14 @@
   (close [this]
     (if-not (compare-and-set! closed? false true)
       false
-      (do
-	(doseq [o (vals @observers)]
-	  (on-close o))
-	(unsubscribe this (keys @observers))
-	true)))
+      (lock-observable this
+	(do
+	  (doseq [o (vals @observers)]
+	    (on-close o))
+	  (unsubscribe this (keys @observers))
+	  true))))
   (closed? [_]
     @closed?))
-
-(defmacro lock-observable [^Observable observable & body]
-  `(try
-     (.acquire ^Semaphore (:semaphore ~observable) Integer/MAX_VALUE)
-     ~@body
-     (finally
-       (.release ^Semaphore (:semaphore ~observable) Integer/MAX_VALUE))))
 
 (defn observable []
   (Observable. (atom {}) (atom false) (Semaphore. Integer/MAX_VALUE)))
