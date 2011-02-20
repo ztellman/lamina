@@ -116,6 +116,17 @@
     @latch
     (is (= (range num) @coll))))
 
+(deftest test-on-closed
+  (let [num 1e2
+	cnt (atom 0)]
+    (dotimes [i num]
+      (when (zero? (rem i 500)) (println i @cnt))
+      (let [ch (channel)]
+	(future (close ch))
+	(Thread/sleep (rand-int 10))
+	(on-closed ch #(swap! cnt inc))))
+    (Thread/sleep 20)
+    (is (= @cnt num))))
 
 ;; polling
 
