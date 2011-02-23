@@ -50,8 +50,6 @@ namespace.
     <div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/async">async</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
-      <a href="#lamina.core/blocking">blocking</a>
-    </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/cancel-callback">cancel-callback</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/channel-pair">channel-pair</a>
@@ -191,16 +189,6 @@ This will return a result-channel which will emit a vector of the next two messa
 channel, once they've both arrived.
 
 This is very, very experimental, and may be subject to change.</pre>
-  
-</div><div id="var-entry">
-  <br />
-  <hr />
-  <h2 id="lamina.core/blocking">blocking</h2>
-  <span id="var-type">function</span><br />
-  <pre id="var-usage">Usage: (blocking f)
-</pre>
-  <pre id="var-docstr">Takes a synchronous function, and returns a function which will be executed asynchronously,
-and whose invocation will return a pipeline channel.</pre>
   
 </div><div id="var-entry">
   <br />
