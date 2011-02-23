@@ -44,29 +44,29 @@
 
 ;;;
 
-(def *locked-observables* #{})
-
 (defmacro with-observable [observable & body]
-  `(try
-     (.acquire ^Semaphore (.semaphore ~observable))
-     ~@body
-     (finally
-       (.release ^Semaphore (.semaphore ~observable)))))
-
-(defmacro with-lockable-observable [observable & body]
-  `(if (*locked-observables* ~observable)
-     (do ~@body)
-     (with-observable ~observable ~@body)))
+  `(let [lock-count# (or (.get ^ThreadLocal (.lock-count ~observable)) 0)
+	 acquire?# (< lock-count# Integer/MAX_VALUE)]
+     (try
+       (when acquire?#
+	 (.acquire ^Semaphore (.semaphore ~observable))
+	 (.set ^ThreadLocal (.lock-count ~observable) (inc lock-count#)))
+       ~@body
+       (finally
+	 (when acquire?#
+	   (.set ^ThreadLocal (.lock-count ~observable) lock-count#)
+	   (.release ^Semaphore (.semaphore ~observable)))))))
 
 (defmacro lock-observable [observable & body]
-  `(if (*locked-observables* ~observable)
-     (do ~@body)
+  `(let [lock-count# (or (.get ^ThreadLocal (.lock-count ~observable)) 0)
+	 to-acquire# (- Integer/MAX_VALUE lock-count#)]
      (try
-       (.acquire ^Semaphore (:semaphore ~observable) Integer/MAX_VALUE)
-       (binding [*locked-observables* (conj *locked-observables* ~observable)]
-	 ~@body)
+       (.acquire ^Semaphore (.semaphore ~observable) to-acquire#)
+       (.set ^ThreadLocal (.lock-count ~observable) Integer/MAX_VALUE)
+       ~@body
        (finally
-	 (.release ^Semaphore (:semaphore ~observable) Integer/MAX_VALUE)))))
+	 (.release ^Semaphore (.semaphore ~observable) to-acquire#)
+	 (.set ^ThreadLocal (.lock-count ~observable) lock-count#)))))
 
 ;;;
 
@@ -88,10 +88,10 @@
        ~false-case
        nil)))
 
-(defrecord Observable [observers closed? ^Semaphore semaphore]
+(defrecord Observable [observers closed? ^Semaphore semaphore ^ThreadLocal lock-count]
   ObservableProtocol
   (subscribe [this m]
-    (with-lockable-observable this
+    (with-observable this
       (modify-observers observers @closed?
 	(do
 	  (doseq [o (vals m)]
@@ -126,7 +126,11 @@
     @closed?))
 
 (defn observable []
-  (Observable. (atom {}) (atom false) (Semaphore. Integer/MAX_VALUE)))
+  (Observable.
+    (atom {})
+    (atom false)
+    (Semaphore. Integer/MAX_VALUE)
+    (ThreadLocal.)))
 
 (defn permanent-observable []
   (with-meta (observable) {::permanent true}))

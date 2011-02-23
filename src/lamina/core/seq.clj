@@ -16,6 +16,7 @@
     [lamina.core.observable :as o]
     [lamina.core.queue :as q])
   (:import
+    [lamina.core.observable Observable]
     [java.util.concurrent TimeoutException]
     [lamina.core.queue EventQueue]
     [lamina.core.pipeline ResultChannel]
@@ -111,7 +112,7 @@
 			      (doseq [msg msgs]
 				(doseq [c callbacks]
 				  (c msg))))]
-      (o/lock-observable distributor
+      (o/lock-observable ^Observable distributor
 	(when (closed? ch) 
 	  (send-to-callbacks
 	    (butlast
@@ -153,11 +154,11 @@
 
     :else
     
-    (let [distributor ^Observable (-> source queue q/distributor)
+    (let [distributor (-> source queue q/distributor)
 	  send-to-destinations (fn [msgs]
 				 (doseq [[dst f] destination-function-map]
 				   (apply enqueue dst (f msgs))))]
-      (o/lock-observable distributor
+      (o/lock-observable ^Observable distributor
 	(send-to-destinations
 	  (sample-queue source
 	    #(ref-set % clojure.lang.PersistentQueue/EMPTY)))
@@ -190,7 +191,7 @@
        (repeat n ch)
 
        :else
-       (o/lock-observable (-> ch queue q/source)
+       (o/lock-observable ^Observable (-> ch queue q/source)
 	 (doall
 	   (map
 	     (fn [_]

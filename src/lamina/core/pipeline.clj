@@ -61,6 +61,18 @@
 (defn result-channel? [x]
   (instance? ResultChannel x))
 
+(defn on-success [^ResultChannel ch & callbacks]
+  (apply receive (.success ch) callbacks))
+
+(defn on-error [^ResultChannel ch & callbacks]
+  (apply receive (.error ch) callbacks))
+
+(defn success! [^ResultChannel ch value]
+  (enqueue (.success ch) value))
+
+(defn error! [^ResultChannel ch value]
+  (enqueue (.error ch) value))
+
 ;;;
 
 (defrecord Redirect [pipeline value])
@@ -162,7 +174,7 @@
 				      result)))))))))
 	   
 	   (empty? fns)
-	   (enqueue (.success result) value)
+	   (success! result value)
 	   
 	   :else
 	   (let [f (first fns)]
@@ -220,7 +232,7 @@
     (pipeline
       (fn [_]
 	(let [ch (result-channel)]
-	  (enqueue (.success ch) result))
+	  (success! ch result))
 	result))
     nil))
 
@@ -247,9 +259,9 @@
 	     (receive
 	       (poll {:ch ch} timeout)
 	       #(if %
-		  (enqueue (.success result)
+		  (success! result
 		    (second %))
-		  (enqueue (.error result)
+		  (error! result
 		    (TimeoutException. (str "read-channel timed out after " timeout " ms")))))
 	     result))))))
 
@@ -276,7 +288,7 @@
    If the timeout elapses, a java.util.concurrent.TimeoutException is thrown."
   ([result-channel]
      (wait-for-result result-channel -1))
-  ([result-channel timeout]
+  ([^ResultChannel result-channel timeout]
      (let [value (promise)]
        (receive
 	 (poll
@@ -293,9 +305,9 @@
 
 (defn siphon-result
   "Siphons the result from one result-channel to another."
-  [^ResultChannel src ^ResultChannel dst]
-  (receive (.success src) #(enqueue (.success dst) %))
-  (receive (.error src) #(enqueue (.error dst) %)))
+  [src dst]
+  (on-success src #(success! dst %))
+  (on-error src #(error! dst %)))
 
 (defmethod print-method ResultChannel [ch writer]
   (.write writer (.toString ch)))

@@ -84,6 +84,9 @@
 (import-fn pipeline/read-channel)
 (import-fn pipeline/read-merge)
 
+(import-fn pipeline/on-success)
+(import-fn pipeline/on-error)
+
 (defmacro do*
   "Creates a pipeline stage that emits the same value it receives, but performs some side-effect
    in between.  Useful for debug prints and logging."
