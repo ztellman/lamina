@@ -15,12 +15,40 @@
 
 ;;;
 
+(defmacro await-result
+  [& body]
+  `(let [result# (do ~@body)]
+     (if (result-channel? result#)
+       @result#
+       result#)))
+
+(defmacro extract-result
+  [& body]
+  `(let [result# (do ~@body)]
+     (if-not (result-channel? result#)
+       result#
+       (let [result## (dequeue (.success ^ResultChannel result#) ::none)]
+	 (if-not (= ::none result##)
+	   result##
+	   result#)))))
+
+;;;
+
 (declare walk-exprs)
 
 (def *recur-point* nil)
+(def *gating-values* nil)
 
 (defn first= [expr & symbols]
-  (and (seq? expr) (some #{(first expr)} symbols)))
+  (and
+    (seq? expr)
+    (symbol? (first expr))
+    (some #{(symbol (name (first expr)))} symbols)))
+
+(defn print-vals [& args]
+  (doseq [a args]
+    (pprint a))
+  (last args))
 
 (defn walk-bindings [f bindings]
   (vec
@@ -36,7 +64,7 @@
 
 (defn walk-special-form [f x]
   (let [[x xs] (split-special-form x)
-	binding-form? (#{'let 'let* 'loop 'loop*} (first x))]
+	binding-form? (first= x 'let 'let* 'loop 'loop*)]
     (concat
       (butlast x)
       [(if binding-form?
@@ -44,21 +72,37 @@
 	 (last x))]
       (f (map #(walk-exprs f %) xs)))))
 
+(defn insert-gating-sym [gating-sym fn-form]
+  (let [[args body] (split-special-form fn-form)]
+    `(~@args
+       (let [~gating-sym (atom [])]
+	 ~@body))))
+
 (defn walk-fn-form [f x]
-  (let [pipeline-sym (gensym "loop")]
-    `(let [~pipeline-sym (atom nil)]
-       (reset! ~pipeline-sym
-	 (pipeline
-	   (fn [x#]
-	     (apply
-	       ~(binding [*recur-point* pipeline-sym]
-		  (doall
-		    (if (or (symbol? (second x)) (vector? (second x)))
-		      (walk-special-form f x)
-		      (list* (first x) (map #(walk-special-form f %) (rest x))))))
-	       x#))))
-       (fn [~'& args#]
-	 ((deref ~pipeline-sym) args#)))))
+  (let [pipeline-sym (gensym "loop")
+	gating-sym (gensym "gating")]
+    (binding [*gating-values* gating-sym]
+      `(let [~pipeline-sym (atom nil)]
+	 (reset! ~pipeline-sym
+	   (pipeline
+	     (fn [x#]
+	       (apply
+		 ~(binding [*recur-point* pipeline-sym]
+		    (doall
+		      (if (or
+			    (vector? (second x))
+			    (and
+			      (symbol? (second x))
+			      (vector? (-> x rest second))))
+			(insert-gating-sym gating-sym (walk-special-form f x))
+			(concat
+			  (take-while symbol? x)
+			  (map
+			    #(insert-gating-sym gating-sym (walk-special-form f %))
+			    (drop-while symbol? x))))))
+		 x#))))
+	 (fn [~'& args#]
+	   (extract-result ((deref ~pipeline-sym) args#)))))))
 
 (defn walk-loop-form [f x]
   (let [pipeline-sym (gensym "loop")]
@@ -115,15 +159,13 @@
 
 ;;;
 
-(def skip-expand? #{'task 'loop})
-
 (defn partial-macroexpand [x]
-  (if (and (sequential? x) (skip-expand? (first x)))
+  (if (first= x 'task 'loop 'await-result)
     x
     (macroexpand x)))
 
-(def special-form?
-  (set '(let if do let let* fn fn* quote var throw loop loop* recur try catch finally new)))
+(def special-forms
+  '(let if do let let* fn fn* quote var throw loop loop* recur try catch finally new))
 
 (def unsupported-form?
   (set '()))
@@ -131,7 +173,8 @@
 (defn constant? [x]
   (or
     (number? x)
-    (string? x)))
+    (string? x)
+    (nil? x)))
 
 (defn constant-elements [x]
   (if (first= x '.)
@@ -143,25 +186,28 @@
     f
     ^{::original f}
     (fn [& args]
-      (apply run-pipeline []
-	(concat
-	  (map
-	    (fn [x]
-	      (read-merge
-		(fn []
-		  (if (fn? x)
-		    (transform-fn x)
-		    x))
-		conj))
-	    args)
-	  [#(apply f %)])))))
+      (if (every? (complement result-channel?) args)
+	(apply f args)
+	(extract-result
+	  (apply run-pipeline []
+	    (concat
+	      (map
+		(fn [x]
+		  (read-merge
+		    (fn []
+		      (if (fn? x)
+			(transform-fn x)
+			x))
+		    conj))
+		args)
+	      [#(apply f %)])))))))
 
 (defn valid-expr? [expr]
   (and
     (seq? expr)
     (< 1 (count expr))
     (symbol? (first expr))
-    (not (special-form? (first expr)))))
+    (not (apply first= expr special-forms))))
 
 (defn transform-expr [expr]
   (let [args (map vector
@@ -197,6 +243,16 @@
        (if predicate#
 	 ~true-clause
 	 ~@(when false-clause [false-clause])))))
+
+(defn transform-new [[_ class-name & args]]
+  `(run-pipeline []
+     :executor *current-executor*
+     ~@(map
+	 (fn [arg] `(read-merge (constantly ~arg) conj))
+	 args)
+     ~(let [arg-syms (take (count args) (repeatedly gensym))]
+	`(fn [[~@arg-syms]]
+	   (new ~class-name ~@arg-syms)))))
 
 (defn transform-throw [[_ exception]]
   `(run-pipeline ~exception
@@ -245,6 +301,22 @@
       (transform-finally transformed-body finally-clause)
       transformed-body)))
 
+(defn transform-lazy-seq [[_ & body]]
+  `(lazy-seq (await-result ~@body)))
+
+(defn pre-process [body]
+  (prewalk
+    (fn [expr]
+      (if-let [processed-expr
+	       (cond
+		 (first= expr 'lazy-seq) (transform-lazy-seq expr))]
+	(pre-process (partial-macroexpand processed-expr))
+	(let [expanded-expr (partial-macroexpand expr)]
+	  (if-not (= expr expanded-expr)
+	    (pre-process expanded-expr)
+	    expr))))
+    body))
+
 (defn async [body]
   (let [body (walk-exprs
 	       (fn [expr]
@@ -255,10 +327,14 @@
 		   (first= expr 'if) (transform-if expr)
 		   (first= expr 'throw) (transform-throw expr)
 		   (first= expr 'try) (transform-try expr)
+		   (first= expr 'new) (transform-new expr)
 		   :else expr))
-	       (prewalk partial-macroexpand body))]
-    `(do
-       ~@body)))
+	       (->> body
+		 pre-process
+		 (prewalk partial-macroexpand)))]
+    `(run-pipeline nil
+       (fn [_#]
+	 ~@body))))
 
 ;;;
 
@@ -292,6 +368,7 @@
 	 (binding [*current-executor* executor#]
 	   (siphon-result
 	     (run-pipeline nil
+	       :error-handler (constantly nil)
 	       (fn [_#]
 		 ~@body))
 	     result#))))

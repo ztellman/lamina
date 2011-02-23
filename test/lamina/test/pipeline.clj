@@ -19,8 +19,8 @@
   (is (= expected-result (wait-for-result (pipeline 0) 5000))))
 
 (def slow-inc
-  (blocking
-    (fn [x]
+  (fn [x]
+    (task
       (Thread/sleep 10)
       (inc x))))
 
@@ -36,7 +36,9 @@
   (throw (Exception. "boom")))
 
 (def slow-fail
-  (blocking (fn [_] (fail))))
+  (fn [x]
+    (task
+      (fail x))))
 
 (defn fail-times [n]
   (let [counter (atom n)]
@@ -54,7 +56,7 @@
 
 (deftest test-basic-pipelines
   (test-pipeline (apply pipeline (take 1e3 (repeat inc))) 1e3)
-  (test-pipeline (apply pipeline (take 1e3 (repeat (blocking inc)))) 1e3)
+  (test-pipeline (apply pipeline (take 1e3 (repeat (fn [x] (task (inc x)))))) 1e3)
   (test-pipeline (apply pipeline (take 100 (repeat slow-inc))) 100)
   (test-pipeline (pipeline #(assoc {} :result %) :result) 0))
 

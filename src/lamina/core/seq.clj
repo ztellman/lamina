@@ -18,6 +18,7 @@
   (:import
     [java.util.concurrent TimeoutException]
     [lamina.core.queue EventQueue]
+    [lamina.core.pipeline ResultChannel]
     [lamina.core.channel Channel]))
 
 ;;;
@@ -275,7 +276,7 @@
 			  (close ch*)))))]))))
     ch*))
 
-(defn- reduce- [f val ch]
+(defn- ^ResultChannel reduce- [f val ch]
   (run-pipeline val
     (read-merge
       #(read-channel ch)
@@ -290,12 +291,12 @@
 (defn reduce*
   "Returns a constant-channel which will return the result of the reduce once the channel has been exhausted."
   ([f ch]
-     (:success
+     (.success
        (run-pipeline ch
 	 read-channel
 	 #(reduce- f %1 ch))))
   ([f val ch]
-     (:success (reduce- f val ch))))
+     (.success (reduce- f val ch))))
 
 (defn reductions- [f val ch]
   (let [ch* (channel)]
@@ -319,7 +320,7 @@
   "Returns a channel which contains the intermediate results of the reduce operation."
   ([f ch]
      (wait-for-message
-       (:success
+       (.success
 	 (run-pipeline ch
 	   read-channel
 	   #(reductions- f %1 ch)))))

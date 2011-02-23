@@ -34,20 +34,28 @@
 
 (declare wait-for-result)
 
-(defrecord ResultChannel [success error]
+(deftype ResultChannel [success error]
   Object
   (toString [_]
-    (str {:success success, :error error}))
+    (cond
+      (not= ::none (dequeue success ::none))
+      (str "<< " (pr-str (dequeue success nil)) " >>")
+
+      (not= ::none (dequeue error ::none))
+      (str "<< ERROR: " (dequeue error nil) " >>")
+
+      :else
+      "<< ... >>"))
   clojure.lang.IDeref
   (deref [this] (wait-for-result this)))
 
-(defn result-channel []
+(defn ^ResultChannel result-channel []
   (ResultChannel. (constant-channel) (constant-channel)))
 
-(defn error-result [val]
+(defn ^ResultChannel error-result [val]
   (ResultChannel. nil-channel (constant-channel val)))
 
-(defn success-result [val]
+(defn ^ResultChannel success-result [val]
   (ResultChannel. (constant-channel val) nil-channel))
 
 (defn result-channel? [x]
@@ -136,7 +144,7 @@
 	       
 	       :else
 	       (let [bindings (get-thread-bindings)]
-		 (receive (poll ch)
+		 (receive (poll {:success (.success ch) :error (.error ch)})
 		   (fn [[outcome value]]
 		     (case outcome
 		       :error (with-bindings bindings
@@ -179,7 +187,7 @@
     (concat (take 2 opts+rest) (get-opts (drop 2 opts+rest)))
     nil))
 
-(defn pipeline
+(defn ^ResultChannel pipeline
   "Returns a function with an arity of one.  Invoking the function will return
    a pipeline channel.
 
@@ -212,32 +220,18 @@
     (pipeline
       (fn [_]
 	(let [ch (result-channel)]
-	  (enqueue (:success ch) result))
+	  (enqueue (.success ch) result))
 	result))
     nil))
 
-(defn run-pipeline
+(defn ^ResultChannel run-pipeline
   "Equivalent to ((pipeline opts+stages) initial-value).
 
    Returns a pipeline future."
   [initial-value & opts+stages]
   ((apply pipeline opts+stages) initial-value))
 
-(defn blocking
-  "Takes a synchronous function, and returns a function which will be executed asynchronously,
-   and whose invocation will return a pipeline channel."
-  [f]
-  (fn [x]
-    (let [result (result-channel)
-	  {success :success error :error} result]
-      (future
-	(try
-	  (enqueue success (f x))
-	  (catch Exception e
-	    (enqueue error [x e]))))
-      result)))
-
-(defn read-channel
+(defn ^ResultChannel read-channel
   "For reading channels within pipelines.  Takes a simple channel, and returns
    a result channel representing the next message from the channel.  If the timeout
    elapses, the result channel will emit an error."
@@ -249,14 +243,13 @@
        (let [msg (dequeue ch ::none)]
 	 (if-not (= ::none msg)
 	   (success-result msg)
-	   (let [result (result-channel)
-		 {success :success error :error} result]
+	   (let [result (result-channel)]
 	     (receive
 	       (poll {:ch ch} timeout)
 	       #(if %
-		  (enqueue success
+		  (enqueue (.success result)
 		    (second %))
-		  (enqueue error
+		  (enqueue (.error result)
 		    (TimeoutException. (str "read-channel timed out after " timeout " ms")))))
 	     result))))))
 
@@ -285,7 +278,10 @@
      (wait-for-result result-channel -1))
   ([result-channel timeout]
      (let [value (promise)]
-       (receive (poll result-channel timeout)
+       (receive
+	 (poll
+	   {:success (.success result-channel) :error (.error result-channel)}
+	   timeout)
 	 #(deliver value %))
        (let [value @value]
 	 (if (nil? value)
@@ -297,9 +293,9 @@
 
 (defn siphon-result
   "Siphons the result from one result-channel to another."
-  [src dst]
-  (receive (:success src) #(enqueue (:success dst) %))
-  (receive (:error src) #(enqueue (:error dst) %)))
+  [^ResultChannel src ^ResultChannel dst]
+  (receive (.success src) #(enqueue (.success dst) %))
+  (receive (.error src) #(enqueue (.error dst) %)))
 
 (defmethod print-method ResultChannel [ch writer]
-  (.write writer (str ch)))
+  (.write writer (.toString ch)))

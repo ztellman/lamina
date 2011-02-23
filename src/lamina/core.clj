@@ -83,7 +83,6 @@
 (import-fn pipeline/result-channel?)
 (import-fn pipeline/read-channel)
 (import-fn pipeline/read-merge)
-(import-fn pipeline/blocking)
 
 (defmacro do*
   "Creates a pipeline stage that emits the same value it receives, but performs some side-effect

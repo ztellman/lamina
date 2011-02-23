@@ -120,7 +120,6 @@
   (let [num 1e2
 	cnt (atom 0)]
     (dotimes [i num]
-      (when (zero? (rem i 500)) (println i @cnt))
       (let [ch (channel)]
 	(future (close ch))
 	(Thread/sleep (rand-int 10))
@@ -186,7 +185,6 @@
 ;; fork
 
 (deftest test-receive-all
-  (println "test-receive-all")
   (dotimes [i 1e2]
     (let [result (atom [])]
       (let [s (range 10)]
@@ -201,7 +199,6 @@
 	    (is (= @result s))))))))
 
 (deftest test-fork
-  (println "test-fork")
   (dotimes [i 1e2]
     (let [s (range 10)]
       (let [ch (channel)]
@@ -212,7 +209,6 @@
 	  (is (= s (lazy-channel-seq ch*))))))))
 
 (deftest test-fork-receive-all
-  (println "test-fork-receive-all")
   (dotimes [i 1e2]
     (let [result (atom [])]
       (let [s (range 10)]
@@ -316,7 +312,6 @@
      output-channel))
 
 (deftest test-multi-channel-close
-  (println "test-multi-channel-close")
   (testing "Composing two channels with priority"
     (let [chan1 (channel) ;; Should have priority over chan2
           chan2 (channel)

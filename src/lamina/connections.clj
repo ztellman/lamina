@@ -15,7 +15,8 @@
   (:require
     [clojure.contrib.logging :as log])
   (:import
-    [java.util.concurrent TimeoutException]))
+    [java.util.concurrent TimeoutException]
+    [lamina.core.pipeline ResultChannel]))
 
 ;;
 
@@ -105,7 +106,7 @@
 	   requests (channel)]
        ;; request loop
        (receive-in-order requests
-	 (fn [[request result-channel timeout]]
+	 (fn [[request ^ResultChannel result-channel timeout]]
 
 	   (if (= ::close request)
 	     (close-connection connection)
@@ -115,7 +116,7 @@
 		 (run-pipeline nil
 		   (wait timeout)
 		   (fn [_]
-		     (enqueue (:success result-channel) (TimeoutException.)))))
+		     (enqueue (.success result-channel) (TimeoutException.)))))
 
 	       ;; make request
 	       (let [timeout (timeout-fn timeout)]
@@ -165,7 +166,7 @@
 
        ;; handle requests
        (receive-in-order requests
-	 (fn [[request result timeout]]
+	 (fn [[request ^ResultChannel result timeout]]
 	   (if (= ::close request)
 	     (close-connection connection)
 	     (do
@@ -173,7 +174,7 @@
 	       (when-not (neg? timeout)
 		 (run-pipeline nil
 		   (wait timeout)
-		   (enqueue (:error result) (TimeoutException.))))
+		   (enqueue (.error result) (TimeoutException.))))
 	       
 	       ;; send requests
 	       (run-pipeline (connection)
@@ -183,7 +184,7 @@
        
        ;; handle responses
        (receive-in-order responses
-	 (fn [[request result timeout ch]]
+	 (fn [[request ^ResultChannel result timeout ch]]
 	   (run-pipeline ch
 	     :error-handler (fn [_]
 			      ;; re-send request
@@ -194,7 +195,7 @@
 	     (fn [response]
 	       (if (and (nil? response) (drained? ch))
 		 (throw (Exception. "Connection closed"))
-		 (enqueue (:success result) response))))))
+		 (enqueue (.success result) response))))))
 
        ;; request function
        (fn this

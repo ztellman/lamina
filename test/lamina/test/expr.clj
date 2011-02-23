@@ -39,6 +39,16 @@
       (finally
 	(+ 2 3)))))
 
+(deftest test-fns
+  (is= 3
+    ((fn [[x]] x) [3]))
+  (is= 3
+    ((fn ([[x]] x)) [3]))
+  (is= 3
+    ((fn abc [[x]] x) [3]))
+  (is= 3
+    ((fn abc ([[x]] x)) [3])))
+
 (deftest test-channels
   (is= [1 2 3]
     (let [ch (channel 1 2 3)]
@@ -63,7 +73,26 @@
     (let [[a b c] [(task 1) (task 2) (task 3)]]
       [a b c])))
 
-(deftest test-loop
+(deftest test-recur
   (is= [0 1 2]
-    (for [x (range 3)] x)))
+    (for [x (range 3)] x))
+  (is= [0 1 2]
+    ((fn this [x]
+       (if (= 3 (count x))
+	 x
+	 (recur (conj x (count x)))))
+     []))
+  (is= 4
+    ((fn
+       ([x y] (recur (+ x y)))
+       ([x] (inc x)))
+     1 2)))
 
+(deftest test-lazy-seq
+  (is= [0 1 2]
+    ((fn this [x]
+       (lazy-seq
+	 (if (zero? x)
+	   [x]
+	   (task (concat (this (dec x)) [x])))))
+     2)))
