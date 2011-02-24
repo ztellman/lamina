@@ -162,7 +162,10 @@
 (defn partial-macroexpand [x]
   (if (first= x 'task 'loop 'await-result)
     x
-    (macroexpand x)))
+    (let [ex (macroexpand-1 x)]
+      (if-not (identical? ex x)
+	(partial-macroexpand ex)
+	x))))
 
 (def special-forms
   '(let if do let let* fn fn* quote var throw loop loop* recur try catch finally new))
@@ -174,7 +177,8 @@
   (or
     (number? x)
     (string? x)
-    (nil? x)))
+    (nil? x)
+    (and (symbol? x) (class? (resolve x)))))
 
 (defn constant-elements [x]
   (if (first= x '.)
@@ -234,6 +238,7 @@
 		    conj))
 	       (map first non-constant-args))
 	   (fn [[~@(->> non-constant-args (map first))]]
+	     ;;(println "args" ~@args)
 	     (~(first expr) ~@args)))))))
 
 (defn transform-if [[_ predicate true-clause false-clause]]
@@ -244,15 +249,20 @@
 	 ~true-clause
 	 ~@(when false-clause [false-clause])))))
 
-(defn transform-new [[_ class-name & args]]
-  `(run-pipeline []
-     :executor *current-executor*
-     ~@(map
-	 (fn [arg] `(read-merge (constantly ~arg) conj))
-	 args)
-     ~(let [arg-syms (take (count args) (repeatedly gensym))]
-	`(fn [[~@arg-syms]]
-	   (new ~class-name ~@arg-syms)))))
+(defn transform-lazy-seq [[_ _ f]]
+  `(new clojure.lang.LazySeq (fn [] (await-result (~f)))))
+
+(defn transform-new [[_ class-name & args :as expr]]
+  (if (= (resolve class-name) clojure.lang.LazySeq)
+    (transform-lazy-seq expr)
+    `(run-pipeline []
+       :executor *current-executor*
+       ~@(map
+	   (fn [arg] `(read-merge (constantly ~arg) conj))
+	   args)
+       ~(let [arg-syms (take (count args) (repeatedly gensym))]
+	  `(fn [[~@arg-syms]]
+	     (new ~class-name ~@arg-syms))))))
 
 (defn transform-throw [[_ exception]]
   `(run-pipeline ~exception
@@ -301,22 +311,6 @@
       (transform-finally transformed-body finally-clause)
       transformed-body)))
 
-(defn transform-lazy-seq [[_ & body]]
-  `(lazy-seq (await-result ~@body)))
-
-(defn pre-process [body]
-  (prewalk
-    (fn [expr]
-      (if-let [processed-expr
-	       (cond
-		 (first= expr 'lazy-seq) (transform-lazy-seq expr))]
-	(pre-process (partial-macroexpand processed-expr))
-	(let [expanded-expr (partial-macroexpand expr)]
-	  (if-not (= expr expanded-expr)
-	    (pre-process expanded-expr)
-	    expr))))
-    body))
-
 (defn async [body]
   (let [body (walk-exprs
 	       (fn [expr]
@@ -330,7 +324,6 @@
 		   (first= expr 'new) (transform-new expr)
 		   :else expr))
 	       (->> body
-		 pre-process
 		 (prewalk partial-macroexpand)))]
     `(run-pipeline nil
        (fn [_#]

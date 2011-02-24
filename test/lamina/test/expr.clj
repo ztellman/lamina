@@ -11,6 +11,11 @@
     [lamina.core]
     [clojure.test]))
 
+(defmacro task* [& body]
+  `(task
+     (Thread/sleep 10)
+     ~@body))
+
 (defmacro is= [expected expr]
   `(is (= ~expected @(async ~expr))))
 
@@ -70,22 +75,28 @@
 
 (deftest test-task
   (is= [1 2 3]
-    (let [[a b c] [(task 1) (task 2) (task 3)]]
-      [a b c])))
+    (let [[a b c] [(task* 1) (task* 2) (task* 3)]]
+      [a b c]))
+  (is= (range 100)
+    ((fn this [x]
+       (if (zero? x)
+	 [0]
+	 (task* (conj (this (dec x)) x))))
+     99)))
 
 (deftest test-recur
   (is= [0 1 2]
-    (for [x (range 3)] x))
-  (is= [0 1 2]
-    ((fn this [x]
-       (if (= 3 (count x))
+    (for [x (range 3)] (task* x)))
+  (is= (range 100)
+    ((fn [x]
+       (if (= 100 (count x))
 	 x
-	 (recur (conj x (count x)))))
+	 (recur (task* (conj x (count x))))))
      []))
   (is= 4
     ((fn
-       ([x y] (recur (+ x y)))
-       ([x] (inc x)))
+       ([x y] (recur (task* (+ x y))))
+       ([x] (task* (inc x))))
      1 2)))
 
 (deftest test-lazy-seq
@@ -94,5 +105,5 @@
        (lazy-seq
 	 (if (zero? x)
 	   [x]
-	   (task (concat (this (dec x)) [x])))))
+	   (task* (concat (this (dec x)) [x])))))
      2)))
