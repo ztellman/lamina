@@ -197,7 +197,7 @@
      (queue source nil))
   ([source messages]
      (let [accumulate (atom true)
-	   distributor (o/observable)
+	   distributor (o/permanent-observable)
 	   q (EventQueue.
 	       source
 	       distributor
