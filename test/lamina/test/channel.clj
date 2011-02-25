@@ -80,6 +80,49 @@
     (channel)
     (enqueue ch 1 2)
     (enqueue-and-close ch 3)))
+
+(deftest test-siphon-sealing
+  (let [a (channel), b (channel)]
+    (siphon a b)
+    (enqueue a 1 2 3)
+    (is (= [1 2 3] (channel-seq b)))
+    (close b)
+    (is (closed? a)))
+
+  (let [a (permanent-channel), b (channel)]
+    (siphon a b)
+    (enqueue a 1 2 3)
+    (is (= [1 2 3] (channel-seq b)))
+    (close b)
+    (is (not (closed? a)))
+    (let [c (channel)]
+      (siphon a c)
+      (enqueue a 1 2 3)
+      (is (= [1 2 3] (channel-seq c)))))
+
+  (let [a (channel)
+	b (map* inc a)
+	c (map* dec b)]
+    (enqueue a 1 2 3)
+    (is (= [] (channel-seq a)))
+    (is (= [] (channel-seq b)))
+    (is (= [1 2 3] (channel-seq c)))
+    (close c)
+    (is (closed? b))
+    (is (closed? a)))
+
+  (let [a (permanent-channel)
+	b (map* inc a)
+	c (map* dec b)]
+    (enqueue a 1 2 3)
+    (is (= [] (channel-seq a)))
+    (is (= [] (channel-seq b)))
+    (is (= [1 2 3] (channel-seq c)))
+    (close c)
+    (is (closed? b))
+    (is (not (closed? a)))))
+
+
 ;;;
 
 ;; Register a series of listeners that only receive one value

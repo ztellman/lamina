@@ -167,7 +167,7 @@
 	  (zipmap
 	    (map consumer (keys destination-function-map))
 	    (vals destination-function-map))
-	  2
+	  1
 	  false))
       (q/check-for-drained (queue source))
       true)))

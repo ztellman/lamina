@@ -23,7 +23,8 @@
 (defprotocol ObserverProtocol
   (on-message [this msgs])
   (on-close [this])
-  (on-observers-changed [this observers]))
+  (on-observers-changed [this observers])
+  (consumer? [this]))
 
 (defn observer
   ([message-callback]
@@ -32,6 +33,8 @@
      (observer message-callback close-callback nil))
   ([message-callback close-callback observers-callback]
      (reify ObserverProtocol
+       (consumer? [_]
+	 (boolean message-callback))
        (on-message [_ msgs]
 	 (when message-callback
 	   (message-callback msgs)))
@@ -218,10 +221,15 @@
 	   {src (observer
 		  nil
 		  (fn []
-		    (when (and
-			    (not (::permanent (meta src)))
-			    (<= (count (unsubscribe src [dst])) observer-threshold))
-		      (close src))
+		    (let [observer-count (->>
+					   (unsubscribe src [dst])
+					   vals
+					   (filter consumer?)
+					   count)]
+		      (when (and
+			      (<= observer-count observer-threshold)
+			      (not (::permanent (meta src))))
+		       (close src)))
 		    (unsubscribe dst [src]))
 		  nil)})))))
 
