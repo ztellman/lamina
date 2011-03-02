@@ -63,9 +63,27 @@
     ((fn abc ([[x]] x)) [3])))
 
 (deftest test-channels
-  (is= [1 2 3]
-    (let [ch (channel 1 2 3)]
-      [(read-channel ch) (read-channel ch) (read-channel ch)]))
+  (is= [1 2]
+    (let [ch (channel 1 2)]
+      [(read-channel ch) (read-channel ch)]))
+  (let [ch (channel)]
+    (future
+      (Thread/sleep 100)
+      (enqueue ch 1))
+    (is (= [1 1]
+	     @(async
+		(let [a (read-channel ch)
+		      b (read-channel ch)]
+		  [a b])))))
+  (let [ch (channel)]
+    (future
+      (Thread/sleep 100)
+      (enqueue ch 1 2))
+    (is (= [1 2]
+	     @(async
+		(let [a (force (read-channel ch))
+		      b (force (read-channel ch))]
+		  [a b])))))
   (is= [1 2 3]
     (let [ch (channel 1 2 3)]
       (converge (take 3 (repeatedly #(read-channel ch))))))

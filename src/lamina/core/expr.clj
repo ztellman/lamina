@@ -46,7 +46,7 @@
     (symbol? (first expr))
     (some #{(symbol (name (first expr)))} symbols)))
 
-'(defmacro with-forced-values [forced-values & body]
+(defmacro with-forced-values [forced-values & body]
   `(let [forced-values# (when ~forced-values (deref ~forced-values))]
      (apply
        run-pipeline nil
@@ -61,9 +61,6 @@
 	      nil)])
 	 [(fn [_#]
 	    ~@body)]))))
-
-(defmacro with-forced-values [_ & body]
-  `(do ~@body))
 
 (defn print-vals [& args]
   (doseq [a args]
@@ -160,6 +157,9 @@
 						      (await-result ~(second x))
 						      (await-result ~(->> x rest second (walk-exprs f))))
 			  (first= x 'task) (walk-task-form f x)
+			  (first= x 'force) `(let [result# ~(walk-exprs f (second x))]
+					       (swap! ~*forced-values* conj result#)
+					       result#)
 			  (first= x 'recur) `(redirect (deref ~*recur-point*) [~@(map f* (rest x))])
 			  :else (f (map f* x)))
 	:else (f x)))))
