@@ -11,38 +11,46 @@
     [lamina.core]
     [clojure.test]))
 
+(def *sleep-interval* 10)
+
 (defmacro task* [& body]
   `(task
-     (Thread/sleep 10)
+     (Thread/sleep *sleep-interval*)
      ~@body))
 
 (defmacro is= [expected expr]
-  `(is (= ~expected @(async ~expr))))
+  `(do
+     (binding [*sleep-interval* 50]
+       (dotimes [_# 1]
+	 (is (= ~expected @(async ~expr)) (str "interval=" *sleep-interval*))))
+     (binding [*sleep-interval* 0]
+       (dotimes [_# 5]
+	 (is (= ~expected @(async ~expr)) (str "interval=" *sleep-interval*))))))
 
 (deftest test-basic-exprs
-  (is= 6 (+ 1 (+ 2 3)))
-  (is= 6 (reduce + [1 2 3]))
+  (is= 6 (task* (+ 1 (task* (+ 2 3)))))
+  (is= 6 (reduce #(task* (+ %1 %2)) [1 2 3]))
   (is= 6 (->> (range 3) (map inc) (reduce +)))
-  (is= 6 (->> (range 3) (map #(+ 1 %)) (reduce #(+ %1 %2)))))
+  (is= 6 (->> (range 3) (map #(task* (+ 1 %))) (reduce #(task* (+ %1 %2))))))
 
 (deftest test-exceptions
   (is= 3
     (try
       (throw (Exception.))
       (catch Exception e
-	3)))
+	(task* 3))))
   (is= 4
     (try
       (throw (Exception.))
       (catch RuntimeException e
-	3)
+	(task* 3))
       (catch Exception e
-	4)))
+	(task* 4))))
   (is= 5
     (try
-      (+ 1 2)
+      (task* (+ 1 2))
       (finally
-	(+ 2 3)))))
+	(task* (+ 2 3))))))
 
 (deftest test-fns
   (is= 3

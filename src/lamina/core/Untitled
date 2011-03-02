@@ -1,0 +1,13 @@
+lamina.test.expr> (test-recur)
+
+FAIL in (test-recur) (expr.clj:88)
+expected: (clojure.core/= [0 1 2] (clojure.core/deref (lamina.core/async (for [x (range 3)] (task* x)))))
+  actual: (not (clojure.core/= [0 1 2] ()))
+nil
+lamina.test.expr> (ns user)
+nil
+user> (use 'lamina.core :reload-all)
+nil
+user> (use 'lamina.core :reload-all)
+nil
+user> 

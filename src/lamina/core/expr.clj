@@ -35,15 +35,35 @@
 ;;;
 
 (declare walk-exprs)
+(declare transform-task)
 
 (def *recur-point* nil)
-(def *gating-values* nil)
+(def *forced-values* nil)
 
 (defn first= [expr & symbols]
   (and
     (seq? expr)
     (symbol? (first expr))
     (some #{(symbol (name (first expr)))} symbols)))
+
+'(defmacro with-forced-values [forced-values & body]
+  `(let [forced-values# (when ~forced-values (deref ~forced-values))]
+     (apply
+       run-pipeline nil
+       :executor *current-executor*
+       (concat
+	 (map
+	   (fn [value#] (read-merge (constantly value#) (constantly nil)))
+	   forced-values#)
+	 (when-not (empty? forced-values#)
+	   [(fn [_#]
+	      (apply swap! ~forced-values disj forced-values#)
+	      nil)])
+	 [(fn [_#]
+	    ~@body)]))))
+
+(defmacro with-forced-values [_ & body]
+  `(do ~@body))
 
 (defn print-vals [& args]
   (doseq [a args]
@@ -72,16 +92,23 @@
 	 (last x))]
       (f (map #(walk-exprs f %) xs)))))
 
-(defn insert-gating-sym [gating-sym fn-form]
+(defn insert-forced-sym [forced-sym fn-form]
   (let [[args body] (split-special-form fn-form)]
     `(~@args
-       (let [~gating-sym (atom [])]
+       (let [~forced-sym (atom #{})]
 	 ~@body))))
+
+(defn walk-task-form [f x]
+  (let [forced-sym (gensym "forced")]
+    (transform-task
+      `((let [~forced-sym (atom #{})]
+	  ~@(binding [*forced-values* forced-sym]
+	      (map #(walk-exprs f %) (rest x))))))))
 
 (defn walk-fn-form [f x]
   (let [pipeline-sym (gensym "loop")
-	gating-sym (gensym "gating")]
-    (binding [*gating-values* gating-sym]
+	forced-sym (gensym "forced")]
+    (binding [*forced-values* forced-sym]
       `(let [~pipeline-sym (atom nil)]
 	 (reset! ~pipeline-sym
 	   (pipeline
@@ -94,11 +121,11 @@
 			    (and
 			      (symbol? (second x))
 			      (vector? (-> x rest second))))
-			(insert-gating-sym gating-sym (walk-special-form f x))
+			(insert-forced-sym forced-sym (walk-special-form f x))
 			(concat
 			  (take-while symbol? x)
 			  (map
-			    #(insert-gating-sym gating-sym (walk-special-form f %))
+			    #(insert-forced-sym forced-sym (walk-special-form f %))
 			    (drop-while symbol? x))))))
 		 x#))))
 	 (fn [~'& args#]
@@ -129,6 +156,10 @@
 			  (first= x 'fn 'fn*) (walk-fn-form f x)
 			  (first= x 'let 'let*) (walk-special-form f x)
 			  (first= x 'loop 'loop*) (walk-loop-form f x)
+			  (first= x 'chunk-append) `(chunk-append
+						      (await-result ~(second x))
+						      (await-result ~(->> x rest second (walk-exprs f))))
+			  (first= x 'task) (walk-task-form f x)
 			  (first= x 'recur) `(redirect (deref ~*recur-point*) [~@(map f* (rest x))])
 			  :else (f (map f* x)))
 	:else (f x)))))
@@ -169,9 +200,6 @@
 
 (def special-forms
   '(let if do let let* fn fn* quote var throw loop loop* recur try catch finally new))
-
-(def unsupported-form?
-  (set '()))
 
 (defn constant? [x]
   (or
@@ -220,26 +248,25 @@
 		 rest
 		 (map #(when-not % (gensym "arg"))))
 	       (rest expr))
-	non-constant-args (->> args (remove (complement first)))
-	args (map #(if-let [x (first %)] x (second %)) args)]
+	non-constant-args (->> args (remove (complement first)))]
     (if (empty? non-constant-args)
       expr
-      `(let [~@(apply concat non-constant-args)]
-	 (run-pipeline []
-	   :executor *current-executor*
-	   ~@(map
-	       (fn [arg]
-		 `(read-merge
-		    (fn []
-		      (let [val# ~arg]
-			(if (fn? val#)
-			  (transform-fn val#)
-			  val#)))
-		    conj))
-	       (map first non-constant-args))
-	   (fn [[~@(->> non-constant-args (map first))]]
-	     ;;(println "args" ~@args)
-	     (~(first expr) ~@args)))))))
+      `(with-forced-values ~*forced-values*
+	 (let [~@(apply concat non-constant-args)]
+	   (run-pipeline []
+	     :executor *current-executor*
+	     ~@(map
+		 (fn [arg]
+		   `(read-merge
+		      (fn []
+			(let [val# ~arg]
+			  (if (fn? val#)
+			    (transform-fn val#)
+			    val#)))
+		      conj))
+		 (map first non-constant-args))
+	     (fn [[~@(->> non-constant-args (map first))]]
+	       (~(first expr) ~@(map #(if-let [x (first %)] x (second %)) args)))))))))
 
 (defn transform-if [[_ predicate true-clause false-clause]]
   `(run-pipeline ~predicate
@@ -312,22 +339,23 @@
       transformed-body)))
 
 (defn async [body]
-  (let [body (walk-exprs
-	       (fn [expr]
-		 (when (and (seq? expr) (unsupported-form? (first expr)))
-		   (throw (Exception. (str (first expr) " not supported within (async ...)"))))
-		 (cond		   
-		   (valid-expr? expr) (transform-expr expr)
-		   (first= expr 'if) (transform-if expr)
-		   (first= expr 'throw) (transform-throw expr)
-		   (first= expr 'try) (transform-try expr)
-		   (first= expr 'new) (transform-new expr)
-		   :else expr))
-	       (->> body
-		 (prewalk partial-macroexpand)))]
-    `(run-pipeline nil
-       (fn [_#]
-	 ~@body))))
+  (let [forced-sym (gensym "forced")
+	body (binding [*forced-values* forced-sym]
+	       (walk-exprs
+		 (fn [expr]
+		   (cond		   
+		     (valid-expr? expr) (transform-expr expr)
+		     (first= expr 'if) (transform-if expr)
+		     (first= expr 'throw) (transform-throw expr)
+		     (first= expr 'try) (transform-try expr)
+		     (first= expr 'new) (transform-new expr)
+		     :else expr))
+		 (->> body
+		   (prewalk partial-macroexpand))))]
+    `(let [~forced-sym (atom #{})]
+       (run-pipeline nil
+	 (fn [_#]
+	   ~@body)))))
 
 ;;;
 
@@ -353,17 +381,18 @@
        @default-executor
        clojure.lang.Agent/soloExecutor)))
 
-(defn task [body]
+(defn transform-task [body]
   `(let [result# (result-channel)
 	 executor# (current-executor)]
-     (.submit executor#
-       (fn []
-	 (binding [*current-executor* executor#]
-	   (siphon-result
-	     (run-pipeline nil
-	       :error-handler (constantly nil)
-	       (fn [_#]
-		 ~@body))
-	     result#))))
+     (with-forced-values ~*forced-values*
+       (.submit executor#
+	 (fn []
+	   (binding [*current-executor* executor#]
+	     (siphon-result
+	       (run-pipeline nil
+		 :error-handler (constantly nil)
+		 (fn [_#]
+		   ~@body))
+	       result#)))))
      result#))
 
