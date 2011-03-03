@@ -91,6 +91,7 @@
   "Cancels one or more callbacks."
   [ch & callbacks]
   (-> ch queue (q/cancel-callbacks callbacks))
+  (-> ch consumer (o/unsubscribe callbacks))
   (-> ch queue q/distributor (o/unsubscribe callbacks)))
 
 (defn enqueue
