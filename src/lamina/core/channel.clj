@@ -78,6 +78,7 @@
    function, that function will consume the message.  Otherwise, it should return nil.  The
    callback is run within a transaction, and may receive the same message multiple times.
 
+
    This exists to support poll, don't use it directly unless you know what you're doing."
   [ch & callbacks]
   (-> ch queue (q/listen callbacks)))
@@ -91,6 +92,7 @@
   "Cancels one or more callbacks."
   [ch & callbacks]
   (-> ch queue (q/cancel-callbacks callbacks))
+  (-> ch consumer (o/unsubscribe callbacks))
   (-> ch queue q/distributor (o/unsubscribe callbacks)))
 
 (defn enqueue
