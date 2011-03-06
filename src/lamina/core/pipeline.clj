@@ -73,6 +73,12 @@
 (defn error! [^ResultChannel ch value]
   (enqueue (.error ch) value))
 
+(defn poll-result
+  ([result-channel]
+     (poll-result result-channel -1))
+  ([^ResultChannel result-channel timeout]
+     (poll {:success (.success result-channel) :error (.error result-channel)} timeout)))
+
 ;;;
 
 (defrecord Redirect [pipeline value])
@@ -156,7 +162,7 @@
 	       
 	       :else
 	       (let [bindings (get-thread-bindings)]
-		 (receive (poll {:success (.success ch) :error (.error ch)})
+		 (receive (poll-result value)
 		   (fn [[outcome value]]
 		     (case outcome
 		       :error (with-bindings bindings
@@ -290,10 +296,7 @@
      (wait-for-result result-channel -1))
   ([^ResultChannel result-channel timeout]
      (let [value (promise)]
-       (receive
-	 (poll
-	   {:success (.success result-channel) :error (.error result-channel)}
-	   timeout)
+       (receive (poll-result result-channel timeout)
 	 #(deliver value %))
        (let [value @value]
 	 (if (nil? value)

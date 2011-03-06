@@ -17,7 +17,9 @@
     [lamina.core.seq :as seq]
     [lamina.core.named :as named]
     [lamina.core.expr :as x])
-  (:import))
+  (:import
+    [java.util.concurrent
+     TimeoutException]))
 
 
 ;;;; CHANNELS
@@ -122,35 +124,10 @@
 (import-fn x/converge)
 
 (defmacro async
-  "Performs magic.
+  "Turns standard Clojure expressions into a dataflow representation of the computation.
 
-   Any expression in a block wrapped by (async ...) can use a result-channel instead of an
-   actual value, and defer its own execution (and the execution of all code that depends on
-   its value) until the result-channel has emitted a value.  The value returned from an
-   (async ...) block is always a result-channel.
-
-   This means that we can write code that looks like a normal function, but is actually several
-   distinct callbacks stitched together.  Consider a situation where we want to read two messages
-   from a channel.  We could compose nested callbacks:
-
-   (receive ch
-     (fn [first-message]
-       (receive ch
-         (fn [second-message]
-           (perform-action [first-message second-message])))))
-
-   However, using async and read-channel (which returns a result-channel representing the next
-   message in the channel), this becomes a lot more straightforward:
-
-   (async
-     (let [first-message (read-channel ch)
-           second-message (read-channel ch)]
-       [first-message second-message]))
-
-   This will return a result-channel which will emit a vector of the next two messages from the
-   channel, once they've both arrived.
-
-   This is very, very experimental, and may be subject to change."
+   Any result-channel can be treated as a real value inside the async block.  The value
+   returned by the async block will be a result-channel."
   [& body]
   (x/async body))
 
@@ -162,3 +139,29 @@
    on a separate thread."
   [& body]
   (x/transform-task body))
+
+(defmacro with-timeout
+  "Wraps a body that returns a result-channel, and returns a new result-channel that will
+   emit a java.util.concurrent.TimeoutException if the inner result-channel doesn't yield
+   a value in 'timeout' ms."
+  [timeout & body]
+  (let [start-sym (gensym "start")]
+    `(let [~start-sym (System/currentTimeMillis)
+	   result# (do ~@body)]
+       (if-not (result-channel? result#)
+	 result#
+	 (let [result## (result-channel)]
+	   (receive
+	     (pipeline/poll-result result#
+	       ~(cond
+		  (zero? timeout) 0
+		  (neg? timeout) -1
+		  :else `(max 1 (- ~timeout (- (System/currentTimeMillis) ~start-sym)))))
+	     (fn [poll-result#]
+	       (if-not poll-result#
+		 (pipeline/error! result## (TimeoutException. "Timed out waiting for async result."))
+		 (let [[outcome# value#] poll-result#]
+		   (condp = outcome#
+		     :success (pipeline/success! result## value#)
+		     :error (pipeline/error! result## value#))))))
+	   result##)))))
