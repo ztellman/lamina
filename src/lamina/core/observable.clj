@@ -172,8 +172,8 @@
 	      (doseq [o s]
 		(on-message o [msg])))))))
     false)
-  (close [_]
-    (throw (Exception. "Constant observables cannot be closed.")))
+  (close [this]
+    (message this [nil]))
   (closed? [_]
     false)
   (toString [_]
