@@ -142,7 +142,11 @@
 (defn realize [x]
   (if (sequential? x) (doall x) x))
 
-(defn walk-exprs [f x]
+(def *force-read-channel* true)
+
+(declare walk-exprs)
+
+(defn walk-exprs* [f x]
   (let [f* #(walk-exprs f %)]
     (realize
       (cond
@@ -157,12 +161,17 @@
 						      (await-result ~(second x))
 						      (await-result ~(->> x rest second (walk-exprs f))))
 			  (first= x 'task) (walk-task-form f x)
-			  (first= x 'force) `(let [result# ~(walk-exprs f (second x))]
+			  (first= x 'force) `(let [result# ~(walk-exprs* f (second x))]
 					       (swap! ~*forced-values* conj result#)
 					       result#)
 			  (first= x 'recur) `(redirect (deref ~*recur-point*) [~@(map f* (rest x))])
 			  :else (f (map f* x)))
 	:else (f x)))))
+
+(defn walk-exprs [f x]
+  (if (and (sequential? x) (first= x 'read-channel))
+    (walk-exprs* f (list 'force x))
+    (walk-exprs* f x)))
 
 ;;;
 

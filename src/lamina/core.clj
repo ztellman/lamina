@@ -84,6 +84,7 @@
 ;; pipeline stage helpers
 (import-fn pipeline/result-channel?)
 (import-fn pipeline/read-channel)
+(def read-channel* read-channel)
 (import-fn pipeline/read-merge)
 
 (import-fn pipeline/on-success)

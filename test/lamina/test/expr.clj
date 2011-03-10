@@ -22,10 +22,10 @@
   `(do
      (binding [*sleep-interval* 50]
        (dotimes [_# 1]
-	 (is (= ~expected @(async ~expr)) (str "interval=" *sleep-interval*))))
+	 (is (= ~expected (wait-for-result (async ~expr) 2000)) (str "interval=" *sleep-interval*))))
      (binding [*sleep-interval* 0]
        (dotimes [_# 5]
-	 (is (= ~expected @(async ~expr)) (str "interval=" *sleep-interval*))))))
+	 (is (= ~expected (wait-for-result (async ~expr) 2000)) (str "interval=" *sleep-interval*))))))
 
 (deftest test-basic-exprs
   (is= 6 (task* (+ 1 (task* (+ 2 3)))))
@@ -69,21 +69,25 @@
   (let [ch (channel)]
     (future
       (Thread/sleep 100)
-      (enqueue ch 1))
+      (enqueue ch 1 2))
     (is (= [1 1]
-	     @(async
-		(let [a (read-channel ch)
-		      b (read-channel ch)]
-		  [a b])))))
+	     (wait-for-result
+	       (async
+		 (let [a (read-channel* ch)
+		       b (read-channel* ch)]
+		   [a b]))
+	       1000))))
   (let [ch (channel)]
     (future
       (Thread/sleep 100)
       (enqueue ch 1 2))
     (is (= [1 2]
-	     @(async
-		(let [a (force (read-channel ch))
-		      b (force (read-channel ch))]
-		  [a b])))))
+	     (wait-for-result
+	       (async
+		 (let [a (read-channel ch)
+		       b (read-channel ch)]
+		   [a b]))
+	       1000))))
   (is= [1 2 3]
     (let [ch (channel 1 2 3)]
       (converge (take 3 (repeatedly #(read-channel ch))))))
