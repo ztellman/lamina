@@ -22,21 +22,25 @@
   (queue [_] "The queue paired to the emitting observable."))
 
 (deftype Channel
-  [^Observable consumer ^EventQueue queue]
+  [^Observable consumer ^EventQueue queue metadata]
   ChannelProtocol
   (consumer [_] consumer)
   (queue [_] queue)
   (toString [_] (str queue))
   clojure.lang.Counted
-  (count [q] (count queue)))
+  (count [q] (count queue))
+  clojure.lang.IMeta
+  clojure.lang.IObj
+  (meta [_] metadata)
+  (withMeta [_ meta] (Channel. consumer queue meta)))
 
 (defn channel [& messages]
   (let [source (o/observable)]
-    (Channel. source (q/queue source messages))))
+    (Channel. source (q/queue source messages) {})))
 
 (defn permanent-channel [& messages]
   (let [source (o/permanent-observable)]
-    (Channel. source (q/queue source (o/permanent-observable) messages))))
+    (Channel. source (q/queue source (o/permanent-observable) messages) {})))
 
 (defn channel? [ch]
   (satisfies? ChannelProtocol ch))
@@ -59,7 +63,7 @@
   (instance? ConstantChannel ch))
 
 (def nil-channel
-  (Channel. o/nil-observable q/nil-queue))
+  (Channel. o/nil-observable q/nil-queue nil))
 
 ;;;
 
@@ -186,12 +190,13 @@
 ;;;
 
 (defn splice
-  "Splices together a message source and a message destination
+  "Splices together a message emitter and a message receiver
    into a single channel."
-  [src dst]
+  [emitter receiver]
   (Channel.
-    (consumer dst)
-    (queue src)))
+    (consumer receiver)
+    (queue emitter)
+    {}))
 
 (defn channel-pair
   "Creates paired channels, where an enqueued message from one channel

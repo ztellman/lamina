@@ -143,7 +143,9 @@
 				 [ch (read-channel ch)]))))))
 		     (fn [[ch response]]
 		       (if-not (and (nil? response) (drained? ch))
-			 response
+			 (if (instance? Exception response)
+			   (throw response)
+			   response)
 			 (restart))))
 		   result-channel))))))
 
@@ -195,7 +197,9 @@
 	     (fn [response]
 	       (if (and (nil? response) (drained? ch))
 		 (throw (Exception. "Connection closed"))
-		 (enqueue (.success result) response))))))
+		 (if (instance? Exception response)
+		   (enqueue (.error result) response)
+		   (enqueue (.success result) response)))))))
 
        ;; request function
        (fn this

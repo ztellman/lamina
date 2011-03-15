@@ -197,7 +197,7 @@
 	     (fn [_]
 	       (let [o (o/observable)]
 		 (o/siphon (-> ch queue q/source) {o identity} -1 true)
-		 (Channel. o (q/copy-queue (queue ch) o))))
+		 (Channel. o (q/copy-queue (queue ch) o) {})))
 	     (range n)))))))
 
 (defn receive-in-order
@@ -238,6 +238,12 @@
 	      %
 	      (filter f %))})
     ch*))
+
+(defn remove*
+  "Returns a channel which will consume all messages from 'ch', but only emit messages
+   for which (f msg) is false."
+  [f ch]
+  (filter* (complement f) ch))
 
 (defn take*
   "Returns a channel which will consume 'n' messages from 'ch'."
