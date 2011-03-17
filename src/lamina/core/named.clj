@@ -32,5 +32,8 @@
 (defn release-named-channel
   "Forgets the channel associated with the key, if one exists."
   [key]
-  (dosync
-    (commute named-channels dissoc key)))
+  (when-let [ch (dosync
+		  (let [ch ((ensure named-channels) key)]
+		    (alter named-channels dissoc key)
+		    ch))]
+    (close ch)))

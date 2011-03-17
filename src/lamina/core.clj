@@ -46,6 +46,7 @@
 (import-fn channel/constant-channel)
 (import-fn channel/closed-channel)
 (import-fn channel/timed-channel)
+(import-fn channel/proxy-channel)
 
 (def nil-channel channel/nil-channel)
 

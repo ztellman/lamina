@@ -128,12 +128,30 @@
   (closed? [_]
     @closed?))
 
+(defrecord ProxyObservable [f observable]
+  ObservableProtocol
+  (subscribe [_ m]
+    (subscribe observable m))
+  (unsubscribe [_ ks]
+    (unsubscribe observable ks))
+  (message [_ msgs]
+    (let [[return-val msgs] (f msgs)]
+      (message observable msgs)
+      return-val))
+  (close [_]
+    (close observable))
+  (closed? [_]
+    (closed? observable)))
+
 (defn observable []
   (Observable.
     (atom {})
     (atom false)
     (Semaphore. Integer/MAX_VALUE)
     (ThreadLocal.)))
+
+(defn proxy-observable [f observable]
+  (ProxyObservable. f observable))
 
 (defn permanent-observable []
   (with-meta (observable) {::permanent true}))

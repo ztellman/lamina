@@ -8,7 +8,7 @@
 
 (ns lamina.core.expr
   (:use
-    [lamina.core channel pipeline]
+    [lamina.core channel pipeline utils]
     [clojure walk pprint])
   (:import
     [lamina.core.pipeline ResultChannel]))
@@ -223,9 +223,9 @@
     (list* true (map constant? (rest x)))))
 
 (defn transform-fn [f]
-  (if (-> f meta ::original)
+  (if (-> f meta original-fn)
     f
-    ^{::original f}
+    ^{original-fn f}
     (fn [& args]
       (if (every? (complement result-channel?) args)
 	(apply f args)

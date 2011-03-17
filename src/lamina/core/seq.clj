@@ -9,8 +9,7 @@
 (ns ^{:skip-wiki true}
   lamina.core.seq
   (:use
-    [lamina.core.channel]
-    [lamina.core.pipeline]
+    [lamina.core channel pipeline utils]
     [clojure.contrib.generic.functor])
   (:require
     [lamina.core.observable :as o]
@@ -99,78 +98,82 @@
 
 (defn receive-all
   [ch & callbacks]
-  (cond
-    (drained? ch)
-    false
-
-    (constant-channel? ch)
-    (apply receive ch callbacks)
-
-    :else
-    (let [distributor (-> ch queue q/distributor)
-	  send-to-callbacks (fn [msgs]
-			      (doseq [msg msgs]
-				(doseq [c callbacks]
-				  (c msg))))]
-      (o/lock-observable ^Observable distributor
-	(when (closed? ch) 
+  (let [callbacks (map unwrap-fn callbacks)]
+    (cond
+      (drained? ch)
+      false
+      
+      (constant-channel? ch)
+      (apply receive ch callbacks)
+      
+      :else
+      (let [distributor (-> ch queue q/distributor)
+	    send-to-callbacks (fn [msgs]
+				(doseq [msg msgs]
+				  (doseq [c callbacks]
+				    (c msg))))]
+	(o/lock-observable ^Observable distributor
+	  (when (closed? ch) 
+	    (send-to-callbacks
+	      (butlast
+		(sample-queue ch
+		  #(ref-set %
+		     (if (empty? (deref %))
+		       clojure.lang.PersistentQueue/EMPTY
+		       (conj clojure.lang.PersistentQueue/EMPTY (last (deref %)))))))))
 	  (send-to-callbacks
-	    (butlast
-	      (sample-queue ch
-		#(ref-set %
-		   (if (empty? (deref %))
-		     clojure.lang.PersistentQueue/EMPTY
-		     (conj clojure.lang.PersistentQueue/EMPTY (last (deref %)))))))))
-	(send-to-callbacks
-	  (sample-queue ch
-	    #(ref-set % clojure.lang.PersistentQueue/EMPTY)))
-	(when-not (drained? ch)
-	  (o/subscribe distributor
-	    (zipmap
-	      callbacks
-	      (map
-		(fn [f]
-		  (o/observer
-		    #(doseq [m %] (f m))
-		    #(f nil)
-		    nil))
-		callbacks)))))
-      (q/check-for-drained (queue ch))
-      true)))
+	    (sample-queue ch
+	      #(ref-set % clojure.lang.PersistentQueue/EMPTY)))
+	  (when-not (drained? ch)
+	    (o/subscribe distributor
+	      (zipmap
+		callbacks
+		(map
+		  (fn [f]
+		    (o/observer
+		      #(doseq [m %] (f m))
+		      #(f nil)
+		      nil))
+		  callbacks)))))
+	(q/check-for-drained (queue ch))
+	true))))
 
 (defn siphon
   [source destination-function-map]
-  (cond
-    (drained? source)
-    false
-
-    (constant-channel? source)
-    (do
-      (receive source
-	#(doseq [[dst f] destination-function-map]
-	   (let [msg (first (f %))]
-	     (enqueue dst msg))))
-      true)
-
-    :else
-    
-    (let [distributor (-> source queue q/distributor)
-	  send-to-destinations (fn [msgs]
-				 (doseq [[dst f] destination-function-map]
-				   (apply enqueue dst (f msgs))))]
-      (o/lock-observable ^Observable distributor
-	(send-to-destinations
-	  (sample-queue source
-	    #(ref-set % clojure.lang.PersistentQueue/EMPTY)))
-	(o/siphon
-	  distributor
-	  (zipmap
-	    (map consumer (keys destination-function-map))
-	    (vals destination-function-map))
-	  1
-	  false))
-      (q/check-for-drained (queue source))
-      true)))
+  (let [destination-function-map (zipmap
+				   (keys destination-function-map)
+				   (map unwrap-fn (vals destination-function-map)))]
+    (cond
+      (drained? source)
+      false
+      
+      (constant-channel? source)
+      (do
+	(receive source
+	  #(doseq [[dst f] destination-function-map]
+	     (let [msg (first (f %))]
+	       (enqueue dst msg))))
+	true)
+      
+      :else
+      
+      (let [distributor (-> source queue q/distributor)
+	    send-to-destinations (fn [msgs]
+				   (doseq [[dst f] destination-function-map]
+				     (apply enqueue dst (f msgs))))]
+	(o/lock-observable ^Observable distributor
+	  (send-to-destinations
+	    (sample-queue source
+	      #(ref-set % clojure.lang.PersistentQueue/EMPTY)))
+	  (o/siphon
+	    distributor
+	    (zipmap
+	      (map consumer (keys destination-function-map))
+	      (vals destination-function-map))
+	    1
+	    false))
+	(q/check-for-drained (queue source))
+	true))))
 
 ;;;
 
@@ -207,21 +210,23 @@
 
    This is a lossy iteration over the channel.  Fork the channel if there is another consumer."
   [ch f]
-  (if (drained? ch)
-    (success-result nil)
-    (run-pipeline ch
-      read-channel
-      (fn [msg]
-	(when-not (and (nil? msg) (drained? ch))
-	  (f msg)))
-      (fn [_]
-	(when-not (drained? ch)
-	  (restart))))))
+  (let [f (unwrap-fn f)]
+    (if (drained? ch)
+      (success-result nil)
+      (run-pipeline ch
+	read-channel
+       (fn [msg]
+	 (when-not (and (nil? msg) (drained? ch))
+	   (f msg)))
+       (fn [_]
+	 (when-not (drained? ch)
+	   (restart)))))))
 
 (defn map*
   "Returns a channel which will consume all messages from 'ch', and emit (f msg)."
   [f ch]
-  (let [ch* (channel)]
+  (let [f (unwrap-fn f)
+	ch* (channel)]
     (siphon ch
       {ch* #(if (and (drained? ch) (= [nil] %))
 	      %
@@ -232,7 +237,8 @@
   "Returns a channel which will consume all messages from 'ch', but only emit messages
    for which (f msg) is true."
   [f ch]
-  (let [ch* (channel)]
+  (let [f (unwrap-fn f)
+	ch* (channel)]
     (siphon ch
       {ch* #(if (and (drained? ch) (= [nil] %))
 	      %
@@ -263,7 +269,8 @@
 (defn take-while*
   "Returns a channel which will consume messages from 'ch' until (f msg) is false."
   [f ch]
-  (let [ch* (channel)
+  (let [f (unwrap-fn f)
+	ch* (channel)
 	cnt (ref 0)
 	cnt* (atom 0)
 	final (atom nil)]
@@ -284,16 +291,17 @@
     ch*))
 
 (defn- ^ResultChannel reduce- [f val ch]
-  (run-pipeline val
-    (read-merge
-      #(read-channel ch)
-      #(if (and (nil? %2) (drained? ch))
-	 %1
-	 (f %1 %2)))
-    (fn [val]
-      (if (drained? ch)
-	val
-	(restart val)))))
+  (let [f (unwrap-fn f)]
+    (run-pipeline val
+      (read-merge
+	#(read-channel ch)
+	#(if (and (nil? %2) (drained? ch))
+	   %1
+	   (f %1 %2)))
+      (fn [val]
+	(if (drained? ch)
+	  val
+	  (restart val))))))
 
 (defn reduce*
   "Returns a constant-channel which will return the result of the reduce once the channel has been exhausted."
@@ -306,7 +314,8 @@
      (.success (reduce- f val ch))))
 
 (defn reductions- [f val ch]
-  (let [ch* (channel)]
+  (let [f (unwrap-fn f)
+	ch* (channel)]
     (enqueue ch* val)
     (run-pipeline val
       (read-merge

@@ -9,7 +9,7 @@
 (ns ^{:skip-wiki true}
   lamina.core.channel
   (:use
-    [lamina.core.timer])
+    [lamina.core utils timer])
   (:require
     [lamina.core.observable :as o]
     [lamina.core.queue :as q])
@@ -41,6 +41,9 @@
 (defn permanent-channel [& messages]
   (let [source (o/permanent-observable)]
     (Channel. source (q/queue source (o/permanent-observable) messages) {})))
+
+(defn proxy-channel [f ch]
+  (Channel. (o/proxy-observable f (consumer ch)) (queue ch) {}))
 
 (defn channel? [ch]
   (satisfies? ChannelProtocol ch))
@@ -85,19 +88,20 @@
 
    This exists to support poll, don't use it directly unless you know what you're doing."
   [ch & callbacks]
-  (-> ch queue (q/listen callbacks)))
+  (-> ch queue (q/listen (map unwrap-fn callbacks))))
 
 (defn receive
   "Adds one or more callbacks which will receive the next message from the channel."
   [ch & callbacks]
-  (-> ch queue (q/receive callbacks)))
+  (-> ch queue (q/receive (map unwrap-fn callbacks))))
 
 (defn cancel-callback
   "Cancels one or more callbacks."
   [ch & callbacks]
-  (-> ch queue (q/cancel-callbacks callbacks))
-  (-> ch consumer (o/unsubscribe callbacks))
-  (-> ch queue q/distributor (o/unsubscribe callbacks)))
+  (let [callbacks (map unwrap-fn callbacks)]
+    (-> ch queue (q/cancel-callbacks callbacks))
+    (-> ch consumer (o/unsubscribe callbacks))
+    (-> ch queue q/distributor (o/unsubscribe callbacks))))
 
 (defn enqueue
   "Enqueues messages into the channel."
@@ -107,12 +111,13 @@
 (defn on-drained
   "Registers callbacks that will be triggered by the channel being drained."
   [ch & callbacks]
-  (-> ch queue (q/on-drained callbacks)))
+  (-> ch queue (q/on-drained (map unwrap-fn callbacks))))
 
 (defn on-closed
   "Registers callbacks that will be triggered by the channel closing."
   [ch & callbacks]
-  (-> ch consumer (o/subscribe (zipmap callbacks (map #(o/observer nil % nil) callbacks)))))
+  (let [callbacks (map unwrap-fn callbacks)]
+    (-> ch consumer (o/subscribe (zipmap callbacks (map #(o/observer nil % nil) callbacks))))))
 
 (defn close
   "Closes the channel."
