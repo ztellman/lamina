@@ -45,9 +45,6 @@
 (defn proxy-channel [f ch]
   (Channel. (o/proxy-observable f (consumer ch)) (queue ch) {}))
 
-(defn channel? [ch]
-  (satisfies? ChannelProtocol ch))
-
 (deftype ConstantChannel
   [^ConstantObservable consumer ^ConstantEventQueue queue]
   ChannelProtocol
@@ -64,6 +61,11 @@
 
 (defn constant-channel? [ch]
   (instance? ConstantChannel ch))
+
+(defn channel? [ch]
+  (or
+    (instance? Channel ch)
+    (instance? ConstantChannel ch)))
 
 (def nil-channel
   (Channel. o/nil-observable q/nil-queue nil))
