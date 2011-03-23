@@ -126,7 +126,7 @@
 			    (drop-while symbol? x))))))
 		 x#))))
 	 (fn [~'& args#]
-	   (extract-result ((deref ~pipeline-sym) args#)))))))
+	   ((deref ~pipeline-sym) args#))))))
 
 (defn walk-loop-form [f x]
   (let [pipeline-sym (gensym "loop")]
@@ -208,7 +208,7 @@
 	x))))
 
 (def special-forms
-  '(let if do let let* fn fn* quote var throw loop loop* recur try catch finally new))
+  '(let if do let let* fn fn* quote var throw loop loop* recur try catch finally new def))
 
 (defn constant? [x]
   (or

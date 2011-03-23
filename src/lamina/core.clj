@@ -136,8 +136,8 @@
 (defmacro defn-async
   "Creates an asynchronous function.  Equivalent to (async (defn ....))."
   [& body]
-  `(async
-     (defn ~@body)))
+  `(def ~(first body)
+     (deref (async (fn ~(first body) ~@(rest body))))))
 
 (defmacro task
   "A variation of 'future' that returns a result-channel instead of a synchronous
