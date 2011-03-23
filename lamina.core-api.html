@@ -64,6 +64,8 @@ namespace.
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/complete">complete</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core/defn-async">defn-async</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/do*">do*</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/drained?">drained?</a>
@@ -237,6 +239,15 @@ is drained.</pre>
   <pre id="var-usage">Usage: (complete result)
 </pre>
   <pre id="var-docstr">Skips to the end of the inner-most pipeline, causing it to emit 'result'.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.core/defn-async">defn-async</h2>
+  <span id="var-type">macro</span><br />
+  <pre id="var-usage">Usage: (defn-async &amp; body)
+</pre>
+  <pre id="var-docstr">Creates an asynchronous function.  Equivalent to (async (defn ....)).</pre>
   
 </div><div id="var-entry">
   <br />
