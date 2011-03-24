@@ -123,7 +123,7 @@
 (import-fn x/set-default-executor)
 (import-fn x/set-local-executor)
 
-(import-fn x/converge)
+(import-fn x/compact)
 
 (defmacro async
   "Turns standard Clojure expressions into a dataflow representation of the computation.

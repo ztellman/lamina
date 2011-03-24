@@ -137,14 +137,13 @@
 	     ~@(binding [*recur-point* pipeline-sym]
 		 (doall
 		   (map #(walk-exprs f %) (drop 2 x)))))))
-       ((deref ~pipeline-sym) ~(->> x second (partition 2) (map second) vec)))))
+       ((deref ~pipeline-sym)
+	~(->> x second (partition 2) (map second) (map #(walk-exprs f %)) vec)))))
 
 (defn realize [x]
   (if (sequential? x) (doall x) x))
 
 (def *force-read-channel* true)
-
-(declare walk-exprs)
 
 (defn walk-exprs* [f x]
   (let [f* #(walk-exprs f %)]
@@ -175,27 +174,21 @@
 
 ;;;
 
-(defn converge [val]
+(defn accumulate-result-channels [accum x]
   (cond
-    (result-channel? val) val
-    (not (or (sequential? val) (map? val) (set? val))) (success-result val)
-    :else
-    (let [results (atom [])]
-      (prewalk
-	(fn [x]
-	  (when (result-channel? x)
-	    (swap! results conj x))
-	  x)
-	val)
+    (result-channel? x) (conj accum x)
+    (or (sequential? x) (map? x)) (reduce accumulate-result-channels accum (seq x))
+    :else accum))
+
+(defn compact [x]
+  (let [results (accumulate-result-channels [] x)]
+    (if (empty? results)
+      x
       (apply run-pipeline nil
-	(concat
-	  (map #(constantly %) @results)
-	  [(fn [_]
-	     (prewalk
-	       #(if (result-channel? %)
-		  (wait-for-result %)
-		  %)
-	       val))])))))
+	(conj
+	  (vec (map constantly results))
+	  (fn [_]
+	    (compact (postwalk #(if (result-channel? %) @% %) x))))))))
 
 ;;;
 
