@@ -76,6 +76,8 @@ namespace.
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/filter*">filter*</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core/force-all">force-all</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/fork">fork</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/lazy-channel-seq">lazy-channel-seq</a>
@@ -247,7 +249,7 @@ is drained.</pre>
   <span id="var-type">macro</span><br />
   <pre id="var-usage">Usage: (defn-async &amp; body)
 </pre>
-  <pre id="var-docstr">Creates an asynchronous function.  Equivalent to (async (defn ....)).</pre>
+  <pre id="var-docstr">Creates an asynchronous function.</pre>
   
 </div><div id="var-entry">
   <br />
@@ -296,6 +298,16 @@ received, the channel will be closed.</pre>
 </pre>
   <pre id="var-docstr">Returns a channel which will consume all messages from 'ch', but only emit messages
 for which (f msg) is true.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.core/force-all">force-all</h2>
+  <span id="var-type">macro</span><br />
+  <pre id="var-usage">Usage: (force-all expr)
+</pre>
+  <pre id="var-docstr">Forces a sequence of results.  Subsequent expressions will wait on all results being
+realized, but the results can be completed in any order.</pre>
   
 </div><div id="var-entry">
   <br />
