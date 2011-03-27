@@ -34,7 +34,7 @@
 
 (declare wait-for-result)
 
-(deftype ResultChannel [success error]
+(deftype ResultChannel [success error metadata]
   Object
   (toString [_]
     (cond
@@ -47,16 +47,22 @@
       :else
       "<< ... >>"))
   clojure.lang.IDeref
-  (deref [this] (wait-for-result this)))
+  (deref [this] (wait-for-result this))
+
+  clojure.lang.IObj
+  (withMeta [_ meta] (ResultChannel. success error meta))
+
+  clojure.lang.IMeta
+  (meta [_] metadata))
 
 (defn ^ResultChannel result-channel []
-  (ResultChannel. (constant-channel) (constant-channel)))
+  (ResultChannel. (constant-channel) (constant-channel) nil))
 
 (defn ^ResultChannel error-result [val]
-  (ResultChannel. nil-channel (constant-channel val)))
+  (ResultChannel. nil-channel (constant-channel val) nil))
 
 (defn ^ResultChannel success-result [val]
-  (ResultChannel. (constant-channel val) nil-channel))
+  (ResultChannel. (constant-channel val) nil-channel nil))
 
 (defn result-channel? [x]
   (instance? ResultChannel x))

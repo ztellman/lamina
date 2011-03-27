@@ -123,7 +123,21 @@
 (import-fn x/set-default-executor)
 (import-fn x/set-local-executor)
 
+(defmacro task
+  "A variation of 'future' that returns a result-channel instead of a synchronous
+   future object.
+
+   When used within (async ...), it's simply an annotation that the body should be executed
+   on a separate thread."
+  [& body]
+  (x/transform-task body))
+
+;;;
+
 (import-fn x/compact)
+
+(defmacro force-all [expr]
+  `(~'force (compact ~expr)))
 
 (defmacro async
   "Turns standard Clojure expressions into a dataflow representation of the computation.
@@ -138,15 +152,6 @@
   [& body]
   `(def ~(first body)
      (deref (async (fn ~(first body) ~@(rest body))))))
-
-(defmacro task
-  "A variation of 'future' that returns a result-channel instead of a synchronous
-   future object.
-
-   When used within (async ...), it's simply an annotation that the body should be executed
-   on a separate thread."
-  [& body]
-  (x/transform-task body))
 
 (defmacro with-timeout
   "Wraps a body that returns a result-channel, and returns a new result-channel that will

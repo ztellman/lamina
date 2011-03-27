@@ -36,14 +36,14 @@
 
 (defn channel [& messages]
   (let [source (o/observable)]
-    (Channel. source (q/queue source messages) {})))
+    (Channel. source (q/queue source messages) nil)))
 
 (defn permanent-channel [& messages]
   (let [source (o/permanent-observable)]
-    (Channel. source (q/queue source (o/permanent-observable) messages) {})))
+    (Channel. source (q/queue source (o/permanent-observable) messages) nil)))
 
 (defn proxy-channel [f ch]
-  (Channel. (o/proxy-observable f (consumer ch)) (queue ch) {}))
+  (Channel. (o/proxy-observable f (consumer ch)) (queue ch) nil))
 
 (deftype ConstantChannel
   [^ConstantObservable consumer ^ConstantEventQueue queue]

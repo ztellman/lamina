@@ -24,8 +24,22 @@
        (dotimes [_# 1]
 	 (is (= ~expected (wait-for-result (async ~expr) 2000)) (str "interval=" *sleep-interval*))))
      (binding [*sleep-interval* 0]
-       (dotimes [_# 5]
+       (dotimes [_# 1]
 	 (is (= ~expected (wait-for-result (async ~expr) 2000)) (str "interval=" *sleep-interval*))))))
+
+(defmacro ch-is= [expected ch s expr]
+  `(is
+     (= ~expected
+       (wait-for-result
+	 (let [~ch (channel)
+	       result# (async ~expr)]
+	   (future
+	     (Thread/sleep 100)
+	     (doseq [x# ~s]
+	       (enqueue ~ch x#)
+	       (Thread/sleep *sleep-interval*)))
+	   result#)
+	 2000))))
 
 (deftest test-basic-exprs
   (is= 6 (task* (+ 1 (task* (+ 2 3)))))
@@ -62,35 +76,38 @@
   (is= 3
     ((fn abc ([[x]] x)) [3])))
 
+(deftest test-force
+  (is= [1 2 3 4]
+    [(force (task* 1))
+     (force (task* 2))
+     (force (task* 3))
+     (force (task* 4))])
+  (is= [1 2 3 4]
+    (concat
+      (force-all [(task* 1) (task* 2)])
+      (force-all [(task* 3) (task* 4)]))))
+
 (deftest test-channels
   (is= [1 2]
     (let [ch (channel 1 2)]
       [(read-channel ch) (read-channel ch)]))
-  (let [ch (channel)]
-    (future
-      (Thread/sleep 100)
-      (enqueue ch 1 2))
-    (is (= [1 1]
-	     (wait-for-result
-	       (async
-		 (let [a (read-channel* ch)
-		       b (read-channel* ch)]
-		   [a b]))
-	       1000))))
-  (let [ch (channel)]
-    (future
-      (Thread/sleep 100)
-      (enqueue ch 1 2))
-    (is (= [1 2]
-	     (wait-for-result
-	       (async
-		 (let [a (read-channel ch)
-		       b (read-channel ch)]
-		   [a b]))
-	       1000))))
-  (is= [1 2 3]
-    (let [ch (channel 1 2 3)]
-      (converge (take 3 (repeatedly #(read-channel ch))))))
+  (ch-is= [1 1]
+    ch [1 2]
+    [(read-channel* ch) (read-channel* ch)])
+  (ch-is= [1 2]
+    ch [1 2]
+    (concat (force [(read-channel* ch)]) (force [(read-channel* ch)])))
+  (ch-is= [1 2]
+    ch [1 2]
+    (concat (force-all [(read-channel* ch)]) [(read-channel ch)]))
+  (ch-is= [1 2]
+    ch [1 2]
+    [(read-channel ch) (read-channel ch)])
+  (ch-is= [1 2 3]
+    ch [1 2 3]
+    [(read-channel ch)
+     (read-channel ch)
+     (read-channel ch)])
   (is= 3
     (let [ch (channel 1 2 3)
 	  a (read-channel ch)

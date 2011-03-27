@@ -9,7 +9,8 @@
 (ns lamina.core.expr
   (:use
     [lamina.core channel pipeline utils]
-    [clojure walk pprint])
+    [clojure walk pprint]
+    [clojure.set :only (difference)])
   (:import
     [lamina.core.pipeline ResultChannel]))
 
@@ -39,6 +40,7 @@
 
 (def *recur-point* nil)
 (def *forced-values* nil)
+(def *values-to-exclude* #{})
 
 (defn first= [expr & symbols]
   (and
@@ -47,13 +49,19 @@
     (some #{(symbol (name (first expr)))} symbols)))
 
 (defmacro with-forced-values [forced-values & body]
-  `(let [forced-values# (when ~forced-values (deref ~forced-values))]
+  `(let [forced-values# (when ~forced-values
+			  (difference
+			    (deref ~forced-values)
+			    *values-to-exclude*))]
      (apply
        run-pipeline nil
        :executor *current-executor*
        (concat
 	 (map
-	   (fn [value#] (read-merge (constantly value#) (constantly nil)))
+	   (fn [value#]
+	     (read-merge
+	       (constantly value#)
+	       (constantly nil)))
 	   forced-values#)
 	 (when-not (empty? forced-values#)
 	   [(fn [_#]
@@ -153,18 +161,35 @@
 	(set? x) (f (list* 'set (map f* x)))
 	(map? x) (f (list* 'hash-map (map f* (apply concat x))))
 	(sequential? x) (cond
-			  (first= x 'fn 'fn*) (walk-fn-form f x)
-			  (first= x 'let 'let*) (walk-special-form f x)
-			  (first= x 'loop 'loop*) (walk-loop-form f x)
-			  (first= x 'chunk-append) `(chunk-append
-						      (await-result ~(second x))
-						      (await-result ~(->> x rest second (walk-exprs f))))
-			  (first= x 'task) (walk-task-form f x)
-			  (first= x 'force) `(let [result# ~(walk-exprs* f (second x))]
-					       (swap! ~*forced-values* conj result#)
-					       result#)
-			  (first= x 'recur) `(redirect (deref ~*recur-point*) [~@(map f* (rest x))])
-			  :else (f (map f* x)))
+			  (first= x 'fn 'fn*)
+			  (walk-fn-form f x)
+
+			  (first= x 'let 'let*)
+			  (walk-special-form f x)
+
+			  (first= x 'loop 'loop*)
+			  (walk-loop-form f x)
+
+			  (first= x 'chunk-append)
+			  `(chunk-append
+			     (await-result ~(second x))
+			     (await-result ~(->> x rest second (walk-exprs f))))
+
+			  (first= x 'task)
+			  (walk-task-form f x)
+			  
+			  (first= x 'force)
+			  `(let [result# (result-channel)]
+			     (binding [*values-to-exclude* (conj *values-to-exclude* result#)]
+			       (siphon-result ~(walk-exprs* f (second x)) result#))
+			     (swap! ~*forced-values* conj result#)
+			     result#)
+
+			  (first= x 'recur)
+			  `(redirect (deref ~*recur-point*) [~@(map f* (rest x))])
+
+			  :else
+			  (f (map f* x)))
 	:else (f x)))))
 
 (defn walk-exprs [f x]
@@ -252,7 +277,8 @@
 	       (rest expr))
 	non-constant-args (->> args (remove (complement first)))]
     (if (empty? non-constant-args)
-      expr
+      `(with-forced-values ~*forced-values*
+	 ~expr)
       `(with-forced-values ~*forced-values*
 	 (let [~@(apply concat non-constant-args)]
 	   (run-pipeline []
@@ -268,7 +294,12 @@
 		      conj))
 		 (map first non-constant-args))
 	     (fn [[~@(->> non-constant-args (map first))]]
-	       (~(first expr) ~@(map #(if-let [x (first %)] x (second %)) args)))))))))
+	       (let [result# (~(first expr) ~@(map #(if-let [x (first %)] x (second %)) args))]
+		 (comment
+		   (println
+		     ~(str (first expr))
+		     ~@(map #(if-let [x (first %)] x (str (second %))) args) "=" result#))
+		 result#))))))))
 
 (defn transform-if [[_ predicate true-clause false-clause]]
   `(run-pipeline ~predicate
