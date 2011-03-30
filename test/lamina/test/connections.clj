@@ -90,4 +90,5 @@
 	  (close-connection f))))))
 
 (deftest test-dropped-connection
-  (dropped-connection client))
+  (dropped-connection client)
+  (dropped-connection pipelined-client))
