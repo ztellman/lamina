@@ -164,7 +164,12 @@
   ([connection-generator description]
      (let [connection (persistent-connection connection-generator description)
 	   requests (channel)
-	   responses (channel)]
+	   responses (channel)
+           has-completed? (fn [result-ch]
+                            (wait-for-message
+                             (poll {:success (.success result-ch)
+                                    :error (.error result-ch)}
+                                   0)))]
 
        ;; handle requests
        (receive-in-order requests
@@ -178,21 +183,33 @@
 		   (wait timeout)
                    (fn [_]
                      (enqueue (.error result) (TimeoutException.)))))
-	       
+
 	       ;; send requests
-	       (run-pipeline (connection)
+	       (run-pipeline 0
+                 :error-handler (fn [_]
+                                  (if-not (has-completed? result)
+                                    ;;try again after 100 ms
+                                    (restart 100)
+                                    (complete nil)))
+                 (fn [retry-wait-time]
+                   (if (zero? retry-wait-time)
+                     (connection)
+                     (run-pipeline nil
+                       (wait retry-wait-time)
+                       (fn [_] (connection)))))
 		 (fn [ch]
-		   (enqueue ch request)
-		   (enqueue responses [request result (timeout-fn timeout) ch])))))))
-       
+                   (when-not (has-completed? result)
+                     (enqueue ch request)
+                     (enqueue responses [request result ch]))))))))
+
        ;; handle responses
        (receive-in-order responses
-	 (fn [[request ^ResultChannel result timeout ch]]
+	 (fn [[request ^ResultChannel result ch]]
 	   (run-pipeline ch
 	     :error-handler (fn [_]
 			      ;; re-send request
-			      (when-not (neg? (timeout))
-				(enqueue requests [request result]))
+			      (when-not (has-completed? result)
+				(enqueue requests [request result -1]))
 			      (complete nil))
 	     read-channel
 	     (fn [response]

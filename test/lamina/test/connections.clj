@@ -12,7 +12,8 @@
     [lamina core connections]
     [lamina.core.pipeline :only (success-result error-result)])
   (:require
-    [clojure.contrib.logging :as log]))
+   [clojure.contrib.logging :as log])
+  (:import java.util.concurrent.TimeoutException))
 
 (defn simple-echo-server []
   (let [[a b] (channel-pair)]
@@ -92,3 +93,26 @@
 (deftest test-dropped-connection
   (dropped-connection client)
   (dropped-connection pipelined-client))
+
+(defn works-after-a-timedout-request [client-fn initially-disconnected]
+  (with-server simple-echo-server
+    (when initially-disconnected
+      (stop-server))
+    (let [f (client-fn #(connect) "dropped-and-restored")]
+      (when-not initially-disconnected
+        (stop-server))
+      (try
+        (is (thrown? TimeoutException
+                     (wait-for-result (f "echo" 100))))
+        (start-server)
+        (is (= "echo2"
+               ;; big timeout to ensure the persistent connection catches up
+               (wait-for-result (f "echo2" 4000))))
+        (finally
+         (close-connection f))))))
+
+(deftest test-keeps-on-working-after-a-timedout-request
+  (testing "with the connection initially disconnected"
+    (works-after-a-timedout-request pipelined-client true))
+  (testing "with the connection disconnected afterwards"
+    (works-after-a-timedout-request pipelined-client false)))
