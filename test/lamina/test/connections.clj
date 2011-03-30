@@ -57,18 +57,24 @@
 	(finally
 	  (close-connection connection))))))
 
-(defn simple-response [client-fn]
-  (with-server simple-echo-server
-    (let [f (client-fn #(connect) "simple-response")]
-      (try
-	(dotimes [i 10]
-	  (is (= i (wait-for-result (f i) 1000))))
-	(finally
-	  (close-connection f))))))
+(defn simple-response
+  ([client-fn timeout]
+      (with-server simple-echo-server
+        (let [f (client-fn #(connect) "simple-response")]
+          (try
+            (dotimes [i 10]
+              (is (= i (wait-for-result (f i timeout) 1000))))
+            (finally
+             (close-connection f))))))
+  ([client-fn]
+     (simple-response client-fn -1)))
 
 (deftest test-simple-response
   (simple-response client)
   (simple-response pipelined-client))
+
+(deftest timeouts-can-be-used
+  (simple-response client 1000))
 
 (defn dropped-connection [client-fn]
   (with-server simple-echo-server

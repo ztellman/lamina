@@ -96,7 +96,7 @@
   (if (neg? timeout)
     (constantly 1)
     (let [final (+ (System/currentTimeMillis) timeout)]
-      #(- (System/currentTimeMillis) final))))
+      #(- final (System/currentTimeMillis)))))
 
 (defn client
   ([connection-generator]
