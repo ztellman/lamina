@@ -74,7 +74,8 @@
   (simple-response pipelined-client))
 
 (deftest timeouts-can-be-used
-  (simple-response client 1000))
+  (simple-response client 1000)
+  (simple-response pipelined-client 1000))
 
 (defn dropped-connection [client-fn]
   (with-server simple-echo-server

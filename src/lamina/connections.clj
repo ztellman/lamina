@@ -176,7 +176,8 @@
 	       (when-not (neg? timeout)
 		 (run-pipeline nil
 		   (wait timeout)
-		   (enqueue (.error result) (TimeoutException.))))
+                   (fn [_]
+                     (enqueue (.error result) (TimeoutException.)))))
 	       
 	       ;; send requests
 	       (run-pipeline (connection)
