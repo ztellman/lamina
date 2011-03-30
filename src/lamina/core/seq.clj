@@ -304,14 +304,13 @@
 	  (restart val))))))
 
 (defn reduce*
-  "Returns a constant-channel which will return the result of the reduce once the channel has been exhausted."
+  "Returns a result-channel which will emit the result of the reduce once the channel has been exhausted."
   ([f ch]
-     (.success
-       (run-pipeline ch
-	 read-channel
-	 #(reduce- f %1 ch))))
+     (run-pipeline ch
+       read-channel
+       #(reduce- f %1 ch)))
   ([f val ch]
-     (.success (reduce- f val ch))))
+     (reduce- f val ch)))
 
 (defn reductions- [f val ch]
   (let [f (unwrap-fn f)
@@ -335,10 +334,8 @@
 (defn reductions*
   "Returns a channel which contains the intermediate results of the reduce operation."
   ([f ch]
-     (wait-for-message
-       (.success
-	 (run-pipeline ch
-	   read-channel
-	   #(reductions- f %1 ch)))))
+     @(run-pipeline ch
+	read-channel
+	#(reductions- f %1 ch)))
   ([f val ch]
      (reductions- f val ch)))

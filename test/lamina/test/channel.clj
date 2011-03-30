@@ -319,11 +319,11 @@
   (let [s (range 10)]
 
     (let [ch (apply closed-channel s)]
-      (is (= (reduce + s) (wait-for-message (reduce* + ch)))))
+      (is (= (reduce + s) @(reduce* + ch))))
 
     (let [ch (channel)]
       (async-enqueue ch s false)
-      (is (= (reduce + s) (wait-for-message (reduce* + ch) 2500))))))
+      (is (= (reduce + s) (wait-for-result (reduce* + ch) 2500))))))
 
 (deftest test-reductions*
   (let [s (range 10)]

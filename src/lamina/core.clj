@@ -136,7 +136,10 @@
 
 (import-fn x/compact)
 
-(defmacro force-all [expr]
+(defmacro force-all
+  "Forces a sequence of results.  Subsequent expressions will wait on all results being
+   realized, but the results can be completed in any order."
+  [expr]
   `(~'force (compact ~expr)))
 
 (defmacro async
@@ -148,7 +151,7 @@
   (x/async body))
 
 (defmacro defn-async
-  "Creates an asynchronous function.  Equivalent to (async (defn ....))."
+  "Creates an asynchronous function."
   [& body]
   `(def ~(first body)
      (deref (async (fn ~(first body) ~@(rest body))))))

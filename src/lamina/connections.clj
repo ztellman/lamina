@@ -88,7 +88,9 @@
 (defn close-connection
   "Takes a client function, and closes the connection."
   [f]
-  (f ::close))
+  (if-let [close-fn (-> f meta ::close-fn)]
+    (close-fn)
+    (f ::close)))
 
 ;;
 
