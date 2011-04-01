@@ -141,13 +141,16 @@
                             ;; send request, and wait for response
                             (do
                               (enqueue ch request)
-                              [ch (read-channel ch)]))))))
-                  (fn [[ch response]]
-                    (if-not (and (nil? response) (drained? ch))
-                      (if (instance? Exception response)
-                        (throw response)
-                        response)
-                      (restart))))
+                              ch))))))
+                  (fn [ch]
+                    (run-pipeline ch
+                      read-channel
+                      (fn [response]
+                        (if-not (and (nil? response) (drained? ch))
+                          (if (instance? Exception response)
+                            (throw response)
+                            response)
+                          (restart))))))
                 result-channel)))))
 
        ;; request function

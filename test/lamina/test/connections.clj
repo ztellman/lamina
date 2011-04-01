@@ -116,4 +116,5 @@
     (works-after-a-timedout-request pipelined-client true)
     (works-after-a-timedout-request client true))
   (testing "with the connection disconnected afterwards"
-    (works-after-a-timedout-request pipelined-client false)))
+    (works-after-a-timedout-request pipelined-client false)
+    (works-after-a-timedout-request client false)))
