@@ -98,6 +98,10 @@
           :error (.error result-ch)}
          0)))
 
+(defn- parametrized-wait [wait-millis]
+  (run-pipeline wait-millis
+    (wait wait-millis)))
+
 (defn client
   ([connection-generator]
      (client connection-generator "unknown"))
@@ -120,10 +124,13 @@
 
 	       ;; make request
 	       (siphon-result
-                (run-pipeline nil
+                (run-pipeline 0 ;; don't wait anything initially
                   :error-handler (fn [_]
                                    (when-not (has-completed? result-channel)
-                                     (restart)))
+                                     ;;try again after 100 ms
+                                     (restart 100)))
+
+                  parametrized-wait
                   (fn [_]
                     (if (has-completed? result-channel)
 
@@ -150,7 +157,7 @@
                           (if (instance? Exception response)
                             (throw response)
                             response)
-                          (restart))))))
+                          (restart 100))))))
                 result-channel)))))
 
        ;; request function
@@ -184,18 +191,14 @@
                      (enqueue (.error result) (TimeoutException.)))))
 
 	       ;; send requests
-	       (run-pipeline 0
+	       (run-pipeline 0 ;; don't wait anything initially
                  :error-handler (fn [_]
                                   (if-not (has-completed? result)
                                     ;;try again after 100 ms
                                     (restart 100)
                                     (complete nil)))
-                 (fn [retry-wait-time]
-                   (if (zero? retry-wait-time)
-                     (connection)
-                     (run-pipeline nil
-                       (wait retry-wait-time)
-                       (fn [_] (connection)))))
+                 parametrized-wait
+                 (fn [_] (connection))
 		 (fn [ch]
                    (when-not (has-completed? result)
                      (enqueue ch request)
