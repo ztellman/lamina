@@ -113,6 +113,7 @@
 
 (deftest test-keeps-on-working-after-a-timedout-request
   (testing "with the connection initially disconnected"
-    (works-after-a-timedout-request pipelined-client true))
+    (works-after-a-timedout-request pipelined-client true)
+    (works-after-a-timedout-request client true))
   (testing "with the connection disconnected afterwards"
     (works-after-a-timedout-request pipelined-client false)))

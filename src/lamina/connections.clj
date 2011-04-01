@@ -92,11 +92,11 @@
 
 ;;
 
-(defn- timeout-fn [timeout]
-  (if (neg? timeout)
-    (constantly 1)
-    (let [final (+ (System/currentTimeMillis) timeout)]
-      #(- final (System/currentTimeMillis)))))
+(defn- has-completed? [result-ch]
+  (wait-for-message
+   (poll {:success (.success result-ch)
+          :error (.error result-ch)}
+         0)))
 
 (defn client
   ([connection-generator]
@@ -116,38 +116,39 @@
 		 (run-pipeline nil
 		   (wait timeout)
 		   (fn [_]
-		     (enqueue (.success result-channel) (TimeoutException.)))))
+		     (enqueue (.error result-channel) (TimeoutException.)))))
 
 	       ;; make request
-	       (let [timeout (timeout-fn timeout)]
-		 (siphon-result
-		   (run-pipeline nil
-		     :error-handler (fn [_] (restart))
-		     (fn [_]
-		       (if (neg? (timeout))
-			 
-			 ;; if timeout has already elapsed, don't bother
-			 nil
-			 
-			 ;; send the request
-			 (run-pipeline (connection)
-			   (fn [ch]
-			     (if (= ::close ch)
-			       
-			       ;; (close-connection ...) has already been called
-			       (complete (Exception. "Client has been deactivated."))
-			       
-			       ;; send request, and wait for response
-			       (do
-				 (enqueue ch request)
-				 [ch (read-channel ch)]))))))
-		     (fn [[ch response]]
-		       (if-not (and (nil? response) (drained? ch))
-			 (if (instance? Exception response)
-			   (throw response)
-			   response)
-			 (restart))))
-		   result-channel))))))
+	       (siphon-result
+                (run-pipeline nil
+                  :error-handler (fn [_]
+                                   (when-not (has-completed? result-channel)
+                                     (restart)))
+                  (fn [_]
+                    (if (has-completed? result-channel)
+
+                      ;; if timeout has already elapsed, exit
+                      (complete nil)
+
+                      ;; send the request
+                      (run-pipeline (connection)
+                        (fn [ch]
+                          (if (= ::close ch)
+
+                            ;; (close-connection ...) has already been called
+                            (complete (Exception. "Client has been deactivated."))
+
+                            ;; send request, and wait for response
+                            (do
+                              (enqueue ch request)
+                              [ch (read-channel ch)]))))))
+                  (fn [[ch response]]
+                    (if-not (and (nil? response) (drained? ch))
+                      (if (instance? Exception response)
+                        (throw response)
+                        response)
+                      (restart))))
+                result-channel)))))
 
        ;; request function
        (fn this
@@ -164,12 +165,7 @@
   ([connection-generator description]
      (let [connection (persistent-connection connection-generator description)
 	   requests (channel)
-	   responses (channel)
-           has-completed? (fn [result-ch]
-                            (wait-for-message
-                             (poll {:success (.success result-ch)
-                                    :error (.error result-ch)}
-                                   0)))]
+	   responses (channel)]
 
        ;; handle requests
        (receive-in-order requests
