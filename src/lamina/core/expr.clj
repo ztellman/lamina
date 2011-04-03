@@ -108,7 +108,7 @@
     (transform-task
       `((let [~forced-sym (atom #{})]
 	  ~@(binding [*forced-values* forced-sym]
-	      (map #(walk-exprs f %) (rest x))))))))
+	      (doall (map #(walk-exprs f %) (rest x)))))))))
 
 (defn walk-fn-form [f x]
   (let [pipeline-sym (gensym "loop")
@@ -179,11 +179,12 @@
 			  (walk-task-form f x)
 			  
 			  (first= x 'force)
-			  `(let [result# (result-channel)]
-			     (binding [*values-to-exclude* (conj *values-to-exclude* result#)]
-			       (siphon-result ~(walk-exprs* f (second x)) result#))
-			     (swap! ~*forced-values* conj result#)
-			     result#)
+			  `(with-forced-values ~*forced-values*
+			     (let [result# (result-channel)]
+			       (binding [*values-to-exclude* (conj *values-to-exclude* result#)]
+				 (siphon-result ~(walk-exprs* f (second x)) result#))
+			       (swap! ~*forced-values* conj result#)
+			       result#))
 
 			  (first= x 'recur)
 			  `(redirect (deref ~*recur-point*) [~@(map f* (rest x))])
@@ -278,7 +279,10 @@
 	non-constant-args (->> args (remove (complement first)))]
     (if (empty? non-constant-args)
       `(with-forced-values ~*forced-values*
-	 ~expr)
+	 (let [result# ~expr]
+	   (comment
+	     (println ~@(map str expr) "=" result#))
+	   result#))
       `(with-forced-values ~*forced-values*
 	 (let [~@(apply concat non-constant-args)]
 	   (run-pipeline []

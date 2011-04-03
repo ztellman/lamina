@@ -154,3 +154,9 @@
 	   [x]
 	   (task* (concat (this (dec x)) [x])))))
      2)))
+
+(deftest test-force-when
+  (is= [0 1 2]
+    (do
+      (force (when (task* (+ 1 2)) (task* (+ 3 4))))
+      (force (task* [0 1 2])))))
