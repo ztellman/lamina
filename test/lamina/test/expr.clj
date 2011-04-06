@@ -15,7 +15,7 @@
 
 (defmacro task* [& body]
   `(task
-     (Thread/sleep *sleep-interval*)
+     (Thread/sleep 0 *sleep-interval*)
      ~@body))
 
 (defmacro is= [expected expr]
@@ -23,7 +23,7 @@
      (binding [*sleep-interval* 50]
        (dotimes [_# 1]
 	 (is (= ~expected (wait-for-result (async ~expr) 2000)) (str "interval=" *sleep-interval*))))
-     (binding [*sleep-interval* 0]
+     (binding [*sleep-interval* 1]
        (dotimes [_# 1]
 	 (is (= ~expected (wait-for-result (async ~expr) 2000)) (str "interval=" *sleep-interval*))))))
 
@@ -76,7 +76,7 @@
   (is= 3
     ((fn abc ([[x]] x)) [3])))
 
-(deftest test-force
+'(deftest test-force
   (is= [1 2 3 4]
     [(force (task* 1))
      (force (task* 2))
@@ -85,9 +85,18 @@
   (is= [1 2 3 4]
     (concat
       (force-all [(task* 1) (task* 2)])
-      (force-all [(task* 3) (task* 4)]))))
+      (force-all [(task* 3) (task* 4)])))
+  (is= [1 4 10]
+    (do
+      (force
+	(when (task* (+ 1 2))
+	  (task* (+ 3 4))))
+      (let [a (concat [1 2] [3 4])
+	    b (force (task* (last a)))
+	    c (task* (+ b 6))]
+	[1 b c]))))
 
-(deftest test-channels
+'(deftest test-channels
   (is= [1 2]
     (let [ch (channel 1 2)]
       [(read-channel ch) (read-channel ch)]))
@@ -155,8 +164,3 @@
 	   (task* (concat (this (dec x)) [x])))))
      2)))
 
-(deftest test-force-when
-  (is= [0 1 2]
-    (do
-      (force (when (task* (+ 1 2)) (task* (+ 3 4))))
-      (force (task* [0 1 2])))))

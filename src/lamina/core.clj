@@ -16,7 +16,9 @@
     [lamina.core.channel :as channel]
     [lamina.core.seq :as seq]
     [lamina.core.named :as named]
-    [lamina.core.expr :as x])
+    [lamina.core.expr :as x]
+    [lamina.core.expr.task :as x-task]
+    [lamina.core.expr.utils :as x-utils])
   (:import
     [java.util.concurrent
      TimeoutException]))
@@ -120,8 +122,8 @@
 
 ;;;
 
-(import-fn x/set-default-executor)
-(import-fn x/set-local-executor)
+(import-fn x-task/set-default-executor)
+(import-fn x-task/set-local-executor)
 
 (defmacro task
   "A variation of 'future' that returns a result-channel instead of a synchronous
@@ -130,11 +132,11 @@
    When used within (async ...), it's simply an annotation that the body should be executed
    on a separate thread."
   [& body]
-  (x/transform-task body))
+  (x-task/transform-task body))
 
 ;;;
 
-(import-fn x/compact)
+(import-fn x-utils/compact)
 
 (defmacro force-all
   "Forces a sequence of results.  Subsequent expressions will wait on all results being
