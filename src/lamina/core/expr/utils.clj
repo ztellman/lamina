@@ -13,6 +13,19 @@
     clojure.walk)
   (:import [lamina.core.pipeline ResultChannel]))
 
+(defn first= [expr & symbols]
+  (and
+    (seq? expr)
+    (symbol? (first expr))
+    (some #{(symbol (name (first expr)))} symbols)))
+
+(defn print-vals [& args]
+  (doseq [a args]
+    (pprint a))
+  (last args))
+
+;;;
+
 (defmacro await-result
   [& body]
   `(let [result# (do ~@body)]
@@ -29,6 +42,26 @@
 	 (if-not (= ::none result##)
 	   result##
 	   result#)))))
+
+;;;
+
+(def special-forms
+  '(let if do let let* fn fn* quote var throw loop loop* recur try catch finally new def task))
+
+(defn constant? [x]
+  (or
+    (number? x)
+    (string? x)
+    (nil? x)
+    (keyword? x)
+    (and (symbol? x) (class? (resolve x)))))
+
+(defn constant-elements [x]
+  (if (first= x '.)
+    (list* true (constant? (second x)) true (map constant? (drop 3 x)))
+    (list* true (map constant? (rest x)))))
+
+;;;
 
 (defn split-special-form [x]
   (let [x* (partition 2 1 x)
@@ -51,16 +84,18 @@
 	  #(transform-special-form-bodies f %)
 	  (concat (drop-while symbol? prefix) body))))))
 
-(defn first= [expr & symbols]
-  (and
-    (seq? expr)
-    (symbol? (first expr))
-    (some #{(symbol (name (first expr)))} symbols)))
+(defn wrap-with-dependencies [expr expr*]
+  (let [dependencies (-> expr meta :dependencies)]
+    (if (empty? dependencies)
+      expr*
+      `(run-pipeline nil
+	 ~@(map
+	     (fn [v] `(read-merge (constantly ~v) (constantly nil)))
+	     dependencies)
+	 (fn [_#]
+	   ~expr*)))))
 
-(defn print-vals [& args]
-  (doseq [a args]
-    (pprint a))
-  (last args))
+;;;
 
 (defn- accumulate-result-channels [accum x]
   (cond

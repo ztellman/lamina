@@ -9,7 +9,7 @@
 (ns lamina.core.expr.tag
   (:use
     [clojure walk]
-    [lamina.core.expr utils]))
+    [lamina.core.expr utils walk]))
 
 (defn add-meta [x metadata]
   (if (instance? clojure.lang.IMeta x)
@@ -22,11 +22,11 @@
     (reduce
      (fn [[forced exprs] [variable value]]
        (let [forced? (first= value 'force)]
-	 (when forced?
-	   (assert (= 2 (count x))))
+	 (when (and forced? (not= 2 (count value)))
+	   (throw (Exception. (str value " must have only two arguments."))))
 	 [(if forced? (conj forced variable) forced)
 	  (conj exprs
-	    [variable (add-meta (if forced? (second value) value) {:depedencies forced})])]))
+	    [variable (add-meta (if forced? (second value) value) {:dependencies forced})])]))
      [[] []])
     second
     (apply concat)
@@ -40,7 +40,24 @@
 	(list* (first x) (strip-forces (second x)) (drop 2 x))))
     x))
 
-(defn transform-do-forms [x]
+(defn exprs->let-form [x]
+  (walk-exprs
+    (fn [x]
+      (if (not (seq? x))
+	x
+	(let [const-args (constant-elements x)]
+	  (if (> 2 (count (filter false? const-args)))
+	    x
+	    (let [args (rest
+			 (map vector
+			   const-args
+			   (map #(if %1 %2 (gensym "arg")) const-args x)
+			   x))]
+	      `(let ~(->> args (filter (complement first)) (map rest) (apply concat) vec)
+		 (~(first x) ~@(map second args))))))))
+    x))
+
+(defn do-forms->let-form [x]
   (postwalk
     (fn [x]
       (if-not (first= x 'do)
@@ -60,5 +77,14 @@
 (defn tag-exprs [x]
   (-> x
     expand-do-forms
-    transform-do-forms
+    do-forms->let-form
+    exprs->let-form
     tag-dependencies))
+
+(defn auto-force [sym x]
+  (postwalk
+    (fn [x]
+      (if (first= x sym)
+	(list 'force x)
+	x))
+    x))

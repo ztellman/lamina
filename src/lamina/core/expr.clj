@@ -28,22 +28,6 @@
 	(partial-macroexpand ex)
 	x))))
 
-(def special-forms
-  '(let if do let let* fn fn* quote var throw loop loop* recur try catch finally new def))
-
-(defn constant? [x]
-  (or
-    (number? x)
-    (string? x)
-    (nil? x)
-    (keyword? x)
-    (and (symbol? x) (class? (resolve x)))))
-
-(defn constant-elements [x]
-  (if (first= x '.)
-    (list* true (constant? (second x)) true (map constant? (drop 3 x)))
-    (list* true (map constant? (rest x)))))
-
 (defn transform-fn [f]
   (if (-> f meta original-fn)
     f
@@ -88,16 +72,15 @@
 	 (run-pipeline []
 	   :executor *current-executor*
 	   ~@(map
-	       (fn [arg sym]
+	       (fn [arg]
 		 `(read-merge
-		    (fn []
-		      (let [val# ~arg]
+		    (fn [] ~arg)
+		    (fn [args# val#]
+		      (conj args#
 			(if (fn? val#)
 			  (transform-fn val#)
-			  val#)))
-		    conj))
-	       (map first non-constant-args)
-	       (map second non-constant-args))
+			  val#)))))
+	       (map first non-constant-args))
 	   (fn [[~@(->> non-constant-args (map first))]]
 	     (debug-print
 	       ~(str (first expr))
@@ -178,20 +161,26 @@
       (transform-finally transformed-body finally-clause)
       transformed-body)))
 
+(def special-handlers
+  {'if transform-if
+   'throw transform-throw
+   'try transform-try
+   'new transform-new
+   'task #(transform-task (rest %))})
+
 (defn async [body]
-  (let [body (walk-exprs
-	       (fn [expr]
-		 (cond		   
-		   (valid-expr? expr) (transform-expr expr)
-		   (first= expr 'if) (transform-if expr)
-		   (first= expr 'throw) (transform-throw expr)
-		   (first= expr 'try) (transform-try expr)
-		   (first= expr 'new) (transform-new expr)
-		   :else expr))
-	       (->> body
-		 (prewalk partial-macroexpand)
-		 tag-exprs
-		 ))]
+  (let [body (->> body
+	       (prewalk partial-macroexpand)
+	       (auto-force 'read-channel)
+	       tag-exprs)
+	body (binding [*special-walk-handlers* special-handlers
+		       *final-walk* true]
+	       (realize
+		 (walk-exprs
+		   #(if (valid-expr? %)
+		      (transform-expr %)
+		      %)
+		   body)))]
     `(run-pipeline nil
        (fn [_#]
 	 ~@body))))

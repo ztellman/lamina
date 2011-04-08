@@ -76,7 +76,7 @@
   (is= 3
     ((fn abc ([[x]] x)) [3])))
 
-'(deftest test-force
+(deftest test-force
   (is= [1 2 3 4]
     [(force (task* 1))
      (force (task* 2))
@@ -96,7 +96,7 @@
 	    c (task* (+ b 6))]
 	[1 b c]))))
 
-'(deftest test-channels
+(deftest test-channels
   (is= [1 2]
     (let [ch (channel 1 2)]
       [(read-channel ch) (read-channel ch)]))
@@ -149,6 +149,11 @@
 	 x
 	 (recur (task* (conj x (count x))))))
      []))
+  (is= (range 100)
+    (loop [i 0 accum []]
+      (if (< 99 i)
+	accum
+	(recur (inc i) (conj accum i)))))
   (is= 4
     ((fn
        ([x y] (recur (task* (+ x y))))

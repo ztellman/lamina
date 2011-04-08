@@ -150,8 +150,7 @@
        (loop [fns fns, pipeline pipeline, initial-value initial-value, value value, err-count 0]
 	 (cond
 	   (< 100 err-count)
-	   (enqueue (.error result)
-	     (Exception. "Error loop detected in pipeline."))
+	   (error! result (Exception. "Error loop detected in pipeline."))
 	   
 	   (redirect? value)
 	   (redirect-recur value pipeline initial-value err-count)
