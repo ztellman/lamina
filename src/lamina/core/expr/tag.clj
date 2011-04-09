@@ -69,9 +69,23 @@
 (defn expand-do-forms [x]
   (postwalk
     (fn [x]
-      (if-not (first= x 'let 'let* 'fn 'fn* 'binding)
-	x
-	(transform-special-form-bodies (fn [body] `((do ~@body))) x)))
+      (cond
+	(first= x 'let 'let* 'fn 'fn* 'binding)
+	(transform-special-form-bodies (fn [body] `((do ~@body))) x)
+
+	(first= x 'try)
+	(list* (first x)
+	  (list* 'do (take-while #(not (first= % 'catch 'finally)) (rest x)))
+	  (drop-while #(not (first= % 'catch 'finally)) (rest x)))
+
+	(first= x 'finally)
+	(list (first x) (list* 'do (rest x)))
+
+	(first= x 'catch)
+	(concat (take 3 x) [(list* 'do (drop 3 x))])
+
+	:else
+	x))
     x))
 
 (defn tag-exprs [x]

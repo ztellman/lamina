@@ -21,21 +21,24 @@
     `(println ~@args)))
 
 (defn partial-macroexpand [x]
-  (if (first= x 'task 'loop 'await-result)
+  (if (first= x 'task 'loop 'await-result 'sync)
     x
     (let [ex (macroexpand-1 x)]
       (if-not (identical? ex x)
 	(partial-macroexpand ex)
 	x))))
 
+(defn transform-sync [x]
+  (list 'lamina.core.expr.utils/await-result x))
+
 (defn transform-fn [f]
   (if (-> f meta original-fn)
     f
     ^{original-fn f}
     (fn [& args]
-      (if (every? (complement result-channel?) args)
-	(apply f args)
-	(extract-result
+      (extract-result
+	(if (every? (complement result-channel?) args)
+	  (apply f args)
 	  (apply run-pipeline []
 	    (concat
 	      (map
@@ -166,6 +169,7 @@
    'throw transform-throw
    'try transform-try
    'new transform-new
+   'sync transform-sync
    'task #(transform-task (rest %))})
 
 (defn async [body]

@@ -46,7 +46,10 @@
 ;;;
 
 (def special-forms
-  '(let if do let let* fn fn* quote var throw loop loop* recur try catch finally new def task))
+  '(let if do let let* fn fn* quote
+     var throw loop loop* recur
+     try catch finally new def task
+     sync))
 
 (defn constant? [x]
   (or
