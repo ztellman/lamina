@@ -90,6 +90,10 @@ namespace.
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/on-drained">on-drained</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core/partition*">partition*</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core/partition-all*">partition-all*</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/pipeline">pipeline</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/poll">poll</a>
@@ -379,6 +383,26 @@ a channel is created, and 'creation-callback' is invoked.</pre>
   <pre id="var-usage">Usage: (on-drained ch &amp; callbacks)
 </pre>
   <pre id="var-docstr">Registers callbacks that will be triggered by the channel being drained.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.core/partition*">partition*</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (partition* n ch)
+       (partition* n step ch)
+</pre>
+  <pre id="var-docstr">Returns a partitioned channel.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.core/partition-all*">partition-all*</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (partition-all* n ch)
+       (partition-all* n step ch)
+</pre>
+  <pre id="var-docstr">Returns a partitioned channel, including any trailing messages that aren't evenly divisable.</pre>
   
 </div><div id="var-entry">
   <br />
