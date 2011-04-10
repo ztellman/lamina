@@ -335,6 +335,26 @@
       (async-enqueue ch s false)
       (is (= (reductions + s) (channel-seq (reductions* + ch) 2500))))))
 
+(deftest test-partition*
+  (let [s (range 10)]
+
+    (let [ch (apply closed-channel s)]
+      (is (= (partition 4 3 s) (channel-seq (partition* 4 3 ch)))))
+
+    (let [ch (channel)]
+      (async-enqueue ch s false)
+      (is (= (partition 4 3 s) (channel-seq (partition* 4 3 ch) 2500))))))
+
+(deftest test-partition-all*
+  (let [s (range 10)]
+
+    (let [ch (apply closed-channel s)]
+      (is (= (partition-all 4 3 s) (channel-seq (partition-all* 4 3 ch)))))
+
+    (let [ch (channel)]
+      (async-enqueue ch s false)
+      (is (= (partition-all 4 3 s) (channel-seq (partition-all* 4 3 ch) 2500))))))
+
 ;;;
 
 (defn- priority-compose-channels

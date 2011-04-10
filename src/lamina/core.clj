@@ -66,6 +66,8 @@
 (import-fn seq/reductions*)
 (import-fn seq/take*)
 (import-fn seq/take-while*)
+(import-fn seq/partition*)
+(import-fn seq/partition-all*)
 
 ;; named channels
 (import-fn named/named-channel)

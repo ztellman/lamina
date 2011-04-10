@@ -339,3 +339,52 @@
 	#(reductions- f %1 ch)))
   ([f val ch]
      (reductions- f val ch)))
+
+(defn- conj-when-msg [ch]
+  (read-merge
+    #(read-channel ch)
+    #(if (and (nil? %2) (drained? ch))
+       %1
+       (conj %1 %2))))
+
+(defn partition*
+  ([n ch]
+     (partition* n n ch))
+  ([n step ch]
+     (let [out (channel)]
+       (run-pipeline
+	 (run-pipeline []
+	   (conj-when-msg ch)
+	   (fn [acc]
+	     (if (= n (count acc))
+	       (do
+		 (enqueue out acc)
+		 (when-not (drained? ch)
+		   (restart (vec (drop step acc)))))
+	       (when-not (drained? ch)
+		 (restart acc)))))
+	 (fn [_] (close out)))
+       out)))
+
+(defn partition-all*
+  ([n ch]
+     (partition-all* n n ch))
+  ([n step ch]
+     (let [out (channel)]
+       (run-pipeline
+	 (run-pipeline []
+	   (conj-when-msg ch)
+	   (fn [acc]
+	     (if (= n (count acc))
+	       (do
+		 (enqueue out acc)
+		 (if-not (drained? ch)
+		   (restart (vec (drop step acc)))
+		   (when-not (= n step)
+		     (enqueue out (vec (drop step acc))))))
+	       (if-not (drained? ch)
+		 (restart acc)
+		 (when-not (empty? acc)
+		   (enqueue out acc))))))
+	 (fn [_] (close out)))
+       out)))
