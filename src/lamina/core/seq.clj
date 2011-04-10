@@ -348,6 +348,7 @@
        (conj %1 %2))))
 
 (defn partition*
+  "Returns a partitioned channel."
   ([n ch]
      (partition* n n ch))
   ([n step ch]
@@ -367,6 +368,7 @@
        out)))
 
 (defn partition-all*
+  "Returns a partitioned channel, including any trailing messages that aren't evenly divisable."
   ([n ch]
      (partition-all* n n ch))
   ([n step ch]
