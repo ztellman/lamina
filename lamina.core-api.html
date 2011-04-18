@@ -66,7 +66,7 @@ namespace.
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/defn-async">defn-async</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
-      <a href="#lamina.core/do*">do*</a>
+      <a href="#lamina.core/do-stage">do-stage</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/drained?">drained?</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
@@ -132,11 +132,11 @@ namespace.
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/task">task</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
-      <a href="#lamina.core/wait">wait</a>
-    </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/wait-for-message">wait-for-message</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/wait-for-result">wait-for-result</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core/wait-stage">wait-stage</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/with-timeout">with-timeout</a>
     </div>
@@ -258,9 +258,9 @@ is drained.</pre>
 </div><div id="var-entry">
   <br />
   <hr />
-  <h2 id="lamina.core/do*">do*</h2>
+  <h2 id="lamina.core/do-stage">do-stage</h2>
   <span id="var-type">macro</span><br />
-  <pre id="var-usage">Usage: (do* &amp; body)
+  <pre id="var-usage">Usage: (do-stage &amp; body)
 </pre>
   <pre id="var-docstr">Creates a pipeline stage that emits the same value it receives, but performs some side-effect
 in between.  Useful for debug prints and logging.</pre>
@@ -622,15 +622,6 @@ on a separate thread.</pre>
 </div><div id="var-entry">
   <br />
   <hr />
-  <h2 id="lamina.core/wait">wait</h2>
-  <span id="var-type">macro</span><br />
-  <pre id="var-usage">Usage: (wait interval)
-</pre>
-  <pre id="var-docstr">Creates a pipeline stage that accepts a value, and emits the same value after 'interval' milliseconds.</pre>
-  
-</div><div id="var-entry">
-  <br />
-  <hr />
   <h2 id="lamina.core/wait-for-message">wait-for-message</h2>
   <span id="var-type">function</span><br />
   <pre id="var-usage">Usage: (wait-for-message ch)
@@ -652,6 +643,15 @@ not time out.</pre>
 If there was an error, the exception is re-thrown.
 
 If the timeout elapses, a java.util.concurrent.TimeoutException is thrown.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.core/wait-stage">wait-stage</h2>
+  <span id="var-type">macro</span><br />
+  <pre id="var-usage">Usage: (wait-stage interval)
+</pre>
+  <pre id="var-docstr">Creates a pipeline stage that accepts a value, and emits the same value after 'interval' milliseconds.</pre>
   
 </div><div id="var-entry">
   <br />
