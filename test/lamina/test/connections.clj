@@ -12,7 +12,8 @@
     [lamina core connections]
     [lamina.core.pipeline :only (success-result error-result)])
   (:require
-    [clojure.contrib.logging :as log]))
+   [clojure.contrib.logging :as log])
+  (:import java.util.concurrent.TimeoutException))
 
 (defn simple-echo-server []
   (let [[a b] (channel-pair)]
@@ -57,18 +58,25 @@
 	(finally
 	  (close-connection connection))))))
 
-(defn simple-response [client-fn]
-  (with-server simple-echo-server
-    (let [f (client-fn #(connect) "simple-response")]
-      (try
-	(dotimes [i 10]
-	  (is (= i (wait-for-result (f i) 1000))))
-	(finally
-	  (close-connection f))))))
+(defn simple-response
+  ([client-fn timeout]
+      (with-server simple-echo-server
+        (let [f (client-fn #(connect) "simple-response")]
+          (try
+            (dotimes [i 10]
+              (is (= i (wait-for-result (f i timeout) 1000))))
+            (finally
+             (close-connection f))))))
+  ([client-fn]
+     (simple-response client-fn -1)))
 
 (deftest test-simple-response
   (simple-response client)
   (simple-response pipelined-client))
+
+(deftest timeouts-can-be-used
+  (simple-response client 1000)
+  (simple-response pipelined-client 1000))
 
 (defn dropped-connection [client-fn]
   (with-server simple-echo-server
@@ -83,4 +91,30 @@
 	  (close-connection f))))))
 
 (deftest test-dropped-connection
-  (dropped-connection client))
+  (dropped-connection client)
+  (dropped-connection pipelined-client))
+
+(defn works-after-a-timedout-request [client-fn initially-disconnected]
+  (with-server simple-echo-server
+    (when initially-disconnected
+      (stop-server))
+    (let [f (client-fn #(connect) "dropped-and-restored")]
+      (when-not initially-disconnected
+        (stop-server))
+      (try
+        (is (thrown? TimeoutException
+                     (wait-for-result (f "echo" 100))))
+        (start-server)
+        (is (= "echo2"
+               ;; big timeout to ensure the persistent connection catches up
+               (wait-for-result (f "echo2" 4000))))
+        (finally
+         (close-connection f))))))
+
+(deftest test-keeps-on-working-after-a-timedout-request
+  (testing "with the connection initially disconnected"
+    (works-after-a-timedout-request pipelined-client true)
+    (works-after-a-timedout-request client true))
+  (testing "with the connection disconnected afterwards"
+    (works-after-a-timedout-request pipelined-client false)
+    (works-after-a-timedout-request client false)))

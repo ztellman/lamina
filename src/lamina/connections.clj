@@ -94,11 +94,15 @@
 
 ;;
 
-(defn- timeout-fn [timeout]
-  (if (neg? timeout)
-    (constantly 1)
-    (let [final (+ (System/currentTimeMillis) timeout)]
-      #(- (System/currentTimeMillis) final))))
+(defn- has-completed? [result-ch]
+  (wait-for-message
+   (poll {:success (.success result-ch)
+          :error (.error result-ch)}
+         0)))
+
+(defn- parametrized-wait [wait-millis]
+  (run-pipeline wait-millis
+    (wait wait-millis)))
 
 (defn client
   ([connection-generator]
@@ -118,38 +122,45 @@
 		 (run-pipeline nil
 		   (wait timeout)
 		   (fn [_]
-		     (enqueue (.success result-channel) (TimeoutException.)))))
+		     (enqueue (.error result-channel) (TimeoutException.)))))
 
 	       ;; make request
-	       (let [timeout (timeout-fn timeout)]
-		 (siphon-result
-		   (run-pipeline nil
-		     :error-handler (fn [_] (restart))
-		     (fn [_]
-		       (if (neg? (timeout))
-			 
-			 ;; if timeout has already elapsed, don't bother
-			 nil
-			 
-			 ;; send the request
-			 (run-pipeline (connection)
-			   (fn [ch]
-			     (if (= ::close ch)
-			       
-			       ;; (close-connection ...) has already been called
-			       (complete (Exception. "Client has been deactivated."))
-			       
-			       ;; send request, and wait for response
-			       (do
-				 (enqueue ch request)
-				 [ch (read-channel ch)]))))))
-		     (fn [[ch response]]
-		       (if-not (and (nil? response) (drained? ch))
-			 (if (instance? Exception response)
-			   (throw response)
-			   response)
-			 (restart))))
-		   result-channel))))))
+	       (siphon-result
+                (run-pipeline 0 ;; don't wait anything initially
+                  :error-handler (fn [_]
+                                   (when-not (has-completed? result-channel)
+                                     ;;try again after 100 ms
+                                     (restart 100)))
+
+                  parametrized-wait
+                  (fn [_]
+                    (if (has-completed? result-channel)
+
+                      ;; if timeout has already elapsed, exit
+                      (complete nil)
+
+                      ;; send the request
+                      (run-pipeline (connection)
+                        (fn [ch]
+                          (if (= ::close ch)
+
+                            ;; (close-connection ...) has already been called
+                            (complete (Exception. "Client has been deactivated."))
+
+                            ;; send request, and wait for response
+                            (do
+                              (enqueue ch request)
+                              ch))))))
+                  (fn [ch]
+                    (run-pipeline ch
+                      read-channel
+                      (fn [response]
+                        (if-not (and (nil? response) (drained? ch))
+                          (if (instance? Exception response)
+                            (throw response)
+                            response)
+                          (restart 100))))))
+                result-channel)))))
 
        ;; request function
        (fn this
@@ -178,22 +189,31 @@
 	       (when-not (neg? timeout)
 		 (run-pipeline nil
 		   (wait timeout)
-		   (enqueue (.error result) (TimeoutException.))))
-	       
+                   (fn [_]
+                     (enqueue (.error result) (TimeoutException.)))))
+
 	       ;; send requests
-	       (run-pipeline (connection)
+	       (run-pipeline 0 ;; don't wait anything initially
+                 :error-handler (fn [_]
+                                  (if-not (has-completed? result)
+                                    ;;try again after 100 ms
+                                    (restart 100)
+                                    (complete nil)))
+                 parametrized-wait
+                 (fn [_] (connection))
 		 (fn [ch]
-		   (enqueue ch request)
-		   (enqueue responses [request result (timeout-fn timeout) ch])))))))
-       
+                   (when-not (has-completed? result)
+                     (enqueue ch request)
+                     (enqueue responses [request result ch]))))))))
+
        ;; handle responses
        (receive-in-order responses
-	 (fn [[request ^ResultChannel result timeout ch]]
+	 (fn [[request ^ResultChannel result ch]]
 	   (run-pipeline ch
 	     :error-handler (fn [_]
 			      ;; re-send request
-			      (when-not (neg? (timeout))
-				(enqueue requests [request result]))
+			      (when-not (has-completed? result)
+				(enqueue requests [request result -1]))
 			      (complete nil))
 	     read-channel
 	     (fn [response]
