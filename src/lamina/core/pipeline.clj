@@ -315,7 +315,8 @@
   "Siphons the result from one result-channel to another."
   [src dst]
   (on-success src #(success! dst %))
-  (on-error src #(error! dst %)))
+  (on-error src #(error! dst %))
+  src)
 
 (defmethod print-method ResultChannel [ch writer]
   (.write writer (.toString ch)))

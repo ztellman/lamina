@@ -11,7 +11,7 @@
   (:use
     [lamina core]
     [lamina.core.channel :only (dequeue)]
-    [lamina.core.pipeline :only (success-result error-result)])
+    [lamina.core.pipeline :only (poll-result success-result error-result success! error!)])
   (:require
     [clojure.contrib.logging :as log])
   (:import
@@ -39,34 +39,41 @@
 
 (defn- connect-loop [halt-signal connection-generator connection-callback description]
   (let [delay (atom 0)
-	result (atom (error-result [nil nil]))
+	result (atom (result-channel))
 	latch (atom true)]
+    ;; handle signal to close persistent connection
     (receive halt-signal
       (fn [_]
-	(run-pipeline @result
-	  #(do
-	     (close %)
-	     (reset! result ::close)))
-	(reset! latch false)))
+	(let [connection @result]
+	  (reset! result ::close)
+	  (reset! latch false)
+	  (run-pipeline connection close))))
+
+    ;; run connection loop
     (run-pipeline nil
       :error-handler (fn [ex]
 		       (swap! delay incr-delay)
+		       (reset! result (result-channel))
 		       (restart))
-      (do*
+      (do-stage
       	(when (pos? @delay)
       	  (log/warn
       	    (str "Failed to connect to " description ". Waiting " @delay "ms to try again."))))
-      (wait @delay)
-      (fn [_] (connection-generator))
+      (wait-stage @delay)
+      (fn [_]
+	(siphon-result
+	  (connection-generator)
+	  @result))
       (fn [ch]
 	(when connection-callback
 	  (connection-callback ch))
 	(log/info (str "Connected to " description "."))
-	(reset! delay 0)
-	(reset! result (success-result ch))
 	(wait-for-close ch description))
+      ;; wait here for connection to drop
       (fn [_]
 	(when @latch
+	  (reset! delay 0)
+	  (reset! result (result-channel))
 	  (restart))))
     result))
 
@@ -95,14 +102,17 @@
 ;;
 
 (defn- has-completed? [result-ch]
-  (wait-for-message
-   (poll {:success (.success result-ch)
-          :error (.error result-ch)}
-         0)))
+  (wait-for-message (poll-result result-ch 0)))
 
 (defn- parametrized-wait [wait-millis]
   (run-pipeline wait-millis
-    (wait wait-millis)))
+    (wait-stage wait-millis)))
+
+(defn setup-result-timeout [result timeout]
+  (when-not (neg? timeout)
+    (receive (poll-result result timeout)
+      #(when-not %
+	 (error! result (TimeoutException. (str "Timed out after " timeout "ms.")))))))
 
 (defn client
   ([connection-generator]
@@ -112,55 +122,49 @@
 	   requests (channel)]
        ;; request loop
        (receive-in-order requests
-	 (fn [[request ^ResultChannel result-channel timeout]]
+	 (fn [[request ^ResultChannel result timeout]]
 
 	   (if (= ::close request)
 	     (close-connection connection)
 	     (do
 	       ;; set up timeout
-	       (when-not (neg? timeout)
-		 (run-pipeline nil
-		   (wait timeout)
-		   (fn [_]
-		     (enqueue (.error result-channel) (TimeoutException.)))))
+	       (setup-result-timeout result timeout)
 
 	       ;; make request
 	       (siphon-result
-                (run-pipeline 0 ;; don't wait anything initially
-                  :error-handler (fn [_]
-                                   (when-not (has-completed? result-channel)
-                                     ;;try again after 100 ms
-                                     (restart 100)))
+		 (run-pipeline nil ;; don't wait anything initially
+		   :error-handler (fn [_]
+				    (when-not (has-completed? result)
+				      (restart)))
+		   
+		   (fn [_]
+		     (if (has-completed? result)
+		       
+		       ;; if timeout has already elapsed, exit
+		       (complete nil)
 
-                  parametrized-wait
-                  (fn [_]
-                    (if (has-completed? result-channel)
+		       ;; send the request
+		       (run-pipeline (connection)
+			 (fn [ch]
+			   (if (= ::close ch)
 
-                      ;; if timeout has already elapsed, exit
-                      (complete nil)
+			     ;; (close-connection ...) has already been called
+			     (complete (Exception. "Client has been deactivated."))
 
-                      ;; send the request
-                      (run-pipeline (connection)
-                        (fn [ch]
-                          (if (= ::close ch)
-
-                            ;; (close-connection ...) has already been called
-                            (complete (Exception. "Client has been deactivated."))
-
-                            ;; send request, and wait for response
-                            (do
-                              (enqueue ch request)
-                              ch))))))
-                  (fn [ch]
-                    (run-pipeline ch
-                      read-channel
-                      (fn [response]
-                        (if-not (and (nil? response) (drained? ch))
-                          (if (instance? Exception response)
-                            (throw response)
-                            response)
-                          (restart 100))))))
-                result-channel)))))
+			     ;; send request, and wait for response
+			     (do
+			       (enqueue ch request)
+			       ch))))))
+		   (fn [ch]
+		     (run-pipeline ch
+		       read-channel
+		       (fn [response]
+			 (if-not (and (nil? response) (drained? ch))
+			   (if (instance? Exception response)
+			     (throw response)
+			     response)
+			   (restart))))))
+		 result)))))
 
        ;; request function
        (fn this
@@ -186,20 +190,14 @@
 	     (close-connection connection)
 	     (do
 	       ;; setup timeout
-	       (when-not (neg? timeout)
-		 (run-pipeline nil
-		   (wait timeout)
-                   (fn [_]
-                     (enqueue (.error result) (TimeoutException.)))))
+	       (setup-result-timeout result timeout)
 
 	       ;; send requests
-	       (run-pipeline 0 ;; don't wait anything initially
+	       (run-pipeline nil 
                  :error-handler (fn [_]
                                   (if-not (has-completed? result)
-                                    ;;try again after 100 ms
-                                    (restart 100)
+				    (restart)
                                     (complete nil)))
-                 parametrized-wait
                  (fn [_] (connection))
 		 (fn [ch]
                    (when-not (has-completed? result)
@@ -220,8 +218,8 @@
 	       (if (and (nil? response) (drained? ch))
 		 (throw (Exception. "Connection closed"))
 		 (if (instance? Exception response)
-		   (enqueue (.error result) response)
-		   (enqueue (.success result) response)))))))
+		   (error! result response)
+		   (success! result response)))))))
 
        ;; request function
        (fn this

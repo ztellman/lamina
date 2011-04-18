@@ -95,7 +95,7 @@
 (import-fn pipeline/on-success)
 (import-fn pipeline/on-error)
 
-(defmacro do*
+(defmacro do-stage
   "Creates a pipeline stage that emits the same value it receives, but performs some side-effect
    in between.  Useful for debug prints and logging."
   [& body]
@@ -103,7 +103,7 @@
      ~@body
      x#))
 
-(defmacro wait
+(defmacro wait-stage
   "Creates a pipeline stage that accepts a value, and emits the same value after 'interval' milliseconds."
   [interval]
   `(fn [x#]
