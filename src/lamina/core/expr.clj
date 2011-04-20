@@ -9,8 +9,9 @@
 (ns lamina.core.expr
   (:use
     clojure.walk
-    [lamina.core.expr walk utils task tag]
-    [lamina.core channel pipeline utils]))
+    [lamina.core.expr walk utils tag]
+    [lamina.core channel pipeline utils]
+    [lamina executors]))
 
 ;;;
 
@@ -170,7 +171,7 @@
    'try transform-try
    'new transform-new
    'sync transform-sync
-   'task #(transform-task (rest %))})
+   'task (fn [x] `(with-thread-pool (current-executor) ~@(rest x)))})
 
 (defn async [body]
   (let [body (->> body

@@ -290,6 +290,15 @@
     (run-pipeline (read-fn)
       #(merge-fn input %))))
 
+(defn wait-stage
+  "Creates a pipeline stage that accepts a value, and emits the same value after 'interval' milliseconds."
+  [interval]
+  (fn [x]
+    (run-pipeline
+      (when (pos? interval)
+	(read-channel (timed-channel interval)))
+      (fn [_] x))))
+
 ;;;
 
 (defn wait-for-result

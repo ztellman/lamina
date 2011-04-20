@@ -8,7 +8,7 @@
 
 (ns lamina.core.expr.walk
   (:use
-    [lamina.core.expr utils task]
+    [lamina.core.expr utils]
     [lamina.core pipeline]
     clojure.walk))
 

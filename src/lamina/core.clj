@@ -17,7 +17,7 @@
     [lamina.core.seq :as seq]
     [lamina.core.named :as named]
     [lamina.core.expr :as x]
-    [lamina.core.expr.task :as x-task]
+    [lamina.executors :as executors]
     [lamina.core.expr.utils :as x-utils])
   (:import
     [java.util.concurrent
@@ -103,15 +103,7 @@
      ~@body
      x#))
 
-(defmacro wait-stage
-  "Creates a pipeline stage that accepts a value, and emits the same value after 'interval' milliseconds."
-  [interval]
-  `(fn [x#]
-     (run-pipeline
-       (let [interval# ~interval]
-	 (when (pos? interval#)
-	   (read-channel (timed-channel interval#))))
-       (fn [_#] x#))))
+(import-fn pipeline/wait-stage)
 
 ;; redirect signals
 (import-fn pipeline/redirect)
@@ -124,8 +116,18 @@
 
 ;;;
 
-(import-fn x-task/set-default-executor)
-(import-fn x-task/set-local-executor)
+(import-fn executors/set-default-executor)
+(import-fn executors/set-local-executor)
+
+(defmacro wait-stage
+  "Creates a pipeline stage that accepts a value, and emits the same value after 'interval' milliseconds."
+  [interval]
+  `(fn [x#]
+     (let [interval# ~interval]
+       (run-pipeline
+	 (when (pos? interval#)
+	   (read-channel (timed-channel interval#)))
+	 (fn [_#] x#)))))
 
 (defmacro task
   "A variation of 'future' that returns a result-channel instead of a synchronous
@@ -134,7 +136,8 @@
    When used within (async ...), it's simply an annotation that the body should be executed
    on a separate thread."
   [& body]
-  (x-task/transform-task body))
+  `(executors/with-thread-pool (executors/current-executor)
+     ~@body))
 
 ;;;
 
