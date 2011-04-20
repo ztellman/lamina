@@ -94,32 +94,33 @@
 
 (defmacro with-thread-pool [pool & body]
   (let [options (when (map? (first body)) (first body))
-	body (if options (rest body) body)
-	result-sym (gensym "result")]
-    `(let [~result-sym (result-channel)
+	body (if options (rest body) body)]
+    `(let [result# (result-channel)
 	   pool# ~pool
 	   markers# (atom [(System/currentTimeMillis)])]
        (.submit pool#
 	 (fn []
 	   (swap! markers# conj (System/currentTimeMillis))
-	   ~@(when-let [timeout (:timeout options)] 
-	       `((let [thread# (Thread/currentThread)]
-		   (run-pipeline nil
-		     (wait-stage ~timeout)
-		     (fn [_#]
-		       (receive (poll-result ~result-sym 0)
-			 (fn [x#]
-			   (when-not x#
-			     (error! ~result-sym
-			       (TimeoutException. (str "Timed out after " ~timeout "ms")))
-			     (interrupt-thread thread#)))))))))
+	   (let [options# ~options]
+	     (when (pos? (or (:timeout options#) 0))
+	       (let [timeout# (:timeout options#)
+		     thread# (Thread/currentThread)]
+		 (run-pipeline nil
+		   (wait-stage timeout#)
+		   (fn [_#]
+		     (receive (poll-result result# 0)
+		       (fn [x#]
+			 (when-not x#
+			   (error! result#
+			     (TimeoutException. (str "Timed out after " timeout# "ms")))
+			   (interrupt-thread thread#)))))))))
 	   (binding [*current-executor* pool#]
 	     (siphon-result
 	       (run-pipeline nil
 		 :error-handler (constantly nil)
 		 (fn [_#]
-		   (let [result# (do ~@body)]
+		   (let [inner-result# (do ~@body)]
 		     (swap! markers# conj (System/currentTimeMillis))
-		     result#)))
-	       ~result-sym))))
-       ~result-sym)))
+		     inner-result#)))
+	       result#))))
+       result#)))
