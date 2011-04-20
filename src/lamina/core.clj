@@ -116,9 +116,6 @@
 
 ;;;
 
-(import-fn executors/set-default-executor)
-(import-fn executors/set-local-executor)
-
 (defmacro wait-stage
   "Creates a pipeline stage that accepts a value, and emits the same value after 'interval' milliseconds."
   [interval]
