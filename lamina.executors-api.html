@@ -1,6 +1,6 @@
 <html>
   <head>
-    <title>lamina.connections API reference (lamina)</title>
+    <title>lamina.executors API reference (lamina)</title>
     <link href="static/favicon.png" rel="icon" />
     <link href="static/favicon.png" rel="shortcut icon" />
     <link media="all" type="text/css" href="static/clojure.css" rel="stylesheet" />
@@ -48,18 +48,20 @@ namespace.
   <div style="margin-left: 1em;" class="toc-section">
     <a href="#toc0">Overview</a>
     <div style="margin-left: 1em;" class="toc-entry">
-      <a href="#lamina.connections/close-connection">close-connection</a>
+      <a href="#lamina.executors/set-default-executor">set-default-executor</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.executors/set-local-executor">set-local-executor</a>
     </div>
     <br />
   </div>
 </div>
 </div>
-                <div id="content-tag"><h1 id="overview">API for <span id="namespace-name">lamina.connections</span></h1>
-by <span id="author">Zachary Tellman</span><br />
+                <div id="content-tag"><h1 id="overview">API for <span id="namespace-name">lamina.executors</span></h1>
+by <span id="author">Unknown</span><br />
 <br />Usage:
 <pre>
 (ns your-namespace
-  (:require <span id="long-name">lamina.connections</span>))
+  (:require <span id="long-name">lamina.executors</span>))
 </pre><pre>
 </pre><h2>Overview</h2>
 <pre id="namespace-docstr"></pre>
@@ -68,11 +70,20 @@ by <span id="author">Zachary Tellman</span><br />
 <div id="var-entry">
   <br />
   <hr />
-  <h2 id="lamina.connections/close-connection">close-connection</h2>
+  <h2 id="lamina.executors/set-default-executor">set-default-executor</h2>
   <span id="var-type">function</span><br />
-  <pre id="var-usage">Usage: (close-connection f)
+  <pre id="var-usage">Usage: (set-default-executor executor)
 </pre>
-  <pre id="var-docstr">Takes a client function, and closes the connection.</pre>
+  <pre id="var-docstr">Sets the default executor used by task.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.executors/set-local-executor">set-local-executor</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (set-local-executor executor)
+</pre>
+  <pre id="var-docstr">Sets the executor used by task when called within the current namespace.</pre>
   
 </div>
 

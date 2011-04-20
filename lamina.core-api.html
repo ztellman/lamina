@@ -34,7 +34,7 @@ namespace.
     <a class="wiki_link" href="api-index.html">API Index</a><br />
     <a class="wiki_link" href="#">Namespaces:</a>
     <ul id="left-sidebar-list">
-      <li><a href="lamina.connections-api.html" class="wiki_link">lamina.connections</a></li><li><a href="lamina.core-api.html" class="wiki_link">lamina.core</a></li>
+      <li><a href="lamina.connections-api.html" class="wiki_link">lamina.connections</a></li><li><a href="lamina.core-api.html" class="wiki_link">lamina.core</a></li><li><a href="lamina.executors-api.html" class="wiki_link">lamina.executors</a></li>
     </ul>
   </div>
 </div>
@@ -139,14 +139,6 @@ namespace.
       <a href="#lamina.core/wait-stage">wait-stage</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/with-timeout">with-timeout</a>
-    </div>
-    <br />
-  </div><div style="margin-left: 1em;" class="toc-section">
-    <a href="#lamina.core.expr.task">lamina.core.expr.task</a>
-    <div style="margin-left: 1em;" class="toc-entry">
-      <a href="#lamina.core.expr.task/set-default-executor">set-default-executor</a>
-    </div><div style="margin-left: 1em;" class="toc-entry">
-      <a href="#lamina.core.expr.task/set-local-executor">set-local-executor</a>
     </div>
     <br />
   </div>
@@ -663,26 +655,6 @@ If the timeout elapses, a java.util.concurrent.TimeoutException is thrown.</pre>
   <pre id="var-docstr">Wraps a body that returns a result-channel, and returns a new result-channel that will
 emit a java.util.concurrent.TimeoutException if the inner result-channel doesn't yield
 a value in 'timeout' ms.</pre>
-  
-</div>
-<h2 id="namespace-name">lamina.core.expr.task</h2>
-<pre id="namespace-docstr"></pre>
-<br />
-<div id="var-entry">
-  <hr />
-  <h2 id="lamina.core.expr.task/set-default-executor">set-default-executor</h2>
-  <span id="var-type">function</span><br />
-  <pre id="var-usage">Usage: (set-default-executor executor)
-</pre>
-  <pre id="var-docstr">Sets the default executor used by task.</pre>
-  
-</div><div id="var-entry">
-  <hr />
-  <h2 id="lamina.core.expr.task/set-local-executor">set-local-executor</h2>
-  <span id="var-type">function</span><br />
-  <pre id="var-usage">Usage: (set-local-executor executor)
-</pre>
-  <pre id="var-docstr">Sets the executor used by task when called within the current namespace.</pre>
   
 </div>
 

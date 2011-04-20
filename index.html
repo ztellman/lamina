@@ -34,7 +34,7 @@ namespace.
     <a class="wiki_link" href="api-index.html">API Index</a><br />
     <a class="wiki_link" href="#">Namespaces:</a>
     <ul id="left-sidebar-list">
-      <li><a href="lamina.connections-api.html" class="wiki_link">lamina.connections</a></li><li><a href="lamina.core-api.html" class="wiki_link">lamina.core</a></li>
+      <li><a href="lamina.connections-api.html" class="wiki_link">lamina.connections</a></li><li><a href="lamina.core-api.html" class="wiki_link">lamina.core</a></li><li><a href="lamina.executors-api.html" class="wiki_link">lamina.executors</a></li>
     </ul>
   </div>
 </div>
@@ -51,6 +51,10 @@ namespace.
     <br />
   </div><div style="margin-left: 1em;" class="toc-section">
     <a href="#lamina.core">lamina.core</a>
+    
+    <br />
+  </div><div style="margin-left: 1em;" class="toc-section">
+    <a href="#lamina.executors">lamina.executors</a>
     
     <br />
   </div>
@@ -81,15 +85,18 @@ namespace.
   
   Public variables and functions:
   <span id="var-link"><a href="lamina.core-api.html#lamina.core/async" id="var-tag">async</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/cancel-callback" id="var-tag">cancel-callback</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/channel-pair" id="var-tag">channel-pair</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/channel-seq" id="var-tag">channel-seq</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/close" id="var-tag">close</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/closed-channel" id="var-tag">closed-channel</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/closed?" id="var-tag">closed?</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/complete" id="var-tag">complete</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/defn-async" id="var-tag">defn-async</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/do-stage" id="var-tag">do-stage</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/drained?" id="var-tag">drained?</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/enqueue" id="var-tag">enqueue</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/enqueue-and-close" id="var-tag">enqueue-and-close</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/filter*" id="var-tag">filter*</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/force-all" id="var-tag">force-all</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/fork" id="var-tag">fork</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/lazy-channel-seq" id="var-tag">lazy-channel-seq</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/map*" id="var-tag">map*</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/named-channel" id="var-tag">named-channel</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/on-closed" id="var-tag">on-closed</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/on-drained" id="var-tag">on-drained</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/partition*" id="var-tag">partition*</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/partition-all*" id="var-tag">partition-all*</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/pipeline" id="var-tag">pipeline</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/poll" id="var-tag">poll</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/read-channel" id="var-tag">read-channel</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/read-merge" id="var-tag">read-merge</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/receive" id="var-tag">receive</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/receive-in-order" id="var-tag">receive-in-order</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/redirect" id="var-tag">redirect</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/reduce*" id="var-tag">reduce*</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/reductions*" id="var-tag">reductions*</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/release-named-channel" id="var-tag">release-named-channel</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/restart" id="var-tag">restart</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/run-pipeline" id="var-tag">run-pipeline</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/set-default-executor" id="var-tag">set-default-executor</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/set-local-executor" id="var-tag">set-local-executor</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/siphon-result" id="var-tag">siphon-result</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/splice" id="var-tag">splice</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/take*" id="var-tag">take*</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/take-while*" id="var-tag">take-while*</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/task" id="var-tag">task</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/wait-for-message" id="var-tag">wait-for-message</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/wait-for-result" id="var-tag">wait-for-result</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/wait-stage" id="var-tag">wait-stage</a> </span><span id="var-link"><a href="lamina.core-api.html#lamina.core/with-timeout" id="var-tag">with-timeout</a> </span><br />
-  <span id="subspace"><br />Variables and functions in
-    <span id="name">lamina.core.expr.task</span>:
-    <span id="sub-var-link">
-      <a href="lamina.core-api.html#lamina.core.expr.task/set-default-executor">set-default-executor</a>
-    </span><span id="sub-var-link">
-      <a href="lamina.core-api.html#lamina.core.expr.task/set-local-executor">set-local-executor</a>
-    </span>
-    <br />
-  </span>
+  
+</div><div id="namespace-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.executors">lamina.executors</h2>
+  by <span id="author">unknown author</span><br />
+  <a href="lamina.executors-api.html" id="api-link">Detailed API documentation</a><br />
+  <pre id="namespace-docstr"></pre>
+  
+  Public variables and functions:
+  <span id="var-link"><a href="lamina.executors-api.html#lamina.executors/set-default-executor" id="var-tag">set-default-executor</a> </span><span id="var-link"><a href="lamina.executors-api.html#lamina.executors/set-local-executor" id="var-tag">set-local-executor</a> </span><br />
+  
 </div>
 </div>
               </div>
