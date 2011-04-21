@@ -270,7 +270,7 @@
 	 (let [zero-cnt? (zero? @cnt)]
 	   #(do
 	      (enqueue ch* %)
-	      (when zero-cnt?
+	      (when (or zero-cnt? (constant-channel? ch))
 		(close ch*))))]))
     ch*))
 
@@ -293,9 +293,8 @@
 	    [true (fn [msg]
 		    (let [cnt* (swap! cnt* inc)]
 		      (enqueue ch* msg)
-		      (when-let [final @final]
-			(when (= final cnt*)
-			  (close ch*)))))]))))
+		      (when (or (constant-channel? ch) (= @final cnt*))
+			(close ch*))))]))))
     ch*))
 
 (defn- ^ResultChannel reduce- [f val ch]
@@ -324,9 +323,14 @@
 
 (defn reductions- [f val ch]
   (let [f (unwrap-fn f)
-	ch* (channel)]
-    (enqueue ch* val)
-    (run-pipeline (if (= ::none val) (read-channel ch) val)
+	ch* (channel)
+	none? (= ::none val)]
+    (when-not none?
+      (enqueue ch* val))
+    (run-pipeline (if none?
+		    (run-pipeline (read-channel ch)
+		      #(do (enqueue ch* %) %))
+		    val)
       (read-merge
 	#(read-channel ch)
 	#(if (and (nil? %2) (drained? ch))
