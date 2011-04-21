@@ -151,8 +151,9 @@
       (do
 	(receive source
 	  #(doseq [[dst f] destination-function-map]
-	     (let [msg (first (f %))]
-	       (enqueue dst msg))))
+	     (let [msgs (f [%])]
+	       (when-not (empty? msgs)
+		 (enqueue dst (first msgs))))))
 	true)
       
       :else
@@ -222,11 +223,18 @@
 	 (when-not (drained? ch)
 	   (restart)))))))
 
+;;;
+
+(defn dst-channel [ch]
+  (if (constant-channel? ch)
+    (constant-channel)
+    (channel)))
+
 (defn map*
   "Returns a channel which will consume all messages from 'ch', and emit (f msg)."
   [f ch]
   (let [f (unwrap-fn f)
-	ch* (channel)]
+	ch* (dst-channel ch)]
     (siphon ch
       {ch* #(if (and (drained? ch) (= [nil] %))
 	      %
@@ -238,7 +246,7 @@
    for which (f msg) is true."
   [f ch]
   (let [f (unwrap-fn f)
-	ch* (channel)]
+	ch* (dst-channel ch)]
     (siphon ch
       {ch* #(if (and (drained? ch) (= [nil] %))
 	      %
@@ -299,7 +307,7 @@
 	   %1
 	   (f %1 %2)))
       (fn [val]
-	(if (drained? ch)
+	(if (or (drained? ch) (constant-channel? ch))
 	  val
 	  (restart val))))))
 
@@ -323,7 +331,7 @@
 	   nil
 	   (f %1 %2)))
       (fn [val]
-	(if (drained? ch)
+	(if (or (drained? ch) (constant-channel? ch))
 	  (when val
 	    (enqueue-and-close ch* val))
 	  (do

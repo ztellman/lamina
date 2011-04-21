@@ -95,32 +95,35 @@
 (defmacro with-thread-pool [pool & body]
   (let [options (when (map? (first body)) (first body))
 	body (if options (rest body) body)]
-    `(let [result# (result-channel)
-	   pool# ~pool
-	   markers# (atom [(System/currentTimeMillis)])]
-       (.submit pool#
-	 (fn []
-	   (swap! markers# conj (System/currentTimeMillis))
-	   (let [options# ~options]
-	     (when (pos? (or (:timeout options#) 0))
-	       (let [timeout# (:timeout options#)
-		     thread# (Thread/currentThread)]
-		 (run-pipeline nil
-		   (wait-stage timeout#)
-		   (fn [_#]
-		     (receive (poll-result result# 0)
-		       (fn [x#]
-			 (when-not x#
-			   (error! result#
-			     (TimeoutException. (str "Timed out after " timeout# "ms")))
-			   (interrupt-thread thread#)))))))))
-	   (binding [*current-executor* pool#]
-	     (siphon-result
-	       (run-pipeline nil
-		 :error-handler (constantly nil)
-		 (fn [_#]
-		   (let [inner-result# (do ~@body)]
-		     (swap! markers# conj (System/currentTimeMillis))
-		     inner-result#)))
-	       result#))))
-       result#)))
+    `(let [body-fn# (fn [] ~@body)
+	   pool# ~pool]
+       (if-not pool#
+	 (body-fn#)
+	 (let [result# (result-channel)
+	       markers# (atom [(System/currentTimeMillis)])]
+	   (.submit pool#
+	     (fn []
+	       (swap! markers# conj (System/currentTimeMillis))
+	       (let [options# ~options]
+		 (when (pos? (or (:timeout options#) 0))
+		   (let [timeout# (:timeout options#)
+			 thread# (Thread/currentThread)]
+		     (run-pipeline nil
+		       (wait-stage timeout#)
+		       (fn [_#]
+			 (receive (poll-result result# 0)
+			   (fn [x#]
+			     (when-not x#
+			       (error! result#
+				 (TimeoutException. (str "Timed out after " timeout# "ms")))
+			       (interrupt-thread thread#)))))))))
+	       (binding [*current-executor* pool#]
+		 (siphon-result
+		   (run-pipeline nil
+		     :error-handler (constantly nil)
+		     (fn [_#]
+		       (let [inner-result# (body-fn#)]
+			 (swap! markers# conj (System/currentTimeMillis))
+			 inner-result#)))
+		   result#))))
+	   result#)))))
