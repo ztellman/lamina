@@ -316,7 +316,9 @@
   ([f ch]
      (run-pipeline ch
        read-channel
-       #(reduce- f %1 ch)))
+       #(if (constant-channel? ch)
+	  (f %)
+	  (reduce- f % ch))))
   ([f val ch]
      (reduce- f val ch)))
 
@@ -324,7 +326,7 @@
   (let [f (unwrap-fn f)
 	ch* (channel)]
     (enqueue ch* val)
-    (run-pipeline val
+    (run-pipeline (if (= ::none val) (read-channel ch) val)
       (read-merge
 	#(read-channel ch)
 	#(if (and (nil? %2) (drained? ch))
@@ -342,9 +344,11 @@
 (defn reductions*
   "Returns a channel which contains the intermediate results of the reduce operation."
   ([f ch]
-     @(run-pipeline ch
-	read-channel
-	#(reductions- f %1 ch)))
+     (if (constant-channel? ch)
+       (let [ch* (channel)]
+	 (receive ch #(enqueue-and-close ch* (f %)))
+	 ch*)
+       (reductions* f ::none ch)))
   ([f val ch]
      (reductions- f val ch)))
 
