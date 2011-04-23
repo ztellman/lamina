@@ -50,10 +50,10 @@
 (defmacro with-observable [observable & body]
   `(let [lock-count# (or (.get ^ThreadLocal (.lock-count ~observable)) 0)
 	 acquire?# (< lock-count# Integer/MAX_VALUE)]
+     (when acquire?#
+       (.acquire ^Semaphore (.semaphore ~observable))
+       (.set ^ThreadLocal (.lock-count ~observable) (inc lock-count#)))
      (try
-       (when acquire?#
-	 (.acquire ^Semaphore (.semaphore ~observable))
-	 (.set ^ThreadLocal (.lock-count ~observable) (inc lock-count#)))
        ~@body
        (finally
 	 (when acquire?#
@@ -63,9 +63,9 @@
 (defmacro lock-observable [observable & body]
   `(let [lock-count# (or (.get ^ThreadLocal (.lock-count ~observable)) 0)
 	 to-acquire# (- Integer/MAX_VALUE lock-count#)]
+     (.acquire ^Semaphore (.semaphore ~observable) to-acquire#)
+     (.set ^ThreadLocal (.lock-count ~observable) Integer/MAX_VALUE)
      (try
-       (.acquire ^Semaphore (.semaphore ~observable) to-acquire#)
-       (.set ^ThreadLocal (.lock-count ~observable) Integer/MAX_VALUE)
        ~@body
        (finally
 	 (.release ^Semaphore (.semaphore ~observable) to-acquire#)
