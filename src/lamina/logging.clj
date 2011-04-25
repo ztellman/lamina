@@ -8,15 +8,18 @@
 
 (ns lamina.logging
   (:use
-    [lamina core])
+    [lamina core]
+    [lamina.core.pipeline :only (error!)])
   (:require
-    [clojure.contrib.logging :as log]))
+    [clojure.contrib.logging :as log])
+  (:import
+    [java.util.concurrent
+     TimeoutException]))
 
 (defn logger [level]
   #(cond
      (instance? Throwable %) (log/log level nil %)
      (string? %) (log/log level %)
-     (map? %) (log/log level (:message %) (:exception %) (or (:ns %) "lamina.logging"))
      :else (log/log level (str %))))
 
 (defmacro def-log-channel [name level]
@@ -36,7 +39,26 @@
 (def default-timeout-handler
   (let [ch (channel)]
     (receive-all ch
-      (fn [[thread result timeout]]
+      (fn [[^Thread thread result timeout]]
 	(error! result (TimeoutException. (str "Timed out after " timeout "ms.")))
-	(interrupt-thread thread)))
+	(.interrupt thread)))
+    ch))
+
+;;;
+
+(defn sampled-channel [period handler]
+  (let [ch (channel)
+	val (atom ::none)]
+    (receive-all ch
+      #(when-not (and (drained? ch) (nil? %))
+	 (reset! val %)))
+    (run-pipeline nil
+      (wait-stage period)
+      (fn [_]
+	(let [val @val]
+	  (when-not (= val ::none)
+	    (handler val))))
+      (fn [_]
+	(when-not (drained? ch)
+	  (restart))))
     ch))

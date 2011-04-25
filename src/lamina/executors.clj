@@ -15,7 +15,6 @@
     [clojure.contrib.logging :as log])
   (:import
     [java.util.concurrent
-     TimeoutException
      ExecutorService
      Executor
      ThreadPoolExecutor
@@ -48,6 +47,9 @@
      @default-executor
      clojure.lang.Agent/soloExecutor))
 
+(defprotocol LaminaExecutor
+  (shutdown-executor [t]))
+
 ;;;
 
 (defn pending-tasks [^ThreadPoolExecutor pool]
@@ -67,9 +69,6 @@
    :thread-wrapper (fn [f] (.run ^Runnable f))
    :name "Generic Thread Pool"})
 
-(defn interrupt-thread [^Thread thread]
-  (.interrupt thread))
-
 (defn thread-pool [options]
   (let [options (merge default-options options)
 	max-thread-count (:max-thread-count options)
@@ -84,7 +83,9 @@
 		 (newThread [_ f]
 		   (Thread. #((:thread-wrapper options) f)))))]
     ^{::options options}
-    (reify Executor
+    (reify Executor LaminaExecutor
+      (shutdown-executor [_]
+	(.shutdown pool))
       (execute [_ f]
 	(when-let [state-hook (-> options :hooks :state)]
 	  (enqueue state-hook (thread-pool-state pool)))
