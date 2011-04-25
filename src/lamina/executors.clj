@@ -9,13 +9,15 @@
 (ns lamina.executors
   (:use
     [lamina.core.pipeline]
-    [lamina.core.channel :only (timed-channel receive)])
+    [lamina.core.channel :only (channel enqueue receive)]
+    [lamina.core.seq :only (receive-all)])
   (:require
     [clojure.contrib.logging :as log])
   (:import
     [java.util.concurrent
      TimeoutException
      ExecutorService
+     Executor
      ThreadPoolExecutor
      LinkedBlockingQueue
      TimeUnit
@@ -26,6 +28,8 @@
 (def *current-executor* nil)
 (def default-executor (atom nil))
 (def ns-executors (atom {}))
+
+(def *thread-pool-options* nil)
 
 (defn set-default-executor
   "Sets the default executor used by task."
@@ -46,84 +50,95 @@
 
 ;;;
 
-(defn thread-pool-statistics [^ThreadPoolExecutor pool]
+(defn pending-tasks [^ThreadPoolExecutor pool]
+  (- (.getTaskCount pool) (.getCompletedTaskCount pool)))
+
+(defn thread-pool-state [^ThreadPoolExecutor pool]
   {:completed-tasks (.getCompletedTaskCount pool)
-   :pending-tasks (- (.getTaskCount pool) (.getCompletedTaskCount pool))
+   :pending-tasks (pending-tasks pool)
    :active-threads (.getActiveCount pool)
    :thread-count (.getPoolSize pool)
    :thread-pool pool})
 
-(defn log-thread-pool-statistics [name statistics]
-  (log/info
-    (str "Statistics for " name ":\n"
-      "Thread Count:    " (:thread-count statistics) "   \n"
-      "Active Threads:  " (:active-threads statistics) "   \n"
-      "Pending Tasks:   " (:pending-tasks statistics) "   \n")))
-
 (def default-options
   {:max-thread-count Integer/MAX_VALUE
-   :min-thread-count 0
+   :min-thread-count 1
    :idle-threshold (* 60 1000)
    :thread-wrapper (fn [f] (.run ^Runnable f))
-   :name "Generic Thread Pool"
-   :stat-period -1
-   :stat-callback log-thread-pool-statistics})
+   :name "Generic Thread Pool"})
 
 (defn interrupt-thread [^Thread thread]
   (.interrupt thread))
 
 (defn thread-pool [options]
   (let [options (merge default-options options)
+	max-thread-count (:max-thread-count options)
+	min-thread-count (:min-thread-count options)
 	pool (ThreadPoolExecutor.
-	       (int (:min-thread-count options))
-	       (int (:max-thread-count options))
+	       1
+	       1
 	       (long (:idle-threshold options))
 	       TimeUnit/MILLISECONDS
 	       (LinkedBlockingQueue.)
 	       (reify ThreadFactory
 		 (newThread [_ f]
 		   (Thread. #((:thread-wrapper options) f)))))]
-    (when (pos? (:stat-period options))
-      (run-pipeline nil
-	(wait-stage (:stat-period options))
-	(fn [_]
-	  (when-not (.isTerminated pool)
-	    ((:stat-callback options) (:name options) (thread-pool-statistics pool))
-	    (restart)))))
-    pool))
+    ^{::options options}
+    (reify Executor
+      (execute [_ f]
+	(when-let [state-hook (-> options :hooks :state)]
+	  (enqueue state-hook (thread-pool-state pool)))
+	(let [active (.getActiveCount pool)]
+	  (if (= (.getPoolSize pool) active)
+	    (.setCorePoolSize pool (min max-thread-count (inc active)))
+	    (.setCorePoolSize pool (max min-thread-count (inc active)))))
+	(.execute pool f)))))
+
+(defn thread-timeout [result options]
+  (when-let [timeout (:timeout options)]
+    (when-not (neg? timeout)
+      (let [thread (Thread/currentThread)]
+	(receive (poll-result result timeout)
+	  (fn [x#]
+	    (when-not x#
+	      (when-let [timeout-hook (-> options :hooks :timeout)]
+		(enqueue timeout-hook [thread result timeout])))))))))
+
+(defn thread-timing [data options]
+  (when-let [timing-hook (-> options :hooks :timing)]
+    (let [[enqueued start end] data
+	  queue-duration (-> start (- enqueued) (/ 1e6))
+	  execution-duration (-> end (- start) (/ 1e6))]
+      (enqueue timing-hook
+	{:enqueued-time enqueued
+	 :start-time start
+	 :end-time end
+	 :queue-duration queue-duration
+	 :execution-duration execution-duration
+	 :total-duration (+ queue-duration execution-duration)}))))
 
 (defmacro with-thread-pool [pool & body]
   (let [options (when (map? (first body)) (first body))
 	body (if options (rest body) body)]
     `(let [body-fn# (fn [] ~@body)
-	   pool# ~pool]
+	   pool# ~pool
+	   options# (merge (-> ~pool meta ::options) *thread-pool-options* ~options)]
        (if-not pool#
 	 (body-fn#)
 	 (let [result# (result-channel)
-	       markers# (atom [(System/currentTimeMillis)])]
-	   (.submit pool#
+	       markers# (atom [(System/nanoTime)])]
+	   (.execute ^Executor pool#
 	     (fn []
-	       (swap! markers# conj (System/currentTimeMillis))
-	       (let [options# ~options]
-		 (when (pos? (or (:timeout options#) 0))
-		   (let [timeout# (:timeout options#)
-			 thread# (Thread/currentThread)]
-		     (run-pipeline nil
-		       (wait-stage timeout#)
-		       (fn [_#]
-			 (receive (poll-result result# 0)
-			   (fn [x#]
-			     (when-not x#
-			       (error! result#
-				 (TimeoutException. (str "Timed out after " timeout# "ms")))
-			       (interrupt-thread thread#)))))))))
+	       (lamina.executors/thread-timeout result# options#)
+	       (swap! markers# conj (System/nanoTime))
 	       (binding [*current-executor* pool#]
 		 (siphon-result
 		   (run-pipeline nil
 		     :error-handler (constantly nil)
 		     (fn [_#]
 		       (let [inner-result# (body-fn#)]
-			 (swap! markers# conj (System/currentTimeMillis))
+			 (lamina.executors/thread-timing
+			   (conj @markers# (System/nanoTime)) options#)
 			 inner-result#)))
 		   result#))))
 	   result#)))))
