@@ -9,7 +9,7 @@
 (ns lamina.executors
   (:use
     [lamina.core.pipeline]
-    [lamina.core.channel :only (channel enqueue receive)]
+    [lamina.core.channel :only (close channel enqueue receive)]
     [lamina.core.seq :only (receive-all)]
     [lamina logging])
   (:require
@@ -60,8 +60,7 @@
   {:completed-tasks (.getCompletedTaskCount pool)
    :pending-tasks (pending-tasks pool)
    :active-threads (.getActiveCount pool)
-   :thread-count (.getPoolSize pool)
-   :thread-pool pool})
+   :thread-count (.getPoolSize pool)})
 
 (def default-options
   {:max-thread-count Integer/MAX_VALUE
@@ -87,7 +86,9 @@
     ^{::options options}
     (reify Executor LaminaExecutor
       (shutdown-executor [_]
-	(.shutdown pool))
+	(.shutdown pool)
+	(doseq [ch (-> options :hooks vals)]
+	  (close ch)))
       (execute [_ f]
 	(when-let [state-hook (-> options :hooks :state)]
 	  (enqueue state-hook (thread-pool-state pool)))

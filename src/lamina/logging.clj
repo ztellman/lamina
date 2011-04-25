@@ -16,10 +16,9 @@
      TimeoutException]))
 
 (defn logger [level]
-  #(cond
-     (instance? Throwable %) (log/log level nil %)
-     (string? %) (log/log level %)
-     :else (log/log level (str %))))
+  #(if (instance? Throwable %)
+     (log/log level nil %)
+     (log/log level (str %))))
 
 (defmacro def-log-channel [name level]
   `(do
@@ -35,6 +34,11 @@
 
 ;;;
 
+(defmacro siphon->> [& forms]
+  `(let [ch# (channel)]
+     (siphon (->> ch# ~@(butlast forms)) {~(last forms) identity})
+     ch#))
+
 (def default-timeout-handler
   (let [ch (channel)]
     (receive-all ch
@@ -45,10 +49,9 @@
 
 ;;;
 
-(defn sampled-channel [period handler]
-  (let [ch (channel)
+(defn rate-limit [period ch]
+  (let [ch* (channel)
 	val (atom ::none)]
-
     (receive-all ch
       #(when-not (and (drained? ch) (nil? %))
 	 (reset! val %)))
@@ -57,8 +60,9 @@
       (fn [_]
 	(let [val @val]
 	  (when-not (= val ::none)
-	    (handler val))))
+	    (enqueue ch* val))))
       (fn [_]
-	(when-not (drained? ch)
-	  (restart))))
-    ch))
+	(if-not (drained? ch)
+	  (restart)
+	  (close ch*))))
+    ch*))
