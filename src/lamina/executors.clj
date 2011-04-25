@@ -10,7 +10,8 @@
   (:use
     [lamina.core.pipeline]
     [lamina.core.channel :only (channel enqueue receive)]
-    [lamina.core.seq :only (receive-all)])
+    [lamina.core.seq :only (receive-all)]
+    [lamina logging])
   (:require
     [clojure.contrib.logging :as log])
   (:import
@@ -67,10 +68,11 @@
    :min-thread-count 1
    :idle-threshold (* 60 1000)
    :thread-wrapper (fn [f] (.run ^Runnable f))
-   :name "Generic Thread Pool"})
+   :name "Generic Thread Pool"
+   :hooks {:timeout default-timeout-handler}})
 
 (defn thread-pool [options]
-  (let [options (merge default-options options)
+  (let [options (merge-with merge default-options options)
 	max-thread-count (:max-thread-count options)
 	min-thread-count (:min-thread-count options)
 	pool (ThreadPoolExecutor.

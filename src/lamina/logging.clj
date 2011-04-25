@@ -8,8 +8,7 @@
 
 (ns lamina.logging
   (:use
-    [lamina core]
-    [lamina.core.pipeline :only (error!)])
+    [lamina.core channel seq pipeline])
   (:require
     [clojure.contrib.logging :as log])
   (:import
@@ -49,6 +48,7 @@
 (defn sampled-channel [period handler]
   (let [ch (channel)
 	val (atom ::none)]
+
     (receive-all ch
       #(when-not (and (drained? ch) (nil? %))
 	 (reset! val %)))
