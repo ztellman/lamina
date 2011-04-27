@@ -42,14 +42,16 @@
 (def default-timeout-handler
   (let [ch (channel)]
     (receive-all ch
-      (fn [[^Thread thread result timeout]]
-	(error! result (TimeoutException. (str "Timed out after " timeout "ms.")))
-	(.interrupt thread)))
+      (fn [info]
+	(when-not (and (nil? info) (drained? ch))
+	  (let [[^Thread thread result timeout] info]
+	    (error! result (TimeoutException. (str "Timed out after " timeout "ms.")))
+	    (.interrupt thread)))))
     ch))
 
 ;;;
 
-(defn rate-limit [period ch]
+(defn sample-every [period ch]
   (let [ch* (channel)
 	val (atom ::none)]
     (receive-all ch

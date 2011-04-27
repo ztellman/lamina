@@ -71,7 +71,7 @@
    :hooks {:timeout default-timeout-handler}})
 
 (defn thread-pool [options]
-  (let [options (merge-with merge default-options options)
+  (let [options (merge-with #(if (map? %1) (merge %1 %2) %2) default-options options)
 	max-thread-count (:max-thread-count options)
 	min-thread-count (:min-thread-count options)
 	pool (ThreadPoolExecutor.
