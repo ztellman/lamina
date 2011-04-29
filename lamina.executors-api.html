@@ -51,6 +51,10 @@ namespace.
       <a href="#lamina.executors/set-default-executor">set-default-executor</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.executors/set-local-executor">set-local-executor</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.executors/thread-pool">thread-pool</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.executors/with-thread-pool">with-thread-pool</a>
     </div>
     <br />
   </div>
@@ -84,6 +88,53 @@ by <span id="author">Unknown</span><br />
   <pre id="var-usage">Usage: (set-local-executor executor)
 </pre>
   <pre id="var-docstr">Sets the executor used by task when called within the current namespace.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.executors/thread-pool">thread-pool</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (thread-pool options)
+</pre>
+  <pre id="var-docstr">Creates a thread pool that will grow to a specified size when necessary, and dispose
+of unused threads after a certain amount of inactivity.
+
+the following options may be specified:
+
+:min-thread-count - the lower boundary for the thread count (defaults to 1)
+:max-thread-count - the upper boundary for the thread count (defaults to Integer/MAX_VALUE)
+:idle-threshold - the interval before an inactive thread is reclaimed (defaults to 60,000ms)
+:name - the name used for logging
+:timeout - the maximum duration a thread may be in use by a single task
+
+under :hooks, the following log channels may be specified:
+
+:timeout - called when a thread times out with
+             {:thread, :result, :timeout}
+           by default, this will trigger a TimeoutException in the result and interrupt the
+           thread.  
+:timing -  called every time a task completes with
+             {:enqueued-time, :start-time, :end-time,
+              :queue-duration, :execution-duration, :total-duration}
+           all values are in milliseconds.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.executors/with-thread-pool">with-thread-pool</h2>
+  <span id="var-type">macro</span><br />
+  <pre id="var-usage">Usage: (with-thread-pool pool &amp; body)
+</pre>
+  <pre id="var-docstr">Executes the body on the specified thread pool.  Returns a result-channel representing the
+eventual return value.
+
+The thread pool may be optionally followed by a map specifying options that override those
+given when the thread pool was created.  If, for instance, we want to have the timeout be
+100ms in this particular instance, we can use:
+
+
+(with-thread-pool pool {:timeout 100}
+  ...)</pre>
   
 </div>
 
