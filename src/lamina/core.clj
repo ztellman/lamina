@@ -58,6 +58,18 @@
   [ch & dsts]
   (seq/siphon ch (zipmap dsts (repeat (count dsts) identity))))
 
+(defmacro siphon->> [& forms]
+  (let [ch-sym (gensym "ch")]
+    `(let [~ch-sym (channel)]
+       (apply siphon
+	 ~(let [operators (butlast forms)]
+	    (if (empty? operators)
+	      ch-sym
+	      `(->> ~ch-sym ~@operators)))
+	 (let [dsts# ~(last forms)]
+	   (if (coll? dsts#) dsts# [dsts#])))
+       ~ch-sym)))
+
 (import-fn seq/fork)
 (import-fn seq/map*)
 (import-fn seq/filter*)

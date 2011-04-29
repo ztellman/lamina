@@ -9,7 +9,7 @@
 (ns lamina.executors
   (:use
     [lamina.core.pipeline]
-    [lamina.core.channel :only (close channel enqueue receive)]
+    [lamina.core.channel :only (close channel enqueue receive drained?)]
     [lamina.core.seq :only (receive-all)]
     [lamina logging])
   (:require
@@ -18,6 +18,7 @@
     [java.util.concurrent
      ExecutorService
      Executor
+     TimeoutException
      ThreadPoolExecutor
      LinkedBlockingQueue
      TimeUnit
@@ -53,16 +54,26 @@
 
 ;;;
 
-(defn pending-tasks [^ThreadPoolExecutor pool]
+(defn- pending-tasks [^ThreadPoolExecutor pool]
   (- (.getTaskCount pool) (.getCompletedTaskCount pool)))
 
-(defn thread-pool-state [^ThreadPoolExecutor pool]
+(defn- thread-pool-state [^ThreadPoolExecutor pool]
   {:completed-tasks (.getCompletedTaskCount pool)
    :pending-tasks (pending-tasks pool)
    :active-threads (.getActiveCount pool)
    :thread-count (.getPoolSize pool)})
 
-(def default-options
+(def ^{:private true} default-timeout-handler
+  (let [ch (channel)]
+    (receive-all ch
+      (fn [info]
+	(when-not (and (nil? info) (drained? ch))
+	  (let [{thread :thread, result :result, timeout :timeout} info]
+	    (error! result (TimeoutException. (str "Timed out after " timeout "ms.")))
+	    (.interrupt ^Thread thread)))))
+    ch))
+
+(def ^{:private true} default-options
   {:max-thread-count Integer/MAX_VALUE
    :min-thread-count 1
    :idle-threshold (* 60 1000)
@@ -70,7 +81,29 @@
    :name "Generic Thread Pool"
    :hooks {:timeout default-timeout-handler}})
 
-(defn thread-pool [options]
+(defn thread-pool
+  "Creates a thread pool that will grow to a specified size when necessary, and dispose
+   of unused threads after a certain amount of inactivity.
+
+   the following options may be specified:
+
+   :min-thread-count - the lower boundary for the thread count (defaults to 1)
+   :max-thread-count - the upper boundary for the thread count (defaults to Integer/MAX_VALUE)
+   :idle-threshold - the interval before an inactive thread is reclaimed (defaults to 60,000ms)
+   :name - the name used for logging
+   :timeout - the maximum duration a thread may be in use by a single task
+
+   under :hooks, the following log channels may be specified:
+
+   :timeout - called when a thread times out with
+                {:thread, :result, :timeout}
+              by default, this will trigger a TimeoutException in the result and interrupt the
+              thread.  
+   :timing -  called every time a task completes with
+                {:enqueued-time, :start-time, :end-time,
+                 :queue-duration, :execution-duration, :total-duration}
+              all values are in milliseconds."
+  [options]
   (let [options (merge-with #(if (map? %1) (merge %1 %2) %2) default-options options)
 	max-thread-count (:max-thread-count options)
 	min-thread-count (:min-thread-count options)
@@ -111,8 +144,11 @@
 (defn thread-timing [data options]
   (when-let [timing-hook (-> options :hooks :timing)]
     (let [[enqueued start end] data
-	  queue-duration (-> start (- enqueued) (/ 1e6))
-	  execution-duration (-> end (- start) (/ 1e6))]
+	  enqueued (/ enqueued 1e6)
+	  start (/ start 1e6)
+	  end (/ end 1e6)
+	  queue-duration (- start enqueued)
+	  execution-duration (- end start)]
       (enqueue timing-hook
 	{:enqueued-time enqueued
 	 :start-time start
@@ -121,7 +157,18 @@
 	 :execution-duration execution-duration
 	 :total-duration (+ queue-duration execution-duration)}))))
 
-(defmacro with-thread-pool [pool & body]
+(defmacro with-thread-pool
+  "Executes the body on the specified thread pool.  Returns a result-channel representing the
+   eventual return value.
+
+   The thread pool may be optionally followed by a map specifying options that override those
+   given when the thread pool was created.  If, for instance, we want to have the timeout be
+   100ms in this particular instance, we can use:
+
+
+   (with-thread-pool pool {:timeout 100}
+     ...)"
+  [pool & body]
   (let [options (when (map? (first body)) (first body))
 	body (if options (rest body) body)]
     `(let [body-fn# (fn [] ~@body)

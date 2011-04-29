@@ -10,10 +10,7 @@
   (:use
     [lamina.core channel seq pipeline])
   (:require
-    [clojure.contrib.logging :as log])
-  (:import
-    [java.util.concurrent
-     TimeoutException]))
+    [clojure.contrib.logging :as log]))
 
 (defn logger [level]
   #(if (instance? Throwable %)
@@ -31,23 +28,6 @@
 (def-log-channel log-warn :warn)
 (def-log-channel log-error :error)
 (def-log-channel log-fatal :fatal)
-
-;;;
-
-(defmacro siphon->> [& forms]
-  `(let [ch# (channel)]
-     (siphon (->> ch# ~@(butlast forms)) {~(last forms) identity})
-     ch#))
-
-(def default-timeout-handler
-  (let [ch (channel)]
-    (receive-all ch
-      (fn [info]
-	(when-not (and (nil? info) (drained? ch))
-	  (let [[^Thread thread result timeout] info]
-	    (error! result (TimeoutException. (str "Timed out after " timeout "ms.")))
-	    (.interrupt thread)))))
-    ch))
 
 ;;;
 
