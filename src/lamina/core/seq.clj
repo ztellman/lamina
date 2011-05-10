@@ -23,6 +23,14 @@
 
 ;;;
 
+(defn- sample-queue [ch finalizer]
+  (let [q (-> ch ^EventQueue queue .q)]
+    (dosync
+      (ensure q)
+      (let [msgs @q]
+	(finalizer q)
+	msgs))))
+
 (defn lazy-channel-seq
   "Creates a lazy-seq which consumes messages from the channel.  Only elements
    which are realized will be consumes.
@@ -64,12 +72,17 @@
   ([ch]
      (channel-seq ch 0))
   ([ch timeout]
-     (doall
-       (lazy-channel-seq ch
-	 (if (neg? timeout)
-	   (constantly timeout)
-	   (let [t0 (System/currentTimeMillis)]
-	     #(max 0 (- timeout (- (System/currentTimeMillis) t0)))))))))
+     (if (zero? timeout)
+       (let [s (seq (sample-queue ch #(ref-set % clojure.lang.PersistentQueue/EMPTY)))]
+	 (if (and (drained? ch) (nil? (last s)))
+	   (butlast s)
+	   s))
+       (doall
+	 (lazy-channel-seq ch
+	   (if (neg? timeout)
+	     (constantly timeout)
+	     (let [t0 (System/currentTimeMillis)]
+	       #(max 0 (- timeout (- (System/currentTimeMillis) t0))))))))))
 
 (defn wait-for-message
   "Synchronously consumes a single message from a channel.  If no message is received within the
@@ -87,14 +100,6 @@
 	    (second result)
 	    (throw (TimeoutException. "Timed out waiting for message from channel."))))))))
 ;;;
-
-(defn- sample-queue [ch finalizer]
-  (let [q (-> ch ^EventQueue queue .q)]
-    (dosync
-      (ensure q)
-      (let [msgs @q]
-	(finalizer q)
-	msgs))))
 
 (defn receive-all
   [ch & callbacks]

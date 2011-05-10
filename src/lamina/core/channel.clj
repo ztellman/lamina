@@ -42,22 +42,22 @@
   (let [source (o/permanent-observable)]
     (Channel. source (q/queue source (o/permanent-observable) messages) nil)))
 
-(defn proxy-channel [f ch]
-  (Channel. (o/proxy-observable f (consumer ch)) (queue ch) nil))
-
 (deftype ConstantChannel
-  [^ConstantObservable consumer ^ConstantEventQueue queue]
+  [^ConstantObservable consumer ^ConstantEventQueue queue metadata]
   ChannelProtocol
   (consumer [_] consumer)
   (queue [_] queue)
-  (toString [_] (str (q/source queue))))
+  (toString [_] (str (q/source queue)))
+  clojure.lang.IObj
+  (meta [_] metadata)
+  (withMeta [_ meta] (ConstantChannel. consumer queue meta)))
 
 (defn constant-channel
   ([]
      (constant-channel o/empty-value))
   ([message]
      (let [source (o/constant-observable message)]
-       (ConstantChannel. source (q/constant-queue source)))))
+       (ConstantChannel. source (q/constant-queue source) nil))))
 
 (defn constant-channel? [ch]
   (instance? ConstantChannel ch))
@@ -66,6 +66,11 @@
   (or
     (instance? Channel ch)
     (instance? ConstantChannel ch)))
+
+(defn proxy-channel [f ch]
+  (if (constant-channel? ch)
+    (ConstantChannel. (o/proxy-observable f (consumer ch)) (queue ch) nil)
+    (Channel. (o/proxy-observable f (consumer ch)) (queue ch) nil)))
 
 (def nil-channel
   (Channel. o/nil-observable q/nil-queue nil))

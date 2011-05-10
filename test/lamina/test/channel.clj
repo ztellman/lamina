@@ -104,8 +104,8 @@
 	b (map* inc a)
 	c (map* dec b)]
     (enqueue a 1 2 3)
-    (is (= [] (channel-seq a)))
-    (is (= [] (channel-seq b)))
+    (is (empty? (channel-seq a)))
+    (is (empty? (channel-seq b)))
     (is (= [1 2 3] (channel-seq c)))
     (close c)
     (is (closed? b))
@@ -115,8 +115,8 @@
 	b (map* inc a)
 	c (map* dec b)]
     (enqueue a 1 2 3)
-    (is (= [] (channel-seq a)))
-    (is (= [] (channel-seq b)))
+    (is (empty? (channel-seq a)))
+    (is (empty? (channel-seq b)))
     (is (= [1 2 3] (channel-seq c)))
     (close c)
     (is (closed? b))
@@ -210,6 +210,8 @@
 	(is (= i (wait-for-message ch 100)))))))
 
 (deftest test-channel-seq
+  (let [ch (channel 1)]
+    (is (= [1] (channel-seq ch))))
   (let [ch (closed-channel 1 nil)]
     (is (= [1] (channel-seq ch))))
 

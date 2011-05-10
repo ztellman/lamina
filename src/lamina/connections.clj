@@ -9,7 +9,7 @@
 (ns ^{:author "Zachary Tellman"}
   lamina.connections
   (:use
-    [lamina core]
+    [lamina core executors]
     [lamina.core.channel :only (dequeue)]
     [lamina.core.pipeline :only (poll-result success-result error-result success! error!)])
   (:require
@@ -232,36 +232,62 @@
 
 ;;
 
+(defn- wrap-constant-response [f]
+  (fn [x]
+    (let [ch (constant-channel)]
+      (f ch x)
+      (read-channel ch))))
+
 (defn server
-  [ch handler]
-  (run-pipeline ch
-    read-channel
-    #(let [c (constant-channel)]
-       (handler c %)
-       (read-channel c))
-    #(enqueue ch %)
-    (fn [_]
-      (when-not (drained? ch)
-	(restart))))
-  (fn []
-    (close ch)))
+  ([ch handler]
+     (server ch handler {}))
+  ([ch handler options]
+     (let [thread-pool (let [t (:thread-pool options)]
+			 (if (or (nil? t) (thread-pool? t))
+			   t
+			   (thread-pool t)))
+	   timeout-fn (or (:timeout options) (constantly -1))
+	   handler (executor thread-pool (wrap-constant-response handler) options)]
+       (run-pipeline ch
+	 :error-handler #(do
+			   (enqueue ch (or (:error-response options) %))
+			   (when-not (drained? ch)
+			     (restart)))
+	 read-channel
+	 #(handler [%] {:timeout (timeout-fn %)})
+	 #(enqueue ch %)
+	 (fn [_]
+	   (when-not (drained? ch)
+	     (restart)))))
+     nil))
 
 (defn pipelined-server
-  [ch handler]
-  (let [requests (channel)
-	responses (channel)]
-    (run-pipeline responses
-      read-channel
-      #(read-channel %)
-      #(enqueue ch %)
-      (fn [_] (restart)))
-    (run-pipeline ch
-      read-channel
-      #(let [c (constant-channel)]
-	 (handler c %)
-	 (enqueue responses c))
-      (fn [_]
-	(when-not (drained? ch)
-	  (restart)))))
-  (fn []
-    (close ch)))
+  ([ch handler]
+     (pipelined-server ch handler {}))
+  ([ch handler options]
+     (let [thread-pool (let [t (:thread-pool options)]
+			 (if (or (nil? t) (thread-pool? t))
+			   t
+			   (thread-pool t)))
+	   timeout-fn (or (:timeout options) (constantly -1))
+	   handler (executor thread-pool handler options)
+	   requests (channel)
+	   responses (channel)]
+       (run-pipeline responses
+	 read-channel
+	 #(read-channel %)
+	 #(enqueue ch %)
+	 (fn [_] (restart)))
+       (run-pipeline ch
+	 read-channel
+	 (fn [request]
+	   (let [c (constant-channel)]
+	     (run-pipeline request
+	       :error-handler #(redirect (pipeline (constant-channel %)))
+	       #(handler [c %] {:timeout (timeout-fn %)})
+	       (fn [_] c))))
+	 #(enqueue responses %)
+	 (fn [_]
+	   (when-not (drained? ch)
+	     (restart)))))
+     nil))

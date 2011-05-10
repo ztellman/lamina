@@ -94,7 +94,7 @@
   (dropped-connection client)
   (dropped-connection pipelined-client))
 
-(defn works-after-a-timedout-request [client-fn initially-disconnected]
+(defn works-after-a-timed-out-request [client-fn initially-disconnected]
   (with-server simple-echo-server
     (when initially-disconnected
       (stop-server))
@@ -102,19 +102,17 @@
       (when-not initially-disconnected
         (stop-server))
       (try
-        (is (thrown? TimeoutException
-                     (wait-for-result (f "echo" 100))))
+        (is (thrown? TimeoutException (wait-for-result (f "echo" 100))))
         (start-server)
-        (is (= "echo2"
-               ;; big timeout to ensure the persistent connection catches up
-               (wait-for-result (f "echo2" 4000))))
+	;; big timeout to ensure the persistent connection catches up
+        (is (= "echo2" (wait-for-result (f "echo2" 4000))))
         (finally
-         (close-connection f))))))
+	  (close-connection f))))))
 
-(deftest test-keeps-on-working-after-a-timedout-request
+(deftest test-keeps-on-working-after-a-timed-out-request
   (testing "with the connection initially disconnected"
-    (works-after-a-timedout-request pipelined-client true)
-    (works-after-a-timedout-request client true))
+    (works-after-a-timed-out-request pipelined-client true)
+    (works-after-a-timed-out-request client true))
   (testing "with the connection disconnected afterwards"
-    (works-after-a-timedout-request pipelined-client false)
-    (works-after-a-timedout-request client false)))
+    (works-after-a-timed-out-request pipelined-client false)
+    (works-after-a-timed-out-request client false)))
