@@ -225,7 +225,7 @@
 	 (when-not (and (nil? msg) (drained? ch))
 	   (f msg)))
        (fn [_]
-	 (when-not (drained? ch)
+	 (when-not (or (constant-channel? ch) (drained? ch))
 	   (restart)))))))
 
 ;;;

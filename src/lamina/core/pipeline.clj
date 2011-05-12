@@ -299,6 +299,16 @@
 	(read-channel (timed-channel interval)))
       (fn [_] x))))
 
+(defn closed-result [ch]
+  (let [result (result-channel)]
+    (on-closed ch #(success! result true))
+    result))
+
+(defn drained-result [ch]
+  (let [result (result-channel)]
+    (on-drained ch #(success! result true))
+    result))
+
 ;;;
 
 (defn wait-for-result
