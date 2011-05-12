@@ -48,6 +48,8 @@ namespace.
   <div style="margin-left: 1em;" class="toc-section">
     <a href="#toc0">Overview</a>
     <div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.executors/executor">executor</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.executors/set-default-executor">set-default-executor</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.executors/set-local-executor">set-local-executor</a>
@@ -74,6 +76,29 @@ by <span id="author">Unknown</span><br />
 <div id="var-entry">
   <br />
   <hr />
+  <h2 id="lamina.executors/executor">executor</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (executor pool f)
+       (executor pool f options)
+</pre>
+  <pre id="var-docstr">Given a thread pool and a function, returns a function that will execute that function
+on a thread pool and returns a result-channel representing its eventual value.
+
+The returned function takes a sequence of arguments as its first argument, and thread
+pool configurations as an optional second argument.
+
+&gt; (def f +)
+#'f
+&gt; (f 1 2)
+3
+&gt; (def f* (executor (thread-pool) f))
+#'f*
+&gt; @(f* [1 2] {:timeout 100})
+3</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
   <h2 id="lamina.executors/set-default-executor">set-default-executor</h2>
   <span id="var-type">function</span><br />
   <pre id="var-usage">Usage: (set-default-executor executor)
@@ -94,14 +119,15 @@ by <span id="author">Unknown</span><br />
   <hr />
   <h2 id="lamina.executors/thread-pool">thread-pool</h2>
   <span id="var-type">function</span><br />
-  <pre id="var-usage">Usage: (thread-pool options)
+  <pre id="var-usage">Usage: (thread-pool)
+       (thread-pool options)
 </pre>
   <pre id="var-docstr">Creates a thread pool that will grow to a specified size when necessary, and dispose
 of unused threads after a certain amount of inactivity.
 
-the following options may be specified:
+The following options may be specified:
 
-:min-thread-count - the lower boundary for the thread count (defaults to 1)
+:min-thread-count - the lower boundary for the thread count (defaults to 0)
 :max-thread-count - the upper boundary for the thread count (defaults to Integer/MAX_VALUE)
 :idle-threshold - the interval before an inactive thread is reclaimed (defaults to 60,000ms)
 :name - the name used for logging
@@ -109,14 +135,19 @@ the following options may be specified:
 
 under :hooks, the following log channels may be specified:
 
-:timeout - called when a thread times out with
+:timeout   Called when a thread times out with:
              {:thread, :result, :timeout}
-           by default, this will trigger a TimeoutException in the result and interrupt the
+           By default, this will trigger a TimeoutException in the result and interrupt the
            thread.  
-:timing -  called every time a task completes with
+
+:timing    Called every time a task completes with:
              {:enqueued-time, :start-time, :end-time,
               :queue-duration, :execution-duration, :total-duration}
-           all values are in milliseconds.</pre>
+           All values are in milliseconds.
+
+:state     Called every time a task is enqueued with:
+             {:completed-tasks, :pending-tasks, :active-threads, :thread-count}
+           </pre>
   
 </div><div id="var-entry">
   <br />
