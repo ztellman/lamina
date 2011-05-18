@@ -232,9 +232,11 @@
 
 ;;
 
-(defn- wrap-constant-response [f]
+(defn- wrap-constant-response [f options]
   (fn [x]
-    (let [ch (constant-channel)]
+    (let [ch (if-let [response-channel-generator (:response-channel options)]
+	       (response-channel-generator)
+	       (constant-channel))]
       (f ch x)
       (read-channel ch))))
 
@@ -247,7 +249,7 @@
 			   t
 			   (thread-pool t)))
 	   timeout-fn (or (:timeout options) (constantly -1))
-	   handler (executor thread-pool (wrap-constant-response handler) options)]
+	   handler (executor thread-pool (wrap-constant-response handler options) options)]
        (run-pipeline ch
 	 :error-handler #(do
 			   (enqueue ch (or (:error-response options) %))
@@ -281,7 +283,9 @@
        (run-pipeline ch
 	 read-channel
 	 (fn [request]
-	   (let [c (constant-channel)]
+	   (let [c (if-let [response-channel-generator (:response-channel options)]
+		     (response-channel-generator)
+		     (constant-channel))]
 	     (run-pipeline request
 	       :error-handler #(redirect (pipeline (constant-channel %)))
 	       #(handler [c %] {:timeout (timeout-fn %)})
