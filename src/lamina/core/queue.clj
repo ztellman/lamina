@@ -140,10 +140,11 @@
 	  (ref-set listeners l)
 	  result)
 	(let [msg (first msgs)
-	      callbacks (->> l
-			  (map #(when-let [[continue? f] (% msg)]
-				  [f (when continue? %)]))
-			  (remove nil?))]
+	      callbacks (doall
+			  (->> l
+			    (map #(when-let [[continue? f] (% msg)]
+				    [f (when continue? %)]))
+			    (remove nil?)))]
 	  (if (empty? callbacks)
 	    (do
 	      (ref-set listeners #{})
@@ -151,23 +152,23 @@
 	    (recur
 	      (rest msgs)
 	      (set (->> callbacks (map second) (remove nil?)))
-	      (conj result [msg (map first callbacks)]))))))))
+	      (concat result
+		[[::none (->> callbacks (remove second) (map first))]]
+		(let [handlers (->> callbacks (filter second) (map first))]
+		  (when-not (empty? handlers)
+		    [[msg handlers]]))))))))))
 
 (defn gather-callbacks [msgs ^EventQueue q drop?]
   (let [l (gather-listeners q msgs)
 	r (gather-receivers q msgs)
-	drop-cnt (max (count l) (count r))]
+	drop-cnt (max (-> l count (/ 2) int) (count r))]
     (when (and drop? (pos? drop-cnt))
       (ref-set (.q q)
 	(loop [cnt drop-cnt, msgs msgs]
 	  (if (zero? cnt)
 	    msgs
 	    (recur (dec cnt) (pop msgs))))))
-    (when (pos? drop-cnt)
-      (list*
-	[(or (ffirst r) (ffirst l))
-	 (concat (-> r first second) (-> l first second))]
-	(rest l)))))
+    (concat l r)))
 
 (defn check-for-drained [^EventQueue q]
   (when (drained? q)
@@ -179,7 +180,9 @@
   (when msgs-and-targets
     (doseq [[msg callbacks] msgs-and-targets]
       (doseq [c callbacks]
-	(c msg))))
+	(if (= msg ::none)
+	  (c)
+	  (c msg)))))
   (check-for-drained q))
 
 (defn setup-observable->queue [accumulate ^EventQueue q]

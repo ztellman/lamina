@@ -188,7 +188,7 @@
 			  (fn [msg]
 			    (when-not (ensure latch)
 			      (ref-set latch true)
-			      [false #(enqueue result [key %])])))]
+			      [true #(enqueue result [key %])])))]
 	   (doseq [[k ch] channel-map]
 	     (listen ch (callback k)))
 	   (when (pos? timeout)

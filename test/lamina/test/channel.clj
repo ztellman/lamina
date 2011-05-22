@@ -132,11 +132,13 @@
 	num 1e3]
     (async-enqueue ch (range num) true)
     (dotimes [_ num]
-      (let [latch (promise)]
+      (let [watch (atom false)
+	    latch (promise)]
 	(listen ch (fn [msg]
-		     [false (fn [msg]
-			      (swap! coll conj msg)
-			      (deliver latch nil))]))
+		     (when (compare-and-set! watch false true) 
+		       [true (fn [msg]
+			       (swap! coll conj msg)
+			       (deliver latch nil))])))
 	@latch))
     (is (= (range num) @coll))))
 
@@ -152,10 +154,10 @@
       (listen ch (fn [msg]
 		   (when (= msg (ensure waiting-for))
 		     (alter waiting-for inc)
-		     [false (fn [msg]
-			      (swap! coll conj msg)
-			      (when (= (dec num) msg)
-				(deliver latch nil)))]))))
+		     [true (fn [msg]
+			     (swap! coll conj msg)
+			     (when (= (dec num) msg)
+			       (deliver latch nil)))]))))
     @latch
     (is (= (range num) @coll))))
 
@@ -275,26 +277,34 @@
     (let [ch (apply closed-channel s)
 	  ch* (take* 5 ch)]
       (is (= (range 5) (channel-seq ch*)))
-      (is (= (range 5 10) (channel-seq ch))))
+      (is (drained? ch*))
+      (is (= (range 5 10) (channel-seq ch)))
+      (is (drained? ch)))
 
     (let [ch (channel)
 	  ch* (take* 5 ch)]
       (async-enqueue ch s true)
       (is (= (range 5) (channel-seq ch* 2500)))
-      (is (= (range 5 10) (channel-seq ch 2500))))))
+      (is (drained? ch*))
+      (is (= (range 5 10) (channel-seq ch 2500)))
+      (is (drained? ch)))))
 
 (deftest test-take-while*
   (let [s (range 10)]
     (let [ch (apply closed-channel s)
 	  ch* (take-while* #(< % 5) ch)]
       (is (= (range 5) (channel-seq ch*)))
-      (is (= (range 5 10) (channel-seq ch))))
+      (is (drained? ch*))
+      (is (= (range 5 10) (channel-seq ch)))
+      (is (drained? ch)))
 
     (let [ch (channel)
 	  ch* (take-while* #(< % 5) ch)]
       (async-enqueue ch s true)
       (is (= (range 5) (channel-seq ch* 2500)))
-      (is (= (range 5 10) (channel-seq ch 2500))))))
+      (is (drained? ch*))
+      (is (= (range 5 10) (channel-seq ch 2500)))
+      (is (drained? ch*)))))
 
 (deftest test-map*
   (let [s (range 10)

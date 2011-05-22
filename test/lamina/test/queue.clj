@@ -39,9 +39,10 @@
   (let [f (fn [id cnt]
 	    (let [c (ref cnt)]
 	      (fn [msg]
-		[(pos? (alter c dec))
-		 (fn [msg]
-		   (swap! accumulator conj [id msg]))])))
+		(when (<= 0 (alter c dec))
+		  [true
+		   (fn [msg]
+		     (swap! accumulator conj [id msg]))]))))
 	o (o/observable)
 	q (queue o)]
     (output-set= [[:a 1] [:a 2]

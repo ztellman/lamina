@@ -271,12 +271,13 @@
 	cnt (ref n)]
     (listen ch
       (fn [msg]
-	[(pos? (alter cnt dec))
-	 (let [zero-cnt? (zero? @cnt)]
-	   #(do
-	      (enqueue ch* %)
-	      (when (or zero-cnt? (constant-channel? ch))
-		(close ch*))))]))
+	(when (<= 0 (alter cnt dec))
+	  [true
+	   (let [zero-cnt? (zero? @cnt)]
+	     #(do
+		(enqueue ch* %)
+		(when (or zero-cnt? (constant-channel? ch))
+		  (close ch*))))])))
     ch*))
 
 (defn take-while*
@@ -292,13 +293,13 @@
 	(if-not (f msg)
 	  (do
 	    (reset! final (ensure cnt))
-	    nil)
+	    [false #(close ch*)])
 	  (do
 	    (alter cnt inc)
 	    [true (fn [msg]
 		    (let [cnt* (swap! cnt* inc)]
 		      (enqueue ch* msg)
-		      (when (or (constant-channel? ch) (= @final cnt*))
+		      (when (constant-channel? ch)
 			(close ch*))))]))))
     ch*))
 
