@@ -9,11 +9,7 @@
 (ns ^{:author "Zachary Tellman"}
   lamina.connections
   (:use
-    [lamina core executors]
-    [lamina.core.channel :only (dequeue)]
-    [lamina.core.pipeline :only (poll-result success-result error-result success! error!)])
-  (:require
-    [clojure.contrib.logging :as log])
+    [lamina core executors api trace])
   (:import
     [java.util.concurrent TimeoutException]
     [lamina.core.pipeline ResultChannel]))
@@ -25,20 +21,31 @@
     500
     (min 64000 (* 2 delay))))
 
-(defn- wait-for-close [ch description]
-  (let [ch (fork ch)]
-    (if (drained? ch)
-      (constant-channel nil)
-      (let [signal (constant-channel)]
-	(receive-all ch
-	  (fn [msg]
-	    (when (drained? ch)
-	      (log/warn (str "Connection to " description " lost."))
-	      (enqueue signal nil))))
-	(read-channel signal)))))
+(defn- wait-for-close
+  "Returns a result-channel representing the closing of the channel."
+  [ch options]
+  (run-pipeline (closed-result ch)
+    (fn [_]
+      (when-let [lost-hook (-> options :hooks :connection-lost)]
+	(enqueue lost-hook (select-keys options [:description])))
+      true)))
 
-(defn- connect-loop [halt-signal connection-generator connection-callback description]
-  (let [delay (atom 0)
+(def default-connection-hooks
+  {:connected
+   (siphon->> (map* #(str "Connected to " (:description %) ".")) log-info)
+
+   :connection-lost
+   (siphon->> (map* #(str "Connection to " (:description %) " lost.")) log-warn)
+
+   :connection-failed
+   (siphon->> (map* #(str "Failed to connect to " (:description %) ", waiting " (:delay %) "ms before retrying.")) log-info)})
+
+(defn- connect-loop
+  "Continually reconnects to server. Returns an atom which will always contain a result-channel
+   for the latest attempted connection."
+  [halt-signal connection-generator options]
+  (let [options (update-in options [:hooks] #(merge default-connection-hooks %))
+	delay (atom 0)
 	result (atom (result-channel))
 	latch (atom true)]
     ;; handle signal to close persistent connection
@@ -57,18 +64,20 @@
 		       (restart))
       (do-stage
       	(when (pos? @delay)
-      	  (log/warn
-      	    (str "Failed to connect to " description ". Waiting " @delay "ms to try again."))))
+	  (when-let [failed-hook (-> options :hooks :connection-failed)]
+	    (enqueue failed-hook {:delay @delay :description (:description options)}))))
       (wait-stage @delay)
       (fn [_]
+	(when-let [attempt-hook (-> options :hooks :connection-attempt)]
+	  (enqueue attempt-hook (select-keys options [:description])))
 	(siphon-result
 	  (connection-generator)
 	  @result))
       (fn [ch]
-	(when connection-callback
-	  (connection-callback ch))
-	(log/info (str "Connected to " description "."))
-	(wait-for-close ch description))
+	(when-let [connected (-> options :hooks :connected)]
+	  (enqueue connected (select-keys options [:description])))
+	(wait-for-close ch options))
+
       ;; wait here for connection to drop
       (fn [_]
 	(when @latch
@@ -79,12 +88,10 @@
 
 (defn persistent-connection
   ([connection-generator]
-     (persistent-connection connection-generator "unknown"))
-  ([connection-generator description]
-     (persistent-connection connection-generator description nil))
-  ([connection-generator description connection-callback]
+     (persistent-connection connection-generator {:description "unknown"}))
+  ([connection-generator options]
      (let [close-signal (constant-channel)
-	   result (connect-loop close-signal connection-generator connection-callback description)]
+	   result (connect-loop close-signal connection-generator options)]
        (fn
 	 ([]
 	    @result)
@@ -99,14 +106,10 @@
     (close-fn)
     (f ::close)))
 
-;;
+;;;
 
 (defn- has-completed? [result-ch]
   (wait-for-message (poll-result result-ch 0)))
-
-(defn- parametrized-wait [wait-millis]
-  (run-pipeline wait-millis
-    (wait-stage wait-millis)))
 
 (defn setup-result-timeout [result timeout]
   (when-not (neg? timeout)
@@ -116,9 +119,9 @@
 
 (defn client
   ([connection-generator]
-     (client connection-generator "unknown"))
-  ([connection-generator description]
-     (let [connection (persistent-connection connection-generator description)
+     (client connection-generator {:description "unknown"}))
+  ([connection-generator options]
+     (let [connection (persistent-connection connection-generator options)
 	   requests (channel)]
        ;; request loop
        (receive-in-order requests
@@ -177,9 +180,9 @@
 
 (defn pipelined-client
   ([connection-generator]
-     (pipelined-client connection-generator "unknown"))
-  ([connection-generator description]
-     (let [connection (persistent-connection connection-generator description)
+     (pipelined-client connection-generator {:description "unknown"}))
+  ([connection-generator options]
+     (let [connection (persistent-connection connection-generator options)
 	   requests (channel)
 	   responses (channel)]
 
@@ -259,8 +262,9 @@
 	 #(handler [%] {:timeout (timeout-fn %)})
 	 #(enqueue ch %)
 	 (fn [_]
-	   (when-not (drained? ch)
-	     (restart)))))
+	   (if-not (drained? ch)
+	     (restart)
+	     (close ch)))))
      nil))
 
 (defn pipelined-server
@@ -292,6 +296,7 @@
 	       (fn [_] c))))
 	 #(enqueue responses %)
 	 (fn [_]
-	   (when-not (drained? ch)
-	     (restart)))))
+	   (if-not (drained? ch)
+	     (restart)
+	     (close ch)))))
      nil))

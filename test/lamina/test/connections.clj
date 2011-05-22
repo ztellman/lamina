@@ -45,7 +45,7 @@
 
 (deftest test-persistent-connection
   (with-server simple-echo-server
-    (let [connection (persistent-connection #(connect) "test-connection")]
+    (let [connection (persistent-connection #(connect) {:description "test-connection"})]
       (try
 	(Thread/sleep 100)
 	(stop-server)
@@ -61,7 +61,7 @@
 (defn simple-response
   ([client-fn timeout]
       (with-server simple-echo-server
-        (let [f (client-fn #(connect) "simple-response")]
+        (let [f (client-fn #(connect) {:description "simple-response"})]
           (try
             (dotimes [i 10]
               (is (= i (wait-for-result (f i timeout) 1000))))
@@ -80,10 +80,11 @@
 
 (defn dropped-connection [client-fn]
   (with-server simple-echo-server
-    (let [f (client-fn #(connect) "dropped-connection")]
+    (let [f (client-fn #(connect) {:description "dropped-connection"})]
       (try
 	(stop-server)
-	(let [results (map #(f %) (range 10))]
+	(let [results (doall (map #(f %) (range 10)))]
+	  (Thread/sleep 100)
 	  (start-server)
 	  (Thread/sleep 1000)
 	  (is (= (range 10) (map #(wait-for-result % 100) results))))
@@ -98,7 +99,7 @@
   (with-server simple-echo-server
     (when initially-disconnected
       (stop-server))
-    (let [f (client-fn #(connect) "dropped-and-restored")]
+    (let [f (client-fn #(connect) {:description "dropped-and-restored"})]
       (when-not initially-disconnected
         (stop-server))
       (try

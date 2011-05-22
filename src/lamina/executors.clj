@@ -11,7 +11,7 @@
     [lamina.core.pipeline]
     [lamina.core.channel :only (close channel enqueue receive drained?)]
     [lamina.core.seq :only (receive-all siphon fork channel-seq)]
-    [lamina logging])
+    [lamina trace])
   (:require
     [clojure.contrib.logging :as log])
   (:import
