@@ -287,6 +287,19 @@
       (is (= (range 5) (channel-seq ch* 2500)))
       (is (drained? ch*))
       (is (= (range 5 10) (channel-seq ch 2500)))
+      (is (drained? ch)))
+
+    (let [ch (apply closed-channel s)
+	  ch* (take* 11 ch)]
+      (is (= s (channel-seq ch*)))
+      (is (drained? ch*))
+      (is (drained? ch)))
+
+    (let [ch (channel)
+	  ch* (take* 11 ch)]
+      (async-enqueue ch s true)
+      (is (= s (channel-seq ch* 2500)))
+      (is (drained? ch*))
       (is (drained? ch)))))
 
 (deftest test-take-while*
@@ -304,28 +317,53 @@
       (is (= (range 5) (channel-seq ch* 2500)))
       (is (drained? ch*))
       (is (= (range 5 10) (channel-seq ch 2500)))
-      (is (drained? ch*)))))
+      (is (drained? ch)))
+
+    (let [ch (apply closed-channel s)
+	  ch* (take-while* #(<= % 11) ch)]
+      (is (= s (channel-seq ch*)))
+      (is (drained? ch*))
+      (is (drained? ch)))
+
+    (let [ch (channel)
+	  ch* (take-while* #(<= % 11) ch)]
+      (async-enqueue ch s true)
+      (is (= s (channel-seq ch* 2500)))
+      (is (drained? ch*))
+      (is (drained? ch)))))
 
 (deftest test-map*
   (let [s (range 10)
 	f #(* % 2)]
 
-    (let [ch (apply closed-channel s)]
-      (is (= (map f s) (channel-seq (map* f ch)))))
+    (let [ch (apply closed-channel s)
+	  ch* (map* f ch)]
+      (is (= (map f s) (channel-seq ch*)))
+      (is (drained? ch))
+      (is (drained? ch*)))
 
-    (let [ch (channel)]
+    (let [ch (channel)
+	  ch* (map* f ch)]
       (async-enqueue ch s true)
-      (is (= (map f s) (channel-seq (map* f ch) 2500))))))
+      (is (= (map f s) (channel-seq ch* 2500)))
+      (is (drained? ch))
+      (is (drained? ch*)))))
 
 (deftest test-filter*
   (let [s (range 10)]
 
-    (let [ch (apply closed-channel s)]
-      (is (= (filter even? s) (channel-seq (filter* even? ch)))))
+    (let [ch (apply closed-channel s)
+	  ch* (filter* even? ch)]
+      (is (= (filter even? s) (channel-seq ch*)))
+      (is (drained? ch))
+      (is (drained? ch*)))
 
-    (let [ch (channel)]
+    (let [ch (channel)
+	  ch* (filter* even? ch)]
       (async-enqueue ch s true)
-      (is (= (filter even? s) (channel-seq (filter* even? ch) 2500))))))
+      (is (= (filter even? s) (channel-seq ch* 2500)))
+      (is (drained? ch))
+      (is (drained? ch*)))))
 
 (deftest test-reduce*
   (let [s (range 10)]
@@ -340,35 +378,54 @@
 (deftest test-reductions*
   (let [s (range 10)]
 
-    (let [ch (apply closed-channel s)]
-      (is (= (reductions + s) (channel-seq (reductions* + ch)))))
+    (let [ch (apply closed-channel s)
+	  ch* (reductions* + ch)]
+      (is (= (reductions + s) (channel-seq ch*)))
+      (is (drained? ch*))
+      (is (drained? ch)))
 
-    (let [ch (channel)]
+    (let [ch (channel)
+	  ch* (reductions* + ch)]
       (async-enqueue ch s false)
-      (is (= (reductions + s) (channel-seq (reductions* + ch) 2500))))))
+      (is (= (reductions + s) (channel-seq ch* 2500)))
+      (is (drained? ch*))
+      (is (drained? ch)))))
 
 (deftest test-partition*
   (let [s (range 10)]
 
-    (let [ch (apply closed-channel s)]
-      (is (= (partition 4 3 s) (channel-seq (partition* 4 3 ch)))))
+    (let [ch (apply closed-channel s)
+	  ch* (partition* 4 3 ch)]
+      (is (= (partition 4 3 s) (channel-seq ch*)))
+      (is (drained? ch*))
+      (is (drained? ch)))
 
-    (let [ch (channel)]
+    (let [ch (channel)
+	  ch* (partition* 4 3 ch)]
       (async-enqueue ch s false)
-      (is (= (partition 4 3 s) (channel-seq (partition* 4 3 ch) 2500))))))
+      (is (= (partition 4 3 s) (channel-seq ch* 2500)))
+      (is (drained? ch*))
+      (is (drained? ch)))))
 
 (deftest test-partition-all*
   (let [s (range 10)]
 
-    (let [ch (apply closed-channel s)]
-      (is (= (partition-all 4 3 s) (channel-seq (partition-all* 4 3 ch)))))
+    (let [ch (apply closed-channel s)
+	  ch* (partition-all* 4 3 ch)]
+      (is (= (partition-all 4 3 s) (channel-seq ch*)))
+      (is (drained? ch))
+      (is (drained? ch*)))
 
-    (let [ch (channel)]
+    (let [ch (channel)
+	  ch* (partition-all* 4 3 ch)]
       (async-enqueue ch s false)
-      (is (= (partition-all 4 3 s) (channel-seq (partition-all* 4 3 ch) 2500))))))
+      (is (= (partition-all 4 3 s) (channel-seq ch* 2500)))
+      (is (drained? ch))
+      (is (drained? ch*)))))
 
 ;;;
 
+;; TODO: reduce this down to a more atomic test
 (defn- priority-compose-channels
   "Uses the order defined in the channels seq to fully consume the first channels
    messages before consuming the messages from the rest of the channels.  All results

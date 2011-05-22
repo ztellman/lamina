@@ -60,7 +60,9 @@
 		       (or
 			 (not (drained? ch))
 			 (not (nil? (first val)))))
-		 (concat val (lazy-channel-seq ch timeout-fn))))))))))
+		 (concat val
+		   (when-not (drained? ch)
+		     (lazy-channel-seq ch timeout-fn)))))))))))
 
 (defn channel-seq
   "Creates a non-lazy sequence which consumes all messages from the channel within the next
@@ -74,7 +76,7 @@
   ([ch timeout]
      (if (zero? timeout)
        (let [s (seq (sample-queue ch #(ref-set % clojure.lang.PersistentQueue/EMPTY)))]
-	 (if (and (drained? ch) (nil? (last s)))
+	 (if (and (closed? ch) (nil? (last s)))
 	   (butlast s)
 	   s))
        (doall
@@ -244,6 +246,7 @@
       {ch* #(if (and (drained? ch) (= [nil] %))
 	      %
 	      (map f %))})
+    (on-drained ch #(close ch*))
     ch*))
 
 (defn filter*
@@ -256,6 +259,7 @@
       {ch* #(if (and (drained? ch) (= [nil] %))
 	      %
 	      (filter f %))})
+    (on-drained ch #(close ch*))
     ch*))
 
 (defn remove*
@@ -268,16 +272,25 @@
   "Returns a channel which will consume 'n' messages from 'ch'."
   [n ch]
   (let [ch* (channel)
-	cnt (ref n)]
+	cnt (ref n)
+	close-callback #(close ch*)]
     (listen ch
       (fn [msg]
-	(when (<= 0 (alter cnt dec))
+	(if (= msg ::q/end)
 	  [true
-	   (let [zero-cnt? (zero? @cnt)]
-	     #(do
-		(enqueue ch* %)
-		(when (or zero-cnt? (constant-channel? ch))
-		  (close ch*))))])))
+	   (fn [_]
+	     (do
+	       (cancel-callback ch close-callback)
+	       (close ch*)))]
+	  (when (<= 0 (alter cnt dec))
+	    [true
+	     (let [zero-cnt? (zero? @cnt)]
+	       #(do
+		  (enqueue ch* %)
+		  (when (or zero-cnt? (constant-channel? ch))
+		    (cancel-callback ch close-callback)
+		    (close ch*))))]))))
+    (on-drained ch close-callback)
     ch*))
 
 (defn take-while*
@@ -285,22 +298,30 @@
   [f ch]
   (let [f (unwrap-fn f)
 	ch* (channel)
-	cnt (ref 0)
-	cnt* (atom 0)
-	final (atom nil)]
+	close-callback #(close ch*)]
     (listen ch
       (fn [msg]
-	(if-not (f msg)
-	  (do
-	    (reset! final (ensure cnt))
-	    [false #(close ch*)])
-	  (do
-	    (alter cnt inc)
-	    [true (fn [msg]
-		    (let [cnt* (swap! cnt* inc)]
-		      (enqueue ch* msg)
-		      (when (constant-channel? ch)
-			(close ch*))))]))))
+	(cond
+	  (= msg ::q/end)
+	  [true
+	   (fn [_]
+	     (cancel-callback ch close-callback)
+	     (close ch*))]
+
+	  (not (f msg))
+	  [false
+	   (fn []
+	     (cancel-callback ch close-callback)
+	     (close ch*))]
+
+	  :else
+	  [true
+	   (fn [msg]
+	     (enqueue ch* msg)
+	     (when (constant-channel? ch)
+	       (cancel-callback ch close-callback)
+	       (close ch*)))])))
+    (on-drained ch close-callback)
     ch*))
 
 (defn- ^ResultChannel reduce- [f val ch]
@@ -344,7 +365,8 @@
 	   (f %1 %2)))
       (fn [val]
 	(if (or (drained? ch) (constant-channel? ch))
-	  (when val
+	  (if-not val
+	    (close ch*)
 	    (enqueue-and-close ch* val))
 	  (do
 	    (enqueue ch* val)

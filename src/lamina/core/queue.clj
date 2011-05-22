@@ -142,8 +142,13 @@
 	(let [msg (first msgs)
 	      callbacks (doall
 			  (->> l
-			    (map #(when-let [[continue? f] (% msg)]
-				    [f (when continue? %)]))
+			    (map
+			      (fn [pred]
+				(when-let [[continue? handler]
+					   (pred (if (and (nil? msg) (empty? (rest msgs)))
+						   ::end
+						   msg))]
+				  [handler (when continue? pred)])))
 			    (remove nil?)))]
 	  (if (empty? callbacks)
 	    (do
