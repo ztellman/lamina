@@ -259,8 +259,11 @@
 			   (when-not (drained? ch)
 			     (restart)))
 	 read-channel
-	 #(handler [%] {:timeout (timeout-fn %)})
-	 #(enqueue ch %)
+	 (fn [request]
+	   (when-not (and (nil? request) (drained? ch))
+	     (run-pipeline request
+	       #(handler [%] {:timeout (timeout-fn %)})
+	       #(enqueue ch %))))
 	 (fn [_]
 	   (if-not (drained? ch)
 	     (restart)
@@ -286,14 +289,14 @@
 	 (fn [_] (restart)))
        (run-pipeline ch
 	 read-channel
-	 (fn [request]
-	   (let [c (if-let [response-channel-generator (:response-channel options)]
-		     (response-channel-generator)
-		     (constant-channel))]
-	     (run-pipeline request
-	       :error-handler #(redirect (pipeline (constant-channel %)))
-	       #(handler [c %] {:timeout (timeout-fn %)})
-	       (fn [_] c))))
+	 (fn [request] (fn [request]
+	    (let [c (if-let [response-channel-generator (:response-channel options)]
+		      (response-channel-generator)
+		      (constant-channel))]
+	      (run-pipeline request
+		:error-handler #(redirect (pipeline (constant-channel %)))
+		#(handler [c %] {:timeout (timeout-fn %)})
+		(fn [_] c)))))
 	 #(enqueue responses %)
 	 (fn [_]
 	   (if-not (drained? ch)
