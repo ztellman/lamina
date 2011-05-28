@@ -13,12 +13,12 @@
     [lamina.core.pipeline :as pipeline]
     [lamina.core.channel :as channel]))
 
-(import-fn pipeline/poll-result)
-(import-fn pipeline/success-result)
-(import-fn pipeline/error-result)
-(import-fn pipeline/success!)
-(import-fn pipeline/error!)
-(import-fn pipeline/closed-result)
-(import-fn pipeline/drained-result )
+(import-fn #'pipeline/poll-result)
+(import-fn #'pipeline/success-result)
+(import-fn #'pipeline/error-result)
+(import-fn #'pipeline/success!)
+(import-fn #'pipeline/error!)
+(import-fn #'pipeline/closed-result)
+(import-fn #'pipeline/drained-result )
 
-(import-fn channel/dequeue)
+(import-fn #'channel/dequeue)
