@@ -108,7 +108,8 @@
   (let [callbacks (map unwrap-fn callbacks)]
     (-> ch queue (q/cancel-callbacks callbacks))
     (-> ch consumer (o/unsubscribe callbacks))
-    (-> ch queue q/distributor (o/unsubscribe callbacks))))
+    (-> ch queue q/distributor (o/unsubscribe callbacks))
+    nil))
 
 (defn enqueue
   "Enqueues messages into the channel."

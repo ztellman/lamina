@@ -73,6 +73,7 @@
 (import-fn seq/fork)
 (import-fn seq/map*)
 (import-fn seq/filter*)
+(import-fn seq/remove*)
 (import-fn seq/receive-in-order)
 (import-fn seq/reduce*)
 (import-fn seq/reductions*)
