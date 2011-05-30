@@ -66,13 +66,19 @@
 
 (def trace-channels (ref {}))
 (def enabled-trace-channels (ref #{}))
+(def *trace-prefix* "")
+
+(defn canonical-trace-key [trace-key]
+  (if (keyword? trace-key)
+    (name trace-key)
+    (str trace-key)))
 
 (defn- trace-channel- [trace-key]
   (let [ch (channel)]
     (o/subscribe (-> ch queue q/distributor)
       {::sink
        (o/observer
-	 (fn [_]
+	 (fn [msg]
 	   )
 	 nil
 	 (fn [observers]
@@ -85,21 +91,52 @@
     ch))
 
 (defn trace-channel
-  "Returns a channel corresponding to the trace-key which will track if there are
-   any consumers."
+  "Returns a channel corresponding to the trace-key which will track if there are any
+   consumers."
   [trace-key]
-  (dosync
-    (let [channels (ensure trace-channels)]
-      (if (contains? channels trace-key)
-	(channels trace-key)
-	(let [ch (trace-channel- trace-key)]
-	  (alter trace-channels assoc trace-key ch)
-	  ch)))))
+  (let [trace-key (canonical-trace-key trace-key)]
+    (dosync
+      (let [channels (ensure trace-channels)]
+	(if (contains? channels trace-key)
+	  (channels trace-key)
+	  (let [ch (trace-channel- trace-key)]
+	    (alter trace-channels assoc trace-key ch)
+	    ch))))))
 
 (defmacro trace
   "Enqueues the value into a trace-channel only if there's a consumer for it.  If there
    is no consumer, the body will not be evaluated."
   [trace-key & body]
-  `(let [key# ~trace-key]
+  `(let [key# (canonical-trace-key ~trace-key)]
      (when (contains? @lamina.trace/enabled-trace-channels key#)
        (enqueue (trace-channel key#) (do ~@body)))))
+
+(defmacro trace->> [trace-key & forms]
+  (let [ch-sym (gensym "ch")
+	dests? (vector? (last forms))]
+    `(let [~ch-sym (channel)
+	   key# (str
+		  *trace-prefix*
+		  (when-not (empty? *trace-prefix*) ".")
+		  (canonical-trace-key ~trace-key))]
+       (binding [*trace-prefix* key#]
+	 (lamina.core.seq/siphon
+	   ~(let [operators (if dests? (butlast forms) forms)]
+	      (if (empty? operators)
+		ch-sym
+		`(->> ~ch-sym ~@operators)))
+	   (let [dsts# ~(when dests? (last forms))]
+	     (zipmap
+	       (conj
+		 (cond
+		   (nil? dsts#) []
+		   (coll? dsts#) (vec dsts#)
+		   :else [dsts#])
+		 (trace-channel key#))
+	       (repeat identity)))))
+       (let [ch# (channel)]
+	 (receive-all ch#
+	   (fn [msg#]
+	     (when (contains? @lamina.trace/enabled-trace-channels key#)
+	       (enqueue ~ch-sym msg#))))
+	 ch#))))
