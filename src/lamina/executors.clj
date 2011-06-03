@@ -79,7 +79,7 @@
    :idle-threshold (* 60 1000)
    :thread-wrapper (fn [f] (.run ^Runnable f))
    :name "Generic Thread Pool"
-   :hooks {:timeout default-timeout-handler}})
+   :probes {:timeout default-timeout-handler}})
 
 (defn thread-pool
   "Creates a thread pool that will grow to a specified size when necessary, and dispose
@@ -93,7 +93,7 @@
    :name - the name used for logging
    :timeout - the maximum duration a thread may be in use by a single task
 
-   under :hooks, the following log channels may be specified:
+   under :probes, the following log channels may be specified:
 
    :timeout   Called when a thread times out with:
                 {:thread, :result, :timeout}
@@ -102,7 +102,7 @@
 
    :timing    Called every time a task completes with:
                 {:enqueued-time, :start-time, :end-time,
-                 :queue-duration, :execution-duration, :total-duration}
+                 :queue-duration, :execution-duration, :duration}
               All values are in milliseconds.
 
    :state     Called every time a task is enqueued with:
@@ -127,10 +127,10 @@
        (reify Executor LaminaThreadPool
 	 (shutdown-thread-pool [_]
 	   (.shutdown pool)
-	   (doseq [ch (-> options :hooks vals)]
+	   (doseq [ch (-> options :probes vals)]
 	     (close ch)))
 	 (execute [_ f]
-	   (when-let [state-hook (-> options :hooks :state)]
+	   (when-let [state-hook (-> options :probes :state)]
 	     (enqueue state-hook (thread-pool-state pool)))
 	   (let [active (.getActiveCount pool)]
 	     (if (= (.getPoolSize pool) active)
@@ -148,24 +148,28 @@
 	(receive (poll-result result timeout)
 	  (fn [x#]
 	    (when-not x#
-	      (when-let [timeout-hook (-> options :hooks :timeout)]
+	      (when-let [timeout-hook (-> options :probes :timeout)]
 		(enqueue timeout-hook [thread result timeout])))))))))
 
-(defn thread-timing [data options]
-  (when-let [timing-hook (-> options :hooks :timing)]
-    (let [[enqueued start end] data
-	  enqueued (/ (double enqueued) 1e6)
-	  start (/ (double start) 1e6)
-	  end (/ (double end) 1e6)
-	  queue-duration (- start enqueued)
-	  execution-duration (- end start)]
-      (enqueue timing-hook
-	{:enqueued-time enqueued
-	 :start-time start
-	 :end-time end
-	 :queue-duration queue-duration
-	 :execution-duration execution-duration
-	 :total-duration (+ queue-duration execution-duration)}))))
+(defn thread-pool-timing [enqueued start end args result options]
+  (let [timing (delay
+		 (let [enqueued (/ (double enqueued) 1e6)
+		       start (/ (double start) 1e6)
+		       end (/ (double end) 1e6)
+		       queue-duration (- start enqueued)
+		       execution-duration (- end start)]
+		   {:enqueued-time enqueued
+		    :start-time start
+		    :end-time end
+		    :args args
+		    :result result
+		    :queue-duration queue-duration
+		    :execution-duration execution-duration
+		    :duration (+ queue-duration execution-duration)}))]
+    (when-let [timing-hook (-> options :probes :timing)]
+      (enqueue timing-hook @timing))
+    (trace [(:name options) :timing]
+      @timing)))
 
 (defmacro with-thread-pool
   "Executes the body on the specified thread pool.  Returns a result-channel representing the
@@ -178,37 +182,41 @@
 
    (with-thread-pool pool {:timeout 100}
      ...)"
-  [pool & body]
-  (let [options? (> (count body) 1)]
-    `(let [body-fn# (fn [] (run-pipeline ~@(if options? (rest body) body)))
-	   pool# ~pool
-	   options# (merge
-		      (-> pool# meta ::options)
-		      *thread-pool-options*
-		      (when ~options?
-			(let [first-arg# ~(first body)]
-			  (when (map? first-arg#)
-			    first-arg#))))]
-       (if-not pool#
-	 (body-fn#)
-	 (let [result# (result-channel)
-	       markers# (atom [(System/nanoTime)])]
-	   (.execute ^Executor pool#
-	     (fn []
-	       (swap! markers# conj (System/nanoTime))
-	       (lamina.executors/thread-timeout result# options#)
-	       (binding [*current-executor* pool#
-			 *thread-pool-options* options#]
-		 (siphon-result
-		   (run-pipeline nil
-		     :error-handler (constantly nil)
-		     (fn [_#]
-		       (let [inner-result# (body-fn#)]
-			 (lamina.executors/thread-timing
-			   (conj @markers# (System/nanoTime)) options#)
-			 inner-result#)))
-		   result#))))
-	   result#)))))
+  [pool options & body]
+  `(let [pool# ~pool
+	 enqueued-time# (System/nanoTime)
+	 options# (merge
+		    (-> pool# meta ::options)
+		    *thread-pool-options*
+		    ~options)
+	 body-fn# (fn []
+		    (let [start-time# (System/nanoTime)
+			  result# (run-pipeline (do ~@body))]
+		      (run-pipeline result#
+			(fn [r#]
+			  (thread-pool-timing
+			    enqueued-time#
+			    start-time#
+			    (System/nanoTime)
+			    (:args options#)
+			    r#
+			    options#)))
+		      result#))]
+     (if-not pool#
+       (body-fn#)
+       (let [result# (result-channel)]
+	 (.execute ^Executor pool#
+	   (fn []
+	     (lamina.executors/thread-timeout result# options#)
+	     (binding [*current-executor* pool#
+		       *thread-pool-options* options#]
+	       (siphon-result
+		 (run-pipeline nil
+		   :error-handler (constantly nil)
+		   (fn [_#]
+		     (body-fn#)))
+		 result#))))
+	 result#))))
 
 (defn executor
   "Given a thread pool and a function, returns a function that will execute that function
@@ -232,21 +240,6 @@
        ([args]
 	  (this args nil))
        ([args inner-options]
-	  (let [options (merge options inner-options)
-		timing-hook (-> options :hooks :timing)
-		timing-channel (when timing-hook (channel))
-		options (if timing-hook
-			  (update-in options [:hooks :timing]
-			    (fn [existing-hook]
-			      (when existing-hook
-				(siphon (fork timing-channel) {existing-hook identity}))
-			      timing-channel))
-			  options)]
-	    (let [result (with-thread-pool pool options
-			   (apply f args))]
-	      (when timing-hook
-		(run-pipeline result
-		  (fn [val]
-		    (close timing-channel)
-		    (enqueue timing-hook {:args args, :timing (channel-seq timing-channel)}))))
-	      result))))))
+	  (let [options (merge options inner-options)]
+	    (with-thread-pool pool (assoc options :args args)
+	      (apply f args)))))))

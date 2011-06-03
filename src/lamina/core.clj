@@ -146,7 +146,7 @@
    When used within (async ...), it's simply an annotation that the body should be executed
    on a separate thread."
   [& body]
-  `(executors/with-thread-pool (executors/current-executor)
+  `(executors/with-thread-pool (executors/current-executor) nil
      ~@body))
 
 ;;;

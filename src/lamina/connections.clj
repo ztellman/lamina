@@ -26,28 +26,36 @@
   [ch options]
   (run-pipeline (closed-result ch)
     (fn [_]
-      (when-let [lost-hook (-> options :hooks :connection-lost)]
-	(enqueue lost-hook (select-keys options [:description])))
+      (trace [(:name options) :connection-lost]
+	(select-keys options [:name :description]))
       true)))
 
 (def default-connection-hooks
   {:connected
-   (siphon->> (map* #(str "Connected to " (:description %) ".")) log-info)
+   (siphon->>
+     (map* #(str "Connected to " (:description %) "."))
+     log-info)
 
    :connection-lost
-   (siphon->> (map* #(str "Connection to " (:description %) " lost.")) log-warn)
+   (siphon->>
+     (map* #(str "Connection to " (:description %) " lost."))
+     log-warn)
 
    :connection-failed
-   (siphon->> (map* #(str "Failed to connect to " (:description %) ", waiting " (:delay %) "ms before retrying.")) log-info)})
+   (siphon->>
+     (map* #(str "Failed to connect to " (:description %) ", waiting " (:delay %) "ms before retrying."))
+     log-info)})
 
 (defn- connect-loop
   "Continually reconnects to server. Returns an atom which will always contain a result-channel
    for the latest attempted connection."
   [halt-signal connection-generator options]
-  (let [options (update-in options [:hooks] #(merge default-connection-hooks %))
+  (let [options (update-in options [:probes] #(merge default-connection-hooks %))
 	delay (atom 0)
 	result (atom (result-channel))
-	latch (atom true)]
+	latch (atom true)
+	probe-prefix (:name options)
+	desc (select-keys options [:name :description])]
     ;; handle signal to close persistent connection
     (receive halt-signal
       (fn [_]
@@ -64,18 +72,15 @@
 		       (restart))
       (do-stage
       	(when (pos? @delay)
-	  (when-let [failed-hook (-> options :hooks :connection-failed)]
-	    (enqueue failed-hook {:delay @delay :description (:description options)}))))
+	  (trace [probe-prefix :connection-failed] (merge desc {:delay @delay}))))
       (wait-stage @delay)
       (fn [_]
-	(when-let [attempt-hook (-> options :hooks :connection-attempt)]
-	  (enqueue attempt-hook (select-keys options [:description])))
+	(trace [probe-prefix :connection-attempt] desc)
 	(siphon-result
 	  (connection-generator)
 	  @result))
       (fn [ch]
-	(when-let [connected (-> options :hooks :connected)]
-	  (enqueue connected (select-keys options [:description])))
+	(trace [probe-prefix :connected] desc)
 	(wait-for-close ch options))
 
       ;; wait here for connection to drop
@@ -88,9 +93,12 @@
 
 (defn persistent-connection
   ([connection-generator]
-     (persistent-connection connection-generator {:description "unknown"}))
+     (persistent-connection connection-generator nil))
   ([connection-generator options]
-     (let [close-signal (constant-channel)
+     (let [options (merge
+		     {:name (gensym "connection."), :description "unknown"}
+		     options)
+	   close-signal (constant-channel)
 	   result (connect-loop close-signal connection-generator options)]
        (fn
 	 ([]
@@ -119,9 +127,11 @@
 
 (defn client
   ([connection-generator]
-     (client connection-generator {:description "unknown"}))
+     (client connection-generator nil))
   ([connection-generator options]
-     (let [connection (persistent-connection connection-generator options)
+     (let [options (merge
+		     {:name (gensym "client."), :description "unknown"})
+	   connection (persistent-connection connection-generator options)
 	   requests (channel)]
        ;; request loop
        (receive-in-order requests
@@ -180,9 +190,13 @@
 
 (defn pipelined-client
   ([connection-generator]
-     (pipelined-client connection-generator {:description "unknown"}))
+     (pipelined-client connection-generator nil))
   ([connection-generator options]
-     (let [connection (persistent-connection connection-generator options)
+     (let [options (merge
+		     {:name (gensym "client.")
+		      :description "unknown"}
+		     options) 
+	   connection (persistent-connection connection-generator options)
 	   requests (channel)
 	   responses (channel)]
 

@@ -64,62 +64,65 @@
 
 ;;;
 
-(def trace-channels (ref {}))
-(def enabled-trace-channels (ref #{}))
-(def *trace-prefix* "")
+(def probe-channels (ref {}))
+(def enabled-probe-channels (ref #{}))
+(def *probe-prefix* "")
 
-(defn canonical-trace-key [trace-key]
-  (if (keyword? trace-key)
-    (name trace-key)
-    (str trace-key)))
+(defn canonical-probe [probe]
+  (if (coll? probe)
+    (mapcat canonical-probe probe)
+    (str/split
+      (if (keyword? probe)
+	(name probe)
+	(str probe))
+      #"[.]")))
 
-(defn- trace-channel- [trace-key]
+(defn- probe-channel- [probe]
   (let [ch (channel)]
     (o/subscribe (-> ch queue q/distributor)
-      {::sink
+      {::probe
        (o/observer
-	 (fn [msg]
-	   )
+	 (fn [_] )
 	 nil
 	 (fn [observers]
 	   (dosync
-	     (alter enabled-trace-channels
+	     (alter enabled-probe-channels
 	       (if (= 3 (count observers))
 		 disj
 		 conj)
-	       trace-key))))})
+	       probe))))})
     ch))
 
-(defn trace-channel
-  "Returns a channel corresponding to the trace-key which will track if there are any
+(defn probe-channel
+  "Returns a channel corresponding to the probe which will track if there are any
    consumers."
-  [trace-key]
-  (let [trace-key (canonical-trace-key trace-key)]
+  [probe]
+  (let [probe (canonical-probe probe)]
     (dosync
-      (let [channels (ensure trace-channels)]
-	(if (contains? channels trace-key)
-	  (channels trace-key)
-	  (let [ch (trace-channel- trace-key)]
-	    (alter trace-channels assoc trace-key ch)
+      (let [channels (ensure probe-channels)]
+	(if (contains? channels probe)
+	  (channels probe)
+	  (let [ch (probe-channel- probe)]
+	    (alter probe-channels assoc probe ch)
 	    ch))))))
 
 (defmacro trace
-  "Enqueues the value into a trace-channel only if there's a consumer for it.  If there
+  "Enqueues the value into a probe-channel only if there's a consumer for it.  If there
    is no consumer, the body will not be evaluated."
-  [trace-key & body]
-  `(let [key# (canonical-trace-key ~trace-key)]
-     (when (contains? @lamina.trace/enabled-trace-channels key#)
-       (enqueue (trace-channel key#) (do ~@body)))))
+  [probe & body]
+  `(let [key# (canonical-probe ~probe)]
+     (when (contains? @lamina.trace/enabled-probe-channels key#)
+       (enqueue (probe-channel key#) (do ~@body)))))
 
-(defmacro trace->> [trace-key & forms]
+(defmacro trace->> [probe & forms]
   (let [ch-sym (gensym "ch")
 	dests? (vector? (last forms))]
     `(let [~ch-sym (channel)
 	   key# (str
-		  *trace-prefix*
-		  (when-not (empty? *trace-prefix*) ".")
-		  (canonical-trace-key ~trace-key))]
-       (binding [*trace-prefix* key#]
+		  *probe-prefix*
+		  (when-not (empty? *probe-prefix*) ".")
+		  (canonical-probe ~probe))]
+       (binding [*probe-prefix* key#]
 	 (lamina.core.seq/siphon
 	   ~(let [operators (if dests? (butlast forms) forms)]
 	      (if (empty? operators)
@@ -132,11 +135,43 @@
 		   (nil? dsts#) []
 		   (coll? dsts#) (vec dsts#)
 		   :else [dsts#])
-		 (trace-channel key#))
+		 (probe-channel key#))
 	       (repeat identity)))))
        (let [ch# (channel)]
 	 (receive-all ch#
 	   (fn [msg#]
-	     (when (contains? @lamina.trace/enabled-trace-channels key#)
+	     (when (contains? @lamina.trace/enabled-probe-channels key#)
 	       (enqueue ~ch-sym msg#))))
 	 ch#))))
+
+;;;
+
+(defn- instrument-timing [args result start end options]
+  (let [timing (delay
+		 {:args args
+		  :result result
+		  :start-time start
+		  :end-time end
+		  :duration (/ (- end start) 1e6)})]
+    (when-let [timing-hook (-> options :probes :timing)]
+      (enqueue timing-hook @timing))
+    (trace [(:name options) :timing]
+      @timing)))
+
+(defn trace-fn [f options]
+  (when-not (:name options)
+    (throw (Exception. "Must define :name for instrumented function.")))
+  (fn [& args]
+    (let [start-time (System/nanoTime)
+	  result (run-pipeline (apply f args))]
+      (run-pipeline result #(instrument-timing args % start-time (System/nanoTime) options))
+      result)))
+
+(defmacro defn-trace [name & forms]
+  (let [options (->> forms
+		  (take-while (complement vector?))
+		  (filter map?)
+		  first)]
+    `(do
+       (defn ~name ~@forms)
+       (def ~name (trace-fn ~name (assoc ~options :name ~(str name)))))))

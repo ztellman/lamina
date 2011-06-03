@@ -171,7 +171,7 @@
    'try transform-try
    'new transform-new
    'sync transform-sync
-   'task (fn [x] `(with-thread-pool (current-executor) ~@(rest x)))})
+   'task (fn [x] `(with-thread-pool (current-executor) nil ~@(rest x)))})
 
 (defn async [body]
   (let [body (->> body
