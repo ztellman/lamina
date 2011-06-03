@@ -47,7 +47,25 @@ namespace.
   <h1 class="nopad">Table of Contents</h1>
   <div style="margin-left: 1em;" class="toc-section">
     <a href="#toc0">Overview</a>
-    
+    <div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.trace/log-debug">log-debug</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.trace/log-error">log-error</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.trace/log-fatal">log-fatal</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.trace/log-info">log-info</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.trace/log-trace">log-trace</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.trace/log-warn">log-warn</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.trace/probe-channel">probe-channel</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.trace/sample-every">sample-every</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.trace/trace">trace</a>
+    </div>
     <br />
   </div>
 </div>
@@ -63,7 +81,85 @@ by <span id="author">Unknown</span><br />
 <pre id="namespace-docstr"></pre>
 <br />
 <h2>Public Variables and Functions</h2>
-
+<div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.trace/log-debug">log-debug</h2>
+  <span id="var-type">var</span><br />
+  <pre id="var-usage"></pre>
+  <pre id="var-docstr">Every message enqueued into this channel will be logged at the DEBUG level.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.trace/log-error">log-error</h2>
+  <span id="var-type">var</span><br />
+  <pre id="var-usage"></pre>
+  <pre id="var-docstr">Every message enqueued into this channel will be logged at the ERROR level.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.trace/log-fatal">log-fatal</h2>
+  <span id="var-type">var</span><br />
+  <pre id="var-usage"></pre>
+  <pre id="var-docstr">Every message enqueued into this channel will be logged at the FATAL level.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.trace/log-info">log-info</h2>
+  <span id="var-type">var</span><br />
+  <pre id="var-usage"></pre>
+  <pre id="var-docstr">Every message enqueued into this channel will be logged at the INFO level.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.trace/log-trace">log-trace</h2>
+  <span id="var-type">var</span><br />
+  <pre id="var-usage"></pre>
+  <pre id="var-docstr">Every message enqueued into this channel will be logged at the TRACE level.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.trace/log-warn">log-warn</h2>
+  <span id="var-type">var</span><br />
+  <pre id="var-usage"></pre>
+  <pre id="var-docstr">Every message enqueued into this channel will be logged at the WARN level.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.trace/probe-channel">probe-channel</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (probe-channel probe)
+</pre>
+  <pre id="var-docstr">Returns a channel corresponding to the probe which will track if there are any
+consumers.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.trace/sample-every">sample-every</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (sample-every period ch)
+</pre>
+  <pre id="var-docstr">Returns a channel which will emit the last message enqueued into 'ch' every 'period'
+milliseconds.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.trace/trace">trace</h2>
+  <span id="var-type">macro</span><br />
+  <pre id="var-usage">Usage: (trace probe &amp; body)
+</pre>
+  <pre id="var-docstr">Enqueues the value into a probe-channel only if there's a consumer for it.  If there
+is no consumer, the body will not be evaluated.</pre>
+  
+</div>
 
 
 </div>

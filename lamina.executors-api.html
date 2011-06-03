@@ -133,7 +133,7 @@ The following options may be specified:
 :name - the name used for logging
 :timeout - the maximum duration a thread may be in use by a single task
 
-under :hooks, the following log channels may be specified:
+under :probes, the following log channels may be specified:
 
 :timeout   Called when a thread times out with:
              {:thread, :result, :timeout}
@@ -142,7 +142,7 @@ under :hooks, the following log channels may be specified:
 
 :timing    Called every time a task completes with:
              {:enqueued-time, :start-time, :end-time,
-              :queue-duration, :execution-duration, :total-duration}
+              :queue-duration, :execution-duration, :duration}
            All values are in milliseconds.
 
 :state     Called every time a task is enqueued with:
@@ -154,7 +154,7 @@ under :hooks, the following log channels may be specified:
   <hr />
   <h2 id="lamina.executors/with-thread-pool">with-thread-pool</h2>
   <span id="var-type">macro</span><br />
-  <pre id="var-usage">Usage: (with-thread-pool pool &amp; body)
+  <pre id="var-usage">Usage: (with-thread-pool pool options &amp; body)
 </pre>
   <pre id="var-docstr">Executes the body on the specified thread pool.  Returns a result-channel representing the
 eventual return value.

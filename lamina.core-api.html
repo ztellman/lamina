@@ -114,6 +114,8 @@ namespace.
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/release-named-channel">release-named-channel</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core/remove*">remove*</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/restart">restart</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/run-pipeline">run-pipeline</a>
@@ -515,6 +517,16 @@ pipeline.</pre>
   <pre id="var-usage">Usage: (release-named-channel key)
 </pre>
   <pre id="var-docstr">Forgets the channel associated with the key, if one exists.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.core/remove*">remove*</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (remove* f ch)
+</pre>
+  <pre id="var-docstr">Returns a channel which will consume all messages from 'ch', but only emit messages
+for which (f msg) is false.</pre>
   
 </div><div id="var-entry">
   <br />
