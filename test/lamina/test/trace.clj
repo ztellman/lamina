@@ -9,12 +9,13 @@
 (ns lamina.test.trace
   (:use
     [lamina core trace]
+    [lamina.trace.core :only (probe-channels enabled-probe-channels)]
     [clojure test]))
 
 (defn clear-probe-channels []
   (dosync
     (ref-set probe-channels {})
-    (ref-set enabled-probe-channels #{})))
+    (reset! enabled-probe-channels {})))
 
 (deftest test-trace
   (clear-probe-channels)
