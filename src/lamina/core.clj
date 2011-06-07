@@ -146,7 +146,7 @@
    When used within (async ...), it's simply an annotation that the body should be executed
    on a separate thread."
   [& body]
-  `(executors/with-thread-pool (executors/current-executor) nil
+  `(executors/with-thread-pool (lamina.executors.core/current-executor) nil
      ~@body))
 
 ;;;

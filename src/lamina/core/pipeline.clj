@@ -23,7 +23,7 @@
 
 (defmacro with-executor [executor & body]
   `(if-let [executor# ~executor]
-     (.submit ^Executor executor# (fn [] ~@body))
+     (.execute ^Executor executor# (fn [] ~@body))
      (do ~@body)))
 
 ;;;

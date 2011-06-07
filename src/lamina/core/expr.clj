@@ -11,7 +11,8 @@
     clojure.walk
     [lamina.core.expr walk utils tag]
     [lamina.core channel pipeline utils]
-    [lamina executors]))
+    [lamina executors]
+    [lamina.executors.core :only (current-executor *current-executor*)]))
 
 ;;;
 

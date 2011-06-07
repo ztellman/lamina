@@ -26,32 +26,15 @@
   [ch options]
   (run-pipeline (closed-result ch)
     (fn [_]
-      (trace [(:name options) :connection-lost]
+      (trace [(:name options) :connection :lost]
 	(select-keys options [:name :description]))
       true)))
-
-(def default-connection-hooks
-  {:connected
-   (siphon->>
-     (map* #(str "Connected to " (:description %) "."))
-     log-info)
-
-   :connection-lost
-   (siphon->>
-     (map* #(str "Connection to " (:description %) " lost."))
-     log-warn)
-
-   :connection-failed
-   (siphon->>
-     (map* #(str "Failed to connect to " (:description %) ", waiting " (:delay %) "ms before retrying."))
-     log-info)})
 
 (defn- connect-loop
   "Continually reconnects to server. Returns an atom which will always contain a result-channel
    for the latest attempted connection."
   [halt-signal connection-generator options]
-  (let [options (update-in options [:probes] #(merge default-connection-hooks %))
-	delay (atom 0)
+  (let [delay (atom 0)
 	result (atom (result-channel))
 	latch (atom true)
 	probe-prefix (:name options)
@@ -72,15 +55,15 @@
 		       (restart))
       (do-stage
       	(when (pos? @delay)
-	  (trace [probe-prefix :connection-failed] (merge desc {:delay @delay}))))
+	  (trace [probe-prefix :connection :failed] (merge desc {:delay @delay}))))
       (wait-stage @delay)
       (fn [_]
-	(trace [probe-prefix :connection-attempt] desc)
+	(trace [probe-prefix :connection :attempted] desc)
 	(siphon-result
 	  (connection-generator)
 	  @result))
       (fn [ch]
-	(trace [probe-prefix :connected] desc)
+	(trace [probe-prefix :connection :opened] desc)
 	(wait-for-close ch options))
 
       ;; wait here for connection to drop
@@ -180,13 +163,15 @@
 		 result)))))
 
        ;; request function
-       (fn this
-	 ([request]
-	    (this request -1))
-	 ([request timeout]
-	    (let [result (result-channel)]
-	      (enqueue requests [request result timeout])
-	      result))))))
+       (trace-wrap
+	 (fn this
+	   ([request]
+	      (this request -1))
+	   ([request timeout]
+	      (let [result (result-channel)]
+		(enqueue requests [request result timeout])
+		result)))
+	 (merge {:name (gensym "client.")} options)))))
 
 (defn pipelined-client
   ([connection-generator]
@@ -239,13 +224,15 @@
 		   (success! result response)))))))
 
        ;; request function
-       (fn this
-	 ([request]
-	    (this request -1))
-	 ([request timeout]
-	    (let [result (result-channel)]
-	      (enqueue requests [request result timeout])
-	      result))))))
+       (trace-wrap
+	 (fn this
+	   ([request]
+	      (this request -1))
+	   ([request timeout]
+	      (let [result (result-channel)]
+		(enqueue requests [request result timeout])
+		result)))
+	 (merge {:name (gensym "client.")} options)))))
 
 ;;
 

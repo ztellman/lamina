@@ -37,22 +37,34 @@
 
 ;;;
 
-(defn- instrument-timing [args result start end options]
-  (trace [(:name options) :timing]
-    {:args args
-     :result result
-     :start-time start
-     :end-time end
-     :duration (/ (- end start) 1e6)}))
+(defn- instrument-calls [args result start options]
+  (trace [(:name options) :calls]
+    (let [end (System/nanoTime)]
+      {:args args
+       :result result
+       :start-time start
+       :end-time end
+       :duration (/ (- end start) 1e6)})))
 
-(defn trace-fn [f options]
+(defn- instrument-errors [args start options]
+  (fn [ex]
+    (trace [(:name options) :errors]
+      (let [end (System/nanoTime)]
+	{:args args
+	 :exception ex
+	 :start-time start
+	 :end-time end
+	 :duration (/ (- end start) 1e6)}))))
+
+(defn trace-wrap [f options]
   (when-not (:name options)
     (throw (Exception. "Must define :name for instrumented function.")))
   (fn [& args]
     (let [start-time (System/nanoTime)
-	  result (run-pipeline (apply f args))]
+	  result (run-pipeline (apply f args) :error-handler (fn [_]))]
       (run-pipeline result
-	#(instrument-timing args % start-time (System/nanoTime) options))
+	:error-handler (instrument-errors args start-time options)
+	#(instrument-calls args % start-time options))
       result)))
 
 (defmacro defn-trace [name & forms]
@@ -62,4 +74,4 @@
 		  first)]
     `(do
        (defn ~name ~@forms)
-       (def ~name (trace-fn ~name (assoc ~options :name ~(str name)))))))
+       (def ~name (trace-wrap ~name (assoc ~options :name ~(str name)))))))

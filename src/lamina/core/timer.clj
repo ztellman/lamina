@@ -14,7 +14,8 @@
      TimeUnit
      TimeoutException]))
 
-(def delayed-executor (ScheduledThreadPoolExecutor. 1))
+(def delayed-executor
+  (ScheduledThreadPoolExecutor. (.availableProcessors (Runtime/getRuntime))))
 
 (defn delay-invoke [f delay]
   (.schedule
