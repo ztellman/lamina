@@ -248,6 +248,7 @@
   ([ch handler]
      (server ch handler {}))
   ([ch handler options]
+     (siphon-probes (:name options) (:probes options))
      (let [thread-pool (let [t (:thread-pool options)]
 			 (if (or (nil? t) (thread-pool? t))
 			   t
@@ -275,6 +276,7 @@
   ([ch handler]
      (pipelined-server ch handler {}))
   ([ch handler options]
+     (siphon-probes (:name options) (:probes options))
      (let [thread-pool (let [t (:thread-pool options)]
 			 (if (or (nil? t) (thread-pool? t))
 			   t

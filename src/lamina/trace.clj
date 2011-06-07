@@ -37,6 +37,10 @@
 
 ;;;
 
+(defn siphon-probes [prefix m]
+  (doseq [[k v] m]
+    (siphon (probe-channel [prefix k]) v)))
+
 (defn- instrument-calls [args result start options]
   (trace [(:name options) :calls]
     (let [end (System/nanoTime)]
@@ -59,6 +63,7 @@
 (defn trace-wrap [f options]
   (when-not (:name options)
     (throw (Exception. "Must define :name for instrumented function.")))
+  (siphon-probes (:name options) (:probes options))
   (fn [& args]
     (let [start-time (System/nanoTime)
 	  result (run-pipeline (apply f args) :error-handler (fn [_]))]

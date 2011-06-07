@@ -18,6 +18,7 @@
 
 (import-fn #'x/thread-pool)
 (import-fn #'x/thread-pool?)
+(import-fn #'x/shutdown-thread-pool)
 
 (defmacro with-thread-pool
   "Executes the body on the specified thread pool.  Returns a result-channel representing the
