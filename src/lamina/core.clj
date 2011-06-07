@@ -27,28 +27,28 @@
 ;;;; CHANNELS
 
 ;; core channel functions
-(import-fn channel/receive)
-(import-fn channel/cancel-callback)
-(import-fn channel/enqueue)
-(import-fn channel/enqueue-and-close)
-(import-fn channel/close)
-(import-fn channel/on-closed)
-(import-fn channel/on-drained)
-(import-fn channel/drained?)
-(import-fn channel/closed?)
-(import-fn channel/channel?)
-(import-fn seq/receive-all)
-(import-fn channel/poll)
+(import-fn #'channel/receive)
+(import-fn #'channel/cancel-callback)
+(import-fn #'channel/enqueue)
+(import-fn #'channel/enqueue-and-close)
+(import-fn #'channel/close)
+(import-fn #'channel/on-closed)
+(import-fn #'channel/on-drained)
+(import-fn #'channel/drained?)
+(import-fn #'channel/closed?)
+(import-fn #'channel/channel?)
+(import-fn #'seq/receive-all)
+(import-fn #'channel/poll)
 
 ;; channel variants
-(import-fn channel/splice)
-(import-fn channel/channel)
-(import-fn channel/channel-pair)
-(import-fn channel/permanent-channel)
-(import-fn channel/constant-channel)
-(import-fn channel/closed-channel)
-(import-fn channel/timed-channel)
-(import-fn channel/proxy-channel)
+(import-fn #'channel/splice)
+(import-fn #'channel/channel)
+(import-fn #'channel/channel-pair)
+(import-fn #'channel/permanent-channel)
+(import-fn #'channel/constant-channel)
+(import-fn #'channel/closed-channel)
+(import-fn #'channel/timed-channel)
+(import-fn #'channel/proxy-channel)
 
 (def nil-channel channel/nil-channel)
 
@@ -70,43 +70,43 @@
 	   (if (coll? dsts#) dsts# [dsts#])))
        ~ch-sym)))
 
-(import-fn seq/fork)
-(import-fn seq/map*)
-(import-fn seq/filter*)
-(import-fn seq/remove*)
-(import-fn seq/receive-in-order)
-(import-fn seq/reduce*)
-(import-fn seq/reductions*)
-(import-fn seq/take*)
-(import-fn seq/take-while*)
-(import-fn seq/partition*)
-(import-fn seq/partition-all*)
+(import-fn #'seq/fork)
+(import-fn #'seq/map*)
+(import-fn #'seq/filter*)
+(import-fn #'seq/remove*)
+(import-fn #'seq/receive-in-order)
+(import-fn #'seq/reduce*)
+(import-fn #'seq/reductions*)
+(import-fn #'seq/take*)
+(import-fn #'seq/take-while*)
+(import-fn #'seq/partition*)
+(import-fn #'seq/partition-all*)
 
 ;; named channels
-(import-fn named/named-channel)
-(import-fn named/release-named-channel)
+(import-fn #'named/named-channel)
+(import-fn #'named/release-named-channel)
 
 ;; synchronous channel functions
-(import-fn seq/lazy-channel-seq)
-(import-fn seq/channel-seq)
-(import-fn seq/wait-for-message)
+(import-fn #'seq/lazy-channel-seq)
+(import-fn #'seq/channel-seq)
+(import-fn #'seq/wait-for-message)
 
 
 ;;;; PIPELINES
 
 ;; core pipeline functions
-(import-fn pipeline/result-channel)
-(import-fn pipeline/pipeline)
-(import-fn pipeline/run-pipeline)
+(import-fn #'pipeline/result-channel)
+(import-fn #'pipeline/pipeline)
+(import-fn #'pipeline/run-pipeline)
 
 ;; pipeline stage helpers
-(import-fn pipeline/result-channel?)
-(import-fn pipeline/read-channel)
+(import-fn #'pipeline/result-channel?)
+(import-fn #'pipeline/read-channel)
 (def read-channel* read-channel)
-(import-fn pipeline/read-merge)
+(import-fn #'pipeline/read-merge)
 
-(import-fn pipeline/on-success)
-(import-fn pipeline/on-error)
+(import-fn #'pipeline/on-success)
+(import-fn #'pipeline/on-error)
 
 (defmacro do-stage
   "Creates a pipeline stage that emits the same value it receives, but performs some side-effect
@@ -116,16 +116,16 @@
      ~@body
      x#))
 
-(import-fn pipeline/wait-stage)
+(import-fn #'pipeline/wait-stage)
 
 ;; redirect signals
-(import-fn pipeline/redirect)
-(import-fn pipeline/restart)
-(import-fn pipeline/complete)
+(import-fn #'pipeline/redirect)
+(import-fn #'pipeline/restart)
+(import-fn #'pipeline/complete)
 
 ;; pipeline result hooks
-(import-fn pipeline/wait-for-result)
-(import-fn pipeline/siphon-result)
+(import-fn #'pipeline/wait-for-result)
+(import-fn #'pipeline/siphon-result)
 
 ;;;
 
@@ -151,7 +151,7 @@
 
 ;;;
 
-(import-fn x-utils/compact)
+(import-fn #'x-utils/compact)
 
 (defmacro force-all
   "Forces a sequence of results.  Subsequent expressions will wait on all results being
