@@ -62,9 +62,15 @@ namespace.
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.trace/probe-channel">probe-channel</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
-      <a href="#lamina.trace/sample-every">sample-every</a>
-    </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.trace/trace">trace</a>
+    </div>
+    <br />
+  </div><div style="margin-left: 1em;" class="toc-section">
+    <a href="#lamina.trace.core">lamina.trace.core</a>
+    <div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.trace.core/expand-trace">expand-trace</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.trace.core/probe-channel">probe-channel</a>
     </div>
     <br />
   </div>
@@ -142,22 +148,34 @@ consumers.</pre>
 </div><div id="var-entry">
   <br />
   <hr />
-  <h2 id="lamina.trace/sample-every">sample-every</h2>
-  <span id="var-type">function</span><br />
-  <pre id="var-usage">Usage: (sample-every period ch)
-</pre>
-  <pre id="var-docstr">Returns a channel which will emit the last message enqueued into 'ch' every 'period'
-milliseconds.</pre>
-  
-</div><div id="var-entry">
-  <br />
-  <hr />
   <h2 id="lamina.trace/trace">trace</h2>
   <span id="var-type">macro</span><br />
   <pre id="var-usage">Usage: (trace probe &amp; body)
 </pre>
   <pre id="var-docstr">Enqueues the value into a probe-channel only if there's a consumer for it.  If there
 is no consumer, the body will not be evaluated.</pre>
+  
+</div>
+<h2 id="namespace-name">lamina.trace.core</h2>
+<pre id="namespace-docstr"></pre>
+<br />
+<div id="var-entry">
+  <hr />
+  <h2 id="lamina.trace.core/expand-trace">expand-trace</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (expand-trace probe &amp; body)
+</pre>
+  <pre id="var-docstr">Enqueues the value into a probe-channel only if there's a consumer for it.  If there
+is no consumer, the body will not be evaluated.</pre>
+  
+</div><div id="var-entry">
+  <hr />
+  <h2 id="lamina.trace.core/probe-channel">probe-channel</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (probe-channel probe)
+</pre>
+  <pre id="var-docstr">Returns a channel corresponding to the probe which will track if there are any
+consumers.</pre>
   
 </div>
 

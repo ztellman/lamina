@@ -59,6 +59,16 @@ namespace.
       <a href="#lamina.executors/with-thread-pool">with-thread-pool</a>
     </div>
     <br />
+  </div><div style="margin-left: 1em;" class="toc-section">
+    <a href="#lamina.executors.core">lamina.executors.core</a>
+    <div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.executors.core/set-default-executor">set-default-executor</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.executors.core/set-local-executor">set-local-executor</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.executors.core/thread-pool">thread-pool</a>
+    </div>
+    <br />
   </div>
 </div>
 </div>
@@ -131,23 +141,7 @@ The following options may be specified:
 :max-thread-count - the upper boundary for the thread count (defaults to Integer/MAX_VALUE)
 :idle-threshold - the interval before an inactive thread is reclaimed (defaults to 60,000ms)
 :name - the name used for logging
-:timeout - the maximum duration a thread may be in use by a single task
-
-under :probes, the following log channels may be specified:
-
-:timeout   Called when a thread times out with:
-             {:thread, :result, :timeout}
-           By default, this will trigger a TimeoutException in the result and interrupt the
-           thread.  
-
-:timing    Called every time a task completes with:
-             {:enqueued-time, :start-time, :end-time,
-              :queue-duration, :execution-duration, :duration}
-           All values are in milliseconds.
-
-:state     Called every time a task is enqueued with:
-             {:completed-tasks, :pending-tasks, :active-threads, :thread-count}
-           </pre>
+:timeout - the maximum duration a thread may be in use by a single task.</pre>
   
 </div><div id="var-entry">
   <br />
@@ -163,9 +157,46 @@ The thread pool may be optionally followed by a map specifying options that over
 given when the thread pool was created.  If, for instance, we want to have the timeout be
 100ms in this particular instance, we can use:
 
-
 (with-thread-pool pool {:timeout 100}
   ...)</pre>
+  
+</div>
+<h2 id="namespace-name">lamina.executors.core</h2>
+<pre id="namespace-docstr"></pre>
+<br />
+<div id="var-entry">
+  <hr />
+  <h2 id="lamina.executors.core/set-default-executor">set-default-executor</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (set-default-executor executor)
+</pre>
+  <pre id="var-docstr">Sets the default executor used by task.</pre>
+  
+</div><div id="var-entry">
+  <hr />
+  <h2 id="lamina.executors.core/set-local-executor">set-local-executor</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (set-local-executor executor)
+</pre>
+  <pre id="var-docstr">Sets the executor used by task when called within the current namespace.</pre>
+  
+</div><div id="var-entry">
+  <hr />
+  <h2 id="lamina.executors.core/thread-pool">thread-pool</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (thread-pool)
+       (thread-pool options)
+</pre>
+  <pre id="var-docstr">Creates a thread pool that will grow to a specified size when necessary, and dispose
+of unused threads after a certain amount of inactivity.
+
+The following options may be specified:
+
+:min-thread-count - the lower boundary for the thread count (defaults to 0)
+:max-thread-count - the upper boundary for the thread count (defaults to Integer/MAX_VALUE)
+:idle-threshold - the interval before an inactive thread is reclaimed (defaults to 60,000ms)
+:name - the name used for logging
+:timeout - the maximum duration a thread may be in use by a single task.</pre>
   
 </div>
 
