@@ -120,6 +120,8 @@ namespace.
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/run-pipeline">run-pipeline</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core/sample-every">sample-every</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/siphon-result">siphon-result</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/splice">splice</a>
@@ -137,6 +139,12 @@ namespace.
       <a href="#lamina.core/wait-stage">wait-stage</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/with-timeout">with-timeout</a>
+    </div>
+    <br />
+  </div><div style="margin-left: 1em;" class="toc-section">
+    <a href="#lamina.core.operators">lamina.core.operators</a>
+    <div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core.operators/sample-every">sample-every</a>
     </div>
     <br />
   </div>
@@ -554,6 +562,16 @@ Returns a pipeline future.</pre>
 </div><div id="var-entry">
   <br />
   <hr />
+  <h2 id="lamina.core/sample-every">sample-every</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (sample-every period ch)
+</pre>
+  <pre id="var-docstr">Returns a channel which will emit the last message enqueued into 'ch' every 'period'
+milliseconds.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
   <h2 id="lamina.core/siphon-result">siphon-result</h2>
   <span id="var-type">function</span><br />
   <pre id="var-usage">Usage: (siphon-result src dst)
@@ -645,6 +663,19 @@ If the timeout elapses, a java.util.concurrent.TimeoutException is thrown.</pre>
   <pre id="var-docstr">Wraps a body that returns a result-channel, and returns a new result-channel that will
 emit a java.util.concurrent.TimeoutException if the inner result-channel doesn't yield
 a value in 'timeout' ms.</pre>
+  
+</div>
+<h2 id="namespace-name">lamina.core.operators</h2>
+<pre id="namespace-docstr"></pre>
+<br />
+<div id="var-entry">
+  <hr />
+  <h2 id="lamina.core.operators/sample-every">sample-every</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (sample-every period ch)
+</pre>
+  <pre id="var-docstr">Returns a channel which will emit the last message enqueued into 'ch' every 'period'
+milliseconds.</pre>
   
 </div>
 
