@@ -22,7 +22,7 @@
      (let [[created? ch] (dosync
 			   (if-let [ch (@named-channels key)]
 			     [false ch]
-			     (let [ch (channel)]
+			     (let [ch (permanent-channel)]
 			       (commute named-channels assoc key ch)
 			       [true ch])))]
        (when (and created? creation-callback)

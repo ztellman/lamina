@@ -51,11 +51,12 @@
   ([pool f]
      (executor pool f nil))
   ([pool f options]
-     (trace-wrap (merge {:name (gensym "executor.")} options)
+     (trace-wrap
        (fn this
 	 ([args]
 	    (this args nil))
 	 ([args inner-options]
 	    (let [options (merge options inner-options)]
 	      (with-thread-pool pool (assoc options :args args)
-		(apply f args))))))))
+		(apply f args)))))
+       (merge {:name (gensym "executor.")} options))))
