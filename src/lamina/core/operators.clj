@@ -1,5 +1,5 @@
 (ns lamina.core.operators
-  (:use [lamina.core channel pipeline]))
+  (:use [lamina.core channel pipeline seq]))
 
 (defn sample-every
   "Returns a channel which will emit the last message enqueued into 'ch' every 'period'

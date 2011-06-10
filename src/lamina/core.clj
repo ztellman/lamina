@@ -18,6 +18,7 @@
     [lamina.core.named :as named]
     [lamina.core.expr :as x]
     [lamina.executors :as executors]
+    [lamina.core.operators :as op]
     [lamina.core.expr.utils :as x-utils])
   (:import
     [java.util.concurrent
@@ -81,6 +82,8 @@
 (import-fn #'seq/take-while*)
 (import-fn #'seq/partition*)
 (import-fn #'seq/partition-all*)
+
+(import-fn #'op/sample-every)
 
 ;; named channels
 (import-fn #'named/named-channel)
