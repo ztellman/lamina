@@ -113,9 +113,14 @@
      (client connection-generator nil))
   ([connection-generator options]
      (let [options (merge
-		     {:name (gensym "client."), :description "unknown"})
+		     {:name (gensym "client.")
+		      :description "unknown"}
+		     options)
 	   connection (persistent-connection connection-generator options)
 	   requests (channel)]
+
+       (siphon-probes (:name options) (:probes options))
+       
        ;; request loop
        (receive-in-order requests
 	 (fn [[request ^ResultChannel result timeout]]
@@ -127,40 +132,40 @@
 	       (setup-result-timeout result timeout)
 
 	       ;; make request
-	       (siphon-result
-		 (run-pipeline nil ;; don't wait anything initially
-		   :error-handler (fn [_]
-				    (when-not (has-completed? result)
-				      (restart)))
+	       (run-pipeline nil ;; don't wait anything initially
+		 :error-handler (fn [_]
+				  (when-not (has-completed? result)
+				    (restart)))
 		   
-		   (fn [_]
-		     (if (has-completed? result)
+		 (fn [_]
+		   (if (has-completed? result)
 		       
-		       ;; if timeout has already elapsed, exit
-		       (complete nil)
+		     ;; if timeout has already elapsed, exit
+		     (complete nil)
 
-		       ;; send the request
-		       (run-pipeline (connection)
-			 (fn [ch]
-			   (if (= ::close ch)
+		     ;; send the request
+		     (run-pipeline (connection)
+		       (fn [ch]
+			 (if (= ::close ch)
 
-			     ;; (close-connection ...) has already been called
-			     (complete (Exception. "Client has been deactivated."))
+			   ;; (close-connection ...) has already been called
+			   (complete (Exception. "Client has been deactivated."))
 
-			     ;; send request, and wait for response
-			     (do
-			       (enqueue ch request)
-			       ch))))))
-		   (fn [ch]
-		     (run-pipeline ch
-		       read-channel
-		       (fn [response]
-			 (if-not (and (nil? response) (drained? ch))
-			   (if (instance? Exception response)
-			     (throw response)
-			     response)
-			   (restart))))))
-		 result)))))
+			   ;; send request, and wait for response
+			   (do
+			     (enqueue ch request)
+			     ch))))))
+		 (fn [ch]
+		   (run-pipeline ch
+		     read-channel
+		     (fn [response]
+		       (if-not (and (nil? response) (drained? ch))
+			 (if (instance? Exception response)
+			   (error! result response)
+			   (success! result response))
+			 (throw (Exception. "Connection unexpectedly closed.")))))))
+
+	       result))))
 
        ;; request function
        (trace-wrap
@@ -171,7 +176,9 @@
 	      (let [result (result-channel)]
 		(enqueue requests [request result timeout])
 		result)))
-	 (merge {:name (gensym "client.")} options)))))
+	 (merge
+	   {:name (gensym "client.")}
+	   options)))))
 
 (defn pipelined-client
   ([connection-generator]
@@ -184,6 +191,8 @@
 	   connection (persistent-connection connection-generator options)
 	   requests (channel)
 	   responses (channel)]
+
+       (siphon-probes (:name options) (:probes options))
 
        ;; handle requests
        (receive-in-order requests
@@ -208,7 +217,7 @@
 
        ;; handle responses
        (receive-in-order responses
-	 (fn [[request ^ResultChannel result ch]]
+	 (fn [[request result ch]]
 	   (run-pipeline ch
 	     :error-handler (fn [_]
 			      ;; re-send request
@@ -218,7 +227,7 @@
 	     read-channel
 	     (fn [response]
 	       (if (and (nil? response) (drained? ch))
-		 (throw (Exception. "Connection closed"))
+		 (throw (Exception. "Connection unexpectedly closed."))
 		 (if (instance? Exception response)
 		   (error! result response)
 		   (success! result response)))))))
@@ -232,7 +241,9 @@
 	      (let [result (result-channel)]
 		(enqueue requests [request result timeout])
 		result)))
-	 (merge {:name (gensym "client.")} options)))))
+	 (merge
+	   {:name (gensym "client.")}
+	   options)))))
 
 ;;
 
@@ -248,13 +259,18 @@
   ([ch handler]
      (server ch handler {}))
   ([ch handler options]
-     (siphon-probes (:name options) (:probes options))
-     (let [thread-pool (let [t (:thread-pool options)]
+     (let [options (merge
+		     {:name (gensym "server.")}
+		     options)
+	   thread-pool (let [t (:thread-pool options)]
 			 (if (or (nil? t) (thread-pool? t))
 			   t
 			   (thread-pool t)))
 	   timeout-fn (or (:timeout options) (constantly -1))
 	   handler (executor thread-pool (wrap-constant-response handler options) options)]
+
+       (siphon-probes (:name options) (:probes options))
+
        (run-pipeline ch
 	 :error-handler #(do
 			   (enqueue ch (or (:error-response options) %))
@@ -276,8 +292,10 @@
   ([ch handler]
      (pipelined-server ch handler {}))
   ([ch handler options]
-     (siphon-probes (:name options) (:probes options))
-     (let [thread-pool (let [t (:thread-pool options)]
+     (let [options (merge
+		     {:name (gensym "server.")}
+		     options)
+	   thread-pool (let [t (:thread-pool options)]
 			 (if (or (nil? t) (thread-pool? t))
 			   t
 			   (thread-pool t)))
@@ -285,6 +303,9 @@
 	   handler (executor thread-pool handler options)
 	   requests (channel)
 	   responses (channel)]
+
+       (siphon-probes (:name options) (:probes options))
+       
        (run-pipeline responses
 	 read-channel
 	 #(read-channel %)

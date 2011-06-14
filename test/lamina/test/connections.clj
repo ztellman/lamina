@@ -22,6 +22,13 @@
       (fn [_] (do (close a) (close b))))
     [a #(do (close a) (close b))]))
 
+(defn error-server []
+  (let [[a b] (channel-pair)]
+    (run-pipeline
+      (receive-in-order b (fn [_] (enqueue b (Exception. "fail!"))))
+      (fn [_] (do (close a) (close b))))
+    [a #(do (close a) (close b))]))
+
 (defmacro with-server [server-fn & body]
   `(let [chs# (atom nil)
 	 close-fns# (atom nil)
@@ -117,3 +124,13 @@
   (testing "with the connection disconnected afterwards"
     (works-after-a-timed-out-request pipelined-client false)
     (works-after-a-timed-out-request client false)))
+
+(defn errors-propagate [client-fn]
+  (with-server error-server
+    (start-server)
+    (let [f (client-fn #(connect) {:description "error-server"})]
+      (is (thrown? Exception @(f "fail?"))))))
+
+(deftest test-error-propagation
+  (errors-propagate client)
+  (errors-propagate pipelined-client))
