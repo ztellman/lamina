@@ -163,9 +163,7 @@
 			 (if (instance? Exception response)
 			   (error! result response)
 			   (success! result response))
-			 (throw (Exception. "Connection unexpectedly closed.")))))))
-
-	       (read-channel (poll-result result))))))
+			 (throw (Exception. "Connection unexpectedly closed.")))))))))))
 
        ;; request function
        (trace-wrap
