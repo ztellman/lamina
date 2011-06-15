@@ -25,7 +25,7 @@
 (defn error-server []
   (let [[a b] (channel-pair)]
     (run-pipeline
-      (receive-in-order b (fn [_] (enqueue b (Exception. "fail!"))))
+      (receive-in-order b (fn [_] (enqueue b (RuntimeException. "fail!"))))
       (fn [_] (do (close a) (close b))))
     [a #(do (close a) (close b))]))
 
@@ -129,7 +129,8 @@
   (with-server error-server
     (start-server)
     (let [f (client-fn #(connect) {:description "error-server"})]
-      (is (thrown? Exception @(f "fail?"))))))
+      (is (thrown? RuntimeException @(f "fail?" 100)))
+      (is (thrown? RuntimeException @(f "fail?" 100))))))
 
 (deftest test-error-propagation
   (errors-propagate client)

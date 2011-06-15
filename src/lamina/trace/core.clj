@@ -23,6 +23,9 @@
 (def registered-probes (atom {}))
 (def *probe-prefix* "")
 
+(def new-probe-publisher (channel))
+(receive-all new-probe-publisher (fn [_] ))
+
 ;;;
 
 (defn logger [level]
@@ -52,7 +55,15 @@
       #"[.]")))
 
 (defn register-probe [probe]
-  (swap! registered-probes update-in probe #(or % {})))
+  (if (= ::none (get-in @registered-probes probe ::none))
+    (do
+      (swap! registered-probes update-in probe #(or % {}))
+      (enqueue new-probe-publisher probe)
+      true)
+    false))
+
+(defn on-new-probe [& callbacks]
+  (apply receive-all new-probe-publisher callbacks))
 
 (defn constant-probe? [probe]
   (or
@@ -98,9 +109,11 @@
     `(let [~probe-sym (canonical-probe ~probe)]
        ~@(when-not (constant-probe? probe)
 	   `((register-probe ~probe-sym)))
-       (when-not (= ::empty (get-in @enabled-probe-channels ~probe-sym ::empty))
-	 (enqueue (probe-channel ~probe-sym) (do ~@body))
-	 nil))))
+       (if-not (= ::empty (get-in @enabled-probe-channels ~probe-sym ::empty))
+	 (do
+	   (enqueue (probe-channel ~probe-sym) (do ~@body))
+	   true)
+	 false))))
 
 (defn expand-trace->> [probe & forms]
   (let [ch-sym (gensym "ch")
