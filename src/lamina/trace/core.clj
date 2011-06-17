@@ -106,7 +106,9 @@
   (when (constant-probe? probe)
     (register-probe (canonical-probe probe)))
   (let [probe-sym (gensym "probe")]
-    `(let [~probe-sym (canonical-probe ~probe)]
+    `(let [~probe-sym ~(if (constant-probe? probe)
+			 (canonical-probe probe)
+			 `(canonical-probe ~probe))]
        ~@(when-not (constant-probe? probe)
 	   `((register-probe ~probe-sym)))
        (if-not (= ::empty (get-in @enabled-probe-channels ~probe-sym ::empty))
@@ -114,6 +116,16 @@
 	   (enqueue (probe-channel ~probe-sym) (do ~@body))
 	   true)
 	 false))))
+
+(defn expand-trace*
+  "Enqueues the value into a probe-channel only if there's a consumer for it.  If there
+   is no consumer, the body will not be evaluated."
+  [probe & body]
+  `(if-not (= ::empty (get-in @enabled-probe-channels ~probe ::empty))
+    (do
+      (enqueue (probe-channel ~probe) (do ~@body))
+      true)
+    false))
 
 (defn expand-trace->> [probe & forms]
   (let [ch-sym (gensym "ch")

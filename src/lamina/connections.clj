@@ -64,6 +64,8 @@
 	  @result))
       (fn [ch]
 	(trace [probe-prefix :connection :opened] desc)
+	(when-let [new-connection-callback (:connection-callback options)]
+	  (new-connection-callback ch))
 	(wait-for-close ch options))
 
       ;; wait here for connection to drop

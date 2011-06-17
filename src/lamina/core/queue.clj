@@ -22,20 +22,41 @@
   (distributor [this])
   (enqueue [this msgs])
   (dequeue [this empty-value])
-  (receive- [this callback])
-  (listen [this callbacks])
+  (receive- [this a] [this a b] [this a b rest])
+  (listen- [this a] [this a b] [this a b rest])
   (on-drained [this callbacks])
   (drained? [this])
   (cancel-callbacks [this callbacks]))
 
-(defn receive [q callbacks]
-  (let [msg (dequeue q ::none)]
-    (if-not (= ::none msg)
-      (do
-	(doseq [c callbacks]
-	  (c msg))
-	true)
-      (receive- q callbacks))))
+(defn receive
+  ([q a]
+     (let [msg (dequeue q ::none)]
+       (if-not (= ::none msg)
+	 (do
+	   (a msg)
+	   true)
+	 (receive- q a))))
+  ([q a b]
+     (let [msg (dequeue q ::none)]
+       (if-not (= ::none msg)
+	 (do
+	   (a msg)
+	   (b msg)
+	   true)
+	 (receive- q a b))))
+  ([q a b & rest]
+     (let [msg (dequeue q ::none)]
+       (if-not (= ::none msg)
+	 (do
+	   (doseq [c (list* a b rest)]
+	     (a msg))
+	   true)
+	 (receive- q a b rest)))))
+
+(defn listen
+  ([q a] (listen- q a))
+  ([q a b] (listen- q a b))
+  ([q a b & rest] (listen- q a b rest)))
 
 (def nil-queue
   (reify EventQueueProto
@@ -44,7 +65,11 @@
    (enqueue [_ _] false)
    (dequeue [_ empty-value] empty-value)
    (receive- [_ _] false)
-   (listen [_ _] false)
+   (receive- [_ _ _] false)
+   (receive- [_ _ _ _] false)
+   (listen- [_ _] false)
+   (listen- [_ _ _] false)
+   (listen- [_ _ _ _] false)
    (on-drained [_ _] false)
    (drained? [_] true)
    (cancel-callbacks [_ _])
@@ -105,12 +130,24 @@
 	    (alter q pop)
 	    (check-for-drained this)
 	    msg)))))
-  (receive- [this callbacks]
+  (receive- [this a]
     (update-and-send this
-      (apply alter receivers conj callbacks)))
-  (listen [this callbacks]
+      (alter receivers conj a)))
+  (receive- [this a b]
     (update-and-send this
-      (apply alter listeners conj callbacks)))
+      (alter receivers conj a b)))
+  (receive- [this a b rest]
+    (update-and-send this
+      (apply alter receivers conj a b rest)))
+  (listen- [this a]
+    (update-and-send this
+      (alter listeners conj a)))
+  (listen- [this a b]
+    (update-and-send this
+      (alter listeners conj a b)))
+  (listen- [this a b rest]
+    (update-and-send this
+      (apply alter listeners conj a b rest)))
   (drained? [_]
     (and (o/closed? source) (empty? @q)))
   (cancel-callbacks [_ callbacks]
@@ -245,6 +282,16 @@
 
 ;;;
 
+(defn- r-obs [f]
+  (o/observer
+    #(f (first %))))
+
+(defn- l-obs [f]
+  (o/observer
+    #(let [msg (first %)]
+       (when-let [f* (second (dosync (f msg)))]
+	 (f* msg)))))
+
 (deftype ConstantEventQueue [^ConstantObservable source]
   EventQueueProto
   (source [_] source)
@@ -255,24 +302,22 @@
       (if (= o/empty-value val)
 	empty-value
 	val)))
-  (receive- [_ callbacks]
-    (o/subscribe source
-      (zipmap
-	callbacks
-	(map
-	  (fn [f] (o/observer #(f (first %))))
-	  callbacks))))
-  (listen [_ callbacks]
-    (o/subscribe source
-      (zipmap
-	callbacks
-	(map
-	  (fn [f]
-	    (o/observer
-	      #(let [msg (first %)]
-		 (when-let [f* (second (dosync (f msg)))]
-		   (f* msg)))))
-	  callbacks))))
+  (receive- [_ a] (o/subscribe source {a (r-obs a)}))
+  (receive- [_ a b] (o/subscribe source {a (r-obs a), b (r-obs b)}))
+  (receive- [_ a b rest]
+     (let [callbacks (list* a b rest)]
+       (o/subscribe source
+	 (zipmap
+	   callbacks
+	   (map r-obs callbacks)))))
+  (listen- [_ a] (o/subscribe source {a (l-obs a)}))
+  (listen- [_ a b] (o/subscribe source {a (l-obs a), b (l-obs b)}))
+  (listen- [_ a b rest]
+    (let [callbacks (list* a b rest)]
+      (o/subscribe source
+	(zipmap
+	  callbacks
+	  (map l-obs callbacks)))))
   (on-drained [_ callbacks]
     )
   (drained? [_]

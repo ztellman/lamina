@@ -24,13 +24,23 @@
 
 ;;;
 
+(import-fn #'trace/register-probe)
+(import-fn #'trace/canonical-probe)
+(import-fn #'trace/on-new-probe)
 (import-fn #'trace/probe-channel)
+
+(defn registered-probes []
+  @trace/registered-probes)
 
 (defmacro trace
   "Enqueues the value into a probe-channel only if there's a consumer for it.  If there
    is no consumer, the body will not be evaluated."
   [probe & body]
   (apply trace/expand-trace probe body))
+
+(defmacro trace*
+  [canonical-probe & body]
+  (apply trace/expand-trace* canonical-probe body))
 
 (defmacro trace->> [probe & forms]
   (apply trace/expand-trace->> probe forms))
@@ -39,7 +49,7 @@
 
 (defn siphon-probes [prefix m]
   (doseq [[k v] m]
-    (siphon (probe-channel [prefix k]) v)))
+    (siphon (probe-channel [prefix k]) {v identity})))
 
 (defn- instrument-calls [args result start options]
   (trace [(:name options) :calls]

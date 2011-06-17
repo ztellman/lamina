@@ -29,11 +29,14 @@
   (let [f (fn [] #(swap! accumulator conj %))
 	o (o/observable)
 	q (queue o)]
-    (output= [1 1 2]
-      (receive q [(f) (f)])
-      (o/message o [1 2])
-      (receive q [(f)])
-      (receive q [(f)]))))
+    (output= [1 1 1 1 1 1 2 3 3 4 4 4]
+      (receive q (f) (f) (f))
+      (receive q (f))
+      (receive q (f) (f))
+      (o/message o [1 2 3 4])
+      (receive q (f))
+      (receive q (f) (f))
+      (receive q (f) (f) (f)))))
 
 (deftest test-listen
   (let [f (fn [id cnt]
@@ -49,8 +52,8 @@
 		  [:b 2] [:b 3]
 		  [:c 1] [:c 2] [:c 3]]
       (o/message o [1])
-      (listen q [(f :a 2) (f :c 3)])
-      (listen q [(f :b 2)])
+      (listen q (f :a 2) (f :c 3))
+      (listen q (f :b 2))
       (o/message o [2 3 4])))
 
   (let [f (fn [id cnt]
@@ -64,8 +67,8 @@
 		  [:b 2] [:b 3]
 		  [:c 1] [:c 2] [:c 3]]
       (o/message o [1])
-      (listen q [(f :a 2) (f :c 3)])
-      (listen q [(f :b 2)])
+      (listen q (f :a 2) (f :c 3))
+      (listen q (f :b 2))
       (o/message o [2 3 4]))))
 
 (deftest test-cancel-callback
@@ -74,7 +77,7 @@
 	q (queue o)
 	[a b] [(f) (f)]]
     (output= [1]
-      (receive q [a b])
+      (receive q a b)
       (cancel-callbacks q [a])
       (o/message o [1]))))
 

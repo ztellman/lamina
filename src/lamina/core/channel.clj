@@ -94,13 +94,21 @@
 
 
    This exists to support poll, don't use it directly unless you know what you're doing."
-  [ch & callbacks]
-  (-> ch queue (q/listen (map unwrap-fn callbacks))))
+  ([ch a]
+     (-> ch queue (q/listen (unwrap-fn a))))
+  ([ch a b]
+     (-> ch queue (q/listen (unwrap-fn a) (unwrap-fn b))))
+  ([ch a b & rest]
+     (apply q/listen (queue ch) (map unwrap-fn (list* a b rest)))))
 
 (defn receive
   "Adds one or more callbacks which will receive the next message from the channel."
-  [ch & callbacks]
-  (-> ch queue (q/receive (map unwrap-fn callbacks))))
+  ([ch a]
+     (-> ch queue (q/receive (unwrap-fn a))))
+  ([ch a b]
+     (-> ch queue (q/receive (unwrap-fn a) (unwrap-fn b))))
+  ([ch a b & callbacks]
+     (apply q/receive (queue ch) (map unwrap-fn (list* a b rest)))))
 
 (defn cancel-callback
   "Cancels one or more callbacks."
