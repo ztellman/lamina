@@ -70,6 +70,8 @@ namespace.
     <div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.trace.core/expand-trace">expand-trace</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.trace.core/expand-trace*">expand-trace*</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.trace.core/probe-channel">probe-channel</a>
     </div>
     <br />
@@ -164,6 +166,15 @@ is no consumer, the body will not be evaluated.</pre>
   <h2 id="lamina.trace.core/expand-trace">expand-trace</h2>
   <span id="var-type">function</span><br />
   <pre id="var-usage">Usage: (expand-trace probe &amp; body)
+</pre>
+  <pre id="var-docstr">Enqueues the value into a probe-channel only if there's a consumer for it.  If there
+is no consumer, the body will not be evaluated.</pre>
+  
+</div><div id="var-entry">
+  <hr />
+  <h2 id="lamina.trace.core/expand-trace*">expand-trace*</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (expand-trace* probe &amp; body)
 </pre>
   <pre id="var-docstr">Enqueues the value into a probe-channel only if there's a consumer for it.  If there
 is no consumer, the body will not be evaluated.</pre>
