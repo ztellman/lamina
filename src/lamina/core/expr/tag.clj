@@ -70,7 +70,7 @@
   (postwalk
     (fn [x]
       (cond
-	(first= x 'let 'let* 'fn 'fn* 'binding)
+	(first= x 'let 'let* 'fn 'fn* 'binding 'loop 'loop*)
 	(transform-special-form-bodies (fn [body] `((do ~@body))) x)
 
 	(first= x 'try)
