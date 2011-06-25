@@ -128,7 +128,9 @@
 	 (fn [[request ^ResultChannel result timeout]]
 
 	   (if (= ::close request)
-	     (close-connection connection)
+	     (do
+	       (close-connection connection)
+	       (success! result true))
 	     (do
 	       ;; set up timeout
 	       (setup-result-timeout result timeout)
@@ -198,7 +200,9 @@
        (receive-in-order requests
 	 (fn [[request ^ResultChannel result timeout]]
 	   (if (= ::close request)
-	     (close-connection connection)
+	     (do
+	       (close-connection connection)
+	       (success! result true))
 	     (do
 	       ;; setup timeout
 	       (setup-result-timeout result timeout)
