@@ -232,6 +232,12 @@
 
 ;;;
 
+(defn copy [ch]
+  (let [ch* (channel)]
+    (siphon ch {ch* identity})
+    (on-drained ch #(close ch*))
+    ch*))
+
 (defn dst-channel [ch]
   (if (constant-channel? ch)
     (constant-channel)
@@ -314,6 +320,11 @@
 	     (cancel-callback ch close-callback)
 	     (close ch*))]
 
+	  (closed? ch*)
+	  [false
+	   (fn []
+	     (cancel-callback ch close-callback))]
+
 	  :else
 	  [true
 	   (fn [msg]
@@ -349,7 +360,8 @@
      (reduce- f val ch)))
 
 (defn reductions- [f val ch]
-  (let [f (unwrap-fn f)
+  (let [ch (copy ch)
+	f (unwrap-fn f)
 	ch* (channel)
 	none? (= ::none val)]
     (when-not none?
@@ -371,6 +383,7 @@
 	  (do
 	    (enqueue ch* val)
 	    (restart val)))))
+    (on-closed ch* #(close ch))
     ch*))
 
 (defn reductions*
@@ -396,41 +409,45 @@
   ([n ch]
      (partition* n n ch))
   ([n step ch]
-     (let [out (channel)]
+     (let [ch (copy ch)
+	   ch* (channel)]
        (run-pipeline
 	 (run-pipeline []
 	   (conj-when-msg ch)
 	   (fn [acc]
 	     (if (= n (count acc))
 	       (do
-		 (enqueue out acc)
+		 (enqueue ch* acc)
 		 (when-not (drained? ch)
 		   (restart (vec (drop step acc)))))
 	       (when-not (drained? ch)
 		 (restart acc)))))
-	 (fn [_] (close out)))
-       out)))
+	 (fn [_] (close ch*)))
+       (on-closed ch* #(close ch))
+       ch*)))
 
 (defn partition-all*
   "Returns a partitioned channel, including any trailing messages that aren't evenly divisable."
   ([n ch]
      (partition-all* n n ch))
   ([n step ch]
-     (let [out (channel)]
+     (let [ch (copy ch)
+	   ch* (channel)]
        (run-pipeline
 	 (run-pipeline []
 	   (conj-when-msg ch)
 	   (fn [acc]
 	     (if (= n (count acc))
 	       (do
-		 (enqueue out acc)
+		 (enqueue ch* acc)
 		 (if-not (drained? ch)
 		   (restart (vec (drop step acc)))
 		   (when-not (= n step)
-		     (enqueue out (vec (drop step acc))))))
+		     (enqueue ch* (vec (drop step acc))))))
 	       (if-not (drained? ch)
 		 (restart acc)
 		 (when-not (empty? acc)
-		   (enqueue out acc))))))
-	 (fn [_] (close out)))
-       out)))
+		   (enqueue ch* acc))))))
+	 (fn [_] (close ch*)))
+       (on-closed ch* #(close ch))
+       ch*)))
