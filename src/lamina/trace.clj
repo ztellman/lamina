@@ -51,36 +51,64 @@
   (doseq [[k v] m]
     (siphon (probe-channel [prefix k]) {v identity})))
 
-(defn- instrument-calls [args result start options]
-  (trace [(:name options) :calls]
-    (let [end (System/nanoTime)]
-      {:args args
-       :result result
-       :start-time start
-       :end-time end
-       :duration (/ (- end start) 1e6)})))
+(defn- call-tracer [options]
+  (let [probe (canonical-probe [(:name options) :calls])
+	transform (if-let [transform-fn (:arg-transform options)]
+		    transform-fn
+		    identity)]
+    (register-probe probe)
+    (fn [args]
+      (trace* probe (transform args)))))
 
-(defn- instrument-errors [args start options]
-  (fn [ex]
-    (trace [(:name options) :errors]
-      (let [end (System/nanoTime)]
-	{:args args
-	 :exception ex
-	 :start-time start
-	 :end-time end
-	 :duration (/ (- end start) 1e6)}))))
+(defn- result-tracer [options]
+  (let [probe (canonical-probe [(:name options) :results])
+	transform (if-let [transform-fn (:arg-transform options)]
+		    transform-fn
+		    identity)]
+    (register-probe probe)
+    (fn [args result start]
+      (trace* probe
+	(let [end (System/nanoTime)]
+	  {:args (transform args)
+	   :result result
+	   :start-time (/ start 1e6)
+	   :end-time (/ end 1e6)
+	   :duration (/ (- end start) 1e6)})))))
+
+(defn- error-tracer [options]
+  (let [probe (canonical-probe [(:name options) :errors])
+	transform (if-let [transform-fn (:arg-transform options)]
+		    transform-fn
+		    identity)]
+    (register-probe probe)
+    (fn [args start ex]
+      (trace* probe
+	(let [end (System/nanoTime)]
+	  {:args (transform args)
+	   :exception ex
+	   :start-time (/ start 1e6)
+	   :end-time (/ end 1e6)
+	   :duration (/ (- end start) 1e6)})))))
 
 (defn trace-wrap [f options]
   (when-not (:name options)
     (throw (Exception. "Must define :name for instrumented function.")))
   (siphon-probes (:name options) (:probes options))
-  (fn [& args]
-    (let [start-time (System/nanoTime)
-	  result (run-pipeline (apply f args) :error-handler (fn [_]))]
-      (run-pipeline result
-	:error-handler (instrument-errors args start-time options)
-	#(instrument-calls args % start-time options))
-      result)))
+  (let [calls (call-tracer options)
+	results (result-tracer options)
+	errors (error-tracer options)]
+    (fn [& args]
+      (calls args)
+      (let [start-time (System/nanoTime)]
+	(try
+	  (let [result (apply f args)]
+	    (run-pipeline result
+	      :error-handler #(errors args start-time %)
+	      #(results args % start-time))
+	    result)
+	  (catch Exception e
+	    (errors args start-time e)
+	    (throw e)))))))
 
 (defmacro defn-trace [name & forms]
   (let [options (->> forms
