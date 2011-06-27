@@ -54,13 +54,14 @@
 	(str probe))
       #"[.]")))
 
-(defn register-probe [probe]
-  (if (= ::none (get-in @registered-probes probe ::none))
-    (do
-      (swap! registered-probes update-in probe #(or % {}))
-      (enqueue new-probe-publisher probe)
-      true)
-    false))
+(defn register-probe [& probes]
+  (doseq [probe probes]
+    (if (= ::none (get-in @registered-probes probe ::none))
+      (do
+	(swap! registered-probes update-in probe #(or % {}))
+	(enqueue new-probe-publisher probe)
+	true)
+      false)))
 
 (defn on-new-probe [& callbacks]
   (apply receive-all new-probe-publisher callbacks))

@@ -59,4 +59,7 @@
 	    (let [options (merge options inner-options)]
 	      (with-thread-pool pool (assoc options :args args)
 		(apply f args)))))
-       (merge {:name (gensym "executor.")} options))))
+       (merge
+	 {:name (gensym "executor.")}
+	 options
+	 {:args-transform first}))))

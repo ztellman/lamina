@@ -53,38 +53,41 @@
 
 (defn- call-tracer [options]
   (let [probe (canonical-probe [(:name options) :calls])
-	transform (if-let [transform-fn (:arg-transform options)]
-		    transform-fn
-		    identity)]
+	args-transform (if-let [transform-fn (:args-transform options)]
+			transform-fn
+			identity)]
     (register-probe probe)
     (fn [args]
-      (trace* probe (transform args)))))
+      (trace* probe (args-transform args)))))
 
 (defn- result-tracer [options]
   (let [probe (canonical-probe [(:name options) :results])
-	transform (if-let [transform-fn (:arg-transform options)]
-		    transform-fn
-		    identity)]
+	args-transform (if-let [transform-fn (:args-transform options)]
+			transform-fn
+			identity)
+	result-transform (if-let [transform-fn (:result-transform options)]
+			   transform-fn
+			   identity)]
     (register-probe probe)
     (fn [args result start]
       (trace* probe
 	(let [end (System/nanoTime)]
-	  {:args (transform args)
-	   :result result
+	  {:args (args-transform args)
+	   :result (result-transform result)
 	   :start-time (/ start 1e6)
 	   :end-time (/ end 1e6)
 	   :duration (/ (- end start) 1e6)})))))
 
 (defn- error-tracer [options]
   (let [probe (canonical-probe [(:name options) :errors])
-	transform (if-let [transform-fn (:arg-transform options)]
-		    transform-fn
-		    identity)]
+	args-transform (if-let [transform-fn (:args-transform options)]
+			 transform-fn
+			 identity)]
     (register-probe probe)
     (fn [args start ex]
       (trace* probe
 	(let [end (System/nanoTime)]
-	  {:args (transform args)
+	  {:args (args-transform args)
 	   :exception ex
 	   :start-time (/ start 1e6)
 	   :end-time (/ end 1e6)
@@ -117,4 +120,4 @@
 		  first)]
     `(do
        (defn ~name ~@forms)
-       (def ~name (trace-wrap ~name (assoc ~options :name ~(str name)))))))
+       (def ~name (trace-wrap ~name (assoc ~options :name ~(str (name *ns*) "." name)))))))

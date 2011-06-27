@@ -49,7 +49,10 @@
      @lamina.executors.core/default-executor))
 
 (defprotocol LaminaThreadPool
-  (shutdown-thread-pool [t]))
+  (shutdown-thread-pool [t])
+  (threads-probe [t])
+  (results-probe [t])
+  (errors-probe [t]))
 
 ;;;
 
@@ -66,12 +69,12 @@
   (error! result-channel (TimeoutException. (str "Timed out after " timeout "ms.")))
   (.interrupt ^Thread thread))
 
-(def default-options
+(defn default-options []
   {:max-thread-count Integer/MAX_VALUE
    :min-thread-count 0
    :idle-threshold (* 60 1000)
    :thread-wrapper (fn [f] (.run ^Runnable f))
-   :name "Generic Thread Pool"})
+   :name (gensym "thread-pool.")})
 
 (defn thread-pool
   "Creates a thread pool that will grow to a specified size when necessary, and dispose
@@ -87,7 +90,7 @@
   ([]
      (thread-pool {}))
   ([options]
-     (let [options (merge-with #(if (map? %1) (merge %1 %2) %2) default-options options)
+     (let [options (merge-with #(if (map? %1) (merge %1 %2) %2) (default-options) options)
 	   max-thread-count (:max-thread-count options)
 	   min-thread-count (:min-thread-count options)
 	   pool (ThreadPoolExecutor.
@@ -98,14 +101,22 @@
 		  (LinkedBlockingQueue.)
 		  (reify ThreadFactory
 		    (newThread [_ f]
-		      (Thread. #((:thread-wrapper options) f)))))]
+		      (Thread. #((:thread-wrapper options) f)))))
+	   threads-probe (canonical-probe [(:name options) :threads])
+	   results-probe (canonical-probe [(:name options) :results])
+	   errors-probe (canonical-probe [(:name options) :errors])]
+       (register-probe threads-probe results-probe errors-probe)
+       (siphon-probes (:name options) (:probes options))
        ^{::options options}
        (reify Executor LaminaThreadPool
 	 (shutdown-thread-pool [_]
 	   (.shutdown pool))
+	 (threads-probe [_] threads-probe)
+	 (results-probe [_] results-probe)
+	 (errors-probe [_] errors-probe)
 	 (execute [_ f]
-	   (when-let [state-hook (-> options :probes :state)]
-	     (enqueue state-hook (thread-pool-state pool)))
+	   (trace* threads-probe
+	     (thread-pool-state pool))
 	   (let [active (.getActiveCount pool)]
 	     (if (= (.getPoolSize pool) active)
 	       (.setCorePoolSize pool (min max-thread-count (inc active)))
@@ -129,8 +140,9 @@
 	      (error! result (TimeoutException. (str "Timed out after " timeout "ms.")))
 	      (.interrupt ^Thread thread))))))))
 
-(defn thread-pool-call [enqueued start args result options]
-  (trace [(:name options) :calls]
+(defn thread-pool-result
+  [enqueued start args result probe]
+  (trace* probe
     (let [enqueued (/ (double enqueued) 1e6)
 	  start (/ (double start) 1e6)
 	  end (/ (double (System/nanoTime)) 1e6)
@@ -145,8 +157,9 @@
        :execution-duration execution-duration
        :duration (+ queue-duration execution-duration)})))
 
-(defn thread-pool-error [enqueued start args ex options]
-  (trace [(:name options) :errors]
+(defn thread-pool-error
+  [enqueued start args ex probe]
+  (trace* probe
     (let [enqueued (/ (double enqueued) 1e6)
 	  start (/ (double start) 1e6)
 	  end (/ (double (System/nanoTime)) 1e6)
@@ -166,7 +179,6 @@
   `(let [pool# ~pool
 	 enqueued-time# (System/nanoTime)
 	 options# (merge
-		    {:name (gensym "thread-pool.")}
 		    (-> pool# meta ::options)
 		    *thread-pool-options*
 		    ~options)
@@ -180,14 +192,14 @@
 					   start-time#
 					   (:args options#)
 					   ex#
-					   options#))
+					   (errors-probe pool#)))
 			(fn [r#]
-			  (thread-pool-call
+			  (thread-pool-result
 			    enqueued-time#
 			    start-time#
 			    (:args options#)
 			    r#
-			    options#)))
+			    (results-probe pool#))))
 		      result#))]
      (if-not pool#
        (body-fn#)
