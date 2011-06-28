@@ -56,8 +56,15 @@
 	 ([args]
 	    (this args nil))
 	 ([args inner-options]
-	    (let [options (merge options inner-options)]
-	      (with-thread-pool pool (assoc options :args args)
+	    (let [options (merge options inner-options)
+		  timeout (:timeout options)
+		  timeout (cond
+			    (nil? timeout) -1
+			    (fn? timeout) (apply timeout args)
+			    :else timeout)]
+	      (with-thread-pool pool (assoc options
+				       :args args
+				       :timeout timeout)
 		(apply f args)))))
        (merge
 	 {:name (gensym "executor.")}
