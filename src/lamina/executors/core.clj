@@ -141,9 +141,15 @@
 	      (.interrupt ^Thread thread))))))))
 
 (defn thread-pool-result
-  [enqueued start args result probe]
+  [enqueued start args result probe options]
   (trace* probe
-    (let [enqueued (/ (double enqueued) 1e6)
+    (let [result-transform (if-let [result-transform (:result-transform options)]
+			     result-transform
+			     identity)
+	  args-transform (if-let [transform-fn (:args-transform options)]
+			   transform-fn
+			   identity)
+	  enqueued (/ (double enqueued) 1e6)
 	  start (/ (double start) 1e6)
 	  end (/ (double (System/nanoTime)) 1e6)
 	  queue-duration (- start enqueued)
@@ -151,16 +157,19 @@
       {:enqueued-time enqueued
        :start-time start
        :end-time end
-       :args args
-       :result result
+       :args (args-transform args)
+       :result (result-transform result)
        :queue-duration queue-duration
        :execution-duration execution-duration
        :duration (+ queue-duration execution-duration)})))
 
 (defn thread-pool-error
-  [enqueued start args ex probe]
+  [enqueued start args ex probe options]
   (trace* probe
-    (let [enqueued (/ (double enqueued) 1e6)
+    (let [args-transform (if-let [transform-fn (:args-transform options)]
+			   transform-fn
+			   identity)
+	  enqueued (/ (double enqueued) 1e6)
 	  start (/ (double start) 1e6)
 	  end (/ (double (System/nanoTime)) 1e6)
 	  queue-duration (- start enqueued)
@@ -168,7 +177,7 @@
       {:enqueued-time enqueued
        :start-time start
        :end-time end
-       :args args
+       :args (args-transform args)
        :exception ex
        :queue-duration queue-duration
        :execution-duration execution-duration
@@ -187,19 +196,23 @@
 			  result# (run-pipeline (do ~@body))]
 		      (run-pipeline result#
 			:error-handler (fn [ex#]
-					 (thread-pool-error
-					   enqueued-time#
-					   start-time#
-					   (:args options#)
-					   ex#
-					   (errors-probe pool#)))
+					 (when pool#
+					   (thread-pool-error
+					     enqueued-time#
+					     start-time#
+					     (:args options#)
+					     ex#
+					     (errors-probe pool#)
+					     options#)))
 			(fn [r#]
-			  (thread-pool-result
-			    enqueued-time#
-			    start-time#
-			    (:args options#)
-			    r#
-			    (results-probe pool#))))
+			  (when pool#
+			    (thread-pool-result
+			      enqueued-time#
+			      start-time#
+			      (:args options#)
+			      r#
+			      (results-probe pool#)
+			      options#))))
 		      result#))]
      (if-not pool#
        (body-fn#)
