@@ -59,13 +59,12 @@
       (wait-stage @delay)
       (fn [_]
 	(trace [probe-prefix :connection :attempted] desc)
-	(siphon-result
-	  (connection-generator)
-	  @result))
+	(connection-generator))
       (fn [ch]
 	(trace [probe-prefix :connection :opened] desc)
 	(when-let [new-connection-callback (:connection-callback options)]
 	  (new-connection-callback ch))
+	(success! @result ch)
 	(wait-for-close ch options))
 
       ;; wait here for connection to drop

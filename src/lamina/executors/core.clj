@@ -50,6 +50,7 @@
 
 (defprotocol LaminaThreadPool
   (shutdown-thread-pool [t])
+  (timeouts-probe [t])
   (threads-probe [t])
   (results-probe [t])
   (errors-probe [t]))
@@ -104,7 +105,8 @@
 		      (Thread. #((:thread-wrapper options) f)))))
 	   threads-probe (canonical-probe [(:name options) :threads])
 	   results-probe (canonical-probe [(:name options) :results])
-	   errors-probe (canonical-probe [(:name options) :errors])]
+	   errors-probe (canonical-probe [(:name options) :errors])
+	   timeouts-probe (canonical-probe [(:name options) :timeouts])]
        (register-probe threads-probe results-probe errors-probe)
        (siphon-probes (:name options) (:probes options))
        ^{::options options}
@@ -114,6 +116,7 @@
 	 (threads-probe [_] threads-probe)
 	 (results-probe [_] results-probe)
 	 (errors-probe [_] errors-probe)
+	 (timeouts-probe [_] timeouts-probe)
 	 (execute [_ f]
 	   (trace* threads-probe
 	     (thread-pool-state pool))
@@ -128,15 +131,25 @@
 (defn thread-pool? [x]
   (instance? Executor x))
 
-(defn thread-timeout [result options]
+(defn thread-timeout [start args result probe options]
   (when-let [timeout (:timeout options)]
     (when-not (neg? timeout)
-      (let [thread (Thread/currentThread)]
-	(receive (poll-result result timeout)
+      (let [thread (Thread/currentThread)
+	    begin (System/nanoTime)
+	    remaining-timeout (max 0 (- timeout (int (/ (- begin start) 1e6))))]
+	(receive (poll-result result remaining-timeout)
 	  (fn [x#]
 	    (when-not x#
 	      (when-let [timeout-handler (:timeout-handler options)]
 		(timeout-handler {:result-channel result, :thread thread, :timeout timeout}))
+	      (trace* probe
+		(let [start (/ (double start) 1e6)
+		      end (/ (double (System/nanoTime)) 1e6)]
+		  {:start-time start
+		   :end-time end
+		   :args args
+		   :timeout timeout
+		   :duration (- end start)}))
 	      (error! result (TimeoutException. (str "Timed out after " timeout "ms.")))
 	      (.interrupt ^Thread thread))))))))
 
@@ -219,7 +232,12 @@
        (let [result# (result-channel)]
 	 (.execute ^Executor pool#
 	   (fn []
-	     (lamina.executors.core/thread-timeout result# options#)
+	     (lamina.executors.core/thread-timeout
+	       enqueued-time#
+	       (:args options#)
+	       result#
+	       (timeouts-probe pool#)
+	       options#)
 	     (binding [*current-executor* pool#
 		       *thread-pool-options* options#]
 	       (siphon-result
