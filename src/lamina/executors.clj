@@ -51,22 +51,23 @@
   ([pool f]
      (executor pool f nil))
   ([pool f options]
-     (trace-wrap
-       (fn this
-	 ([args]
-	    (this args nil))
-	 ([args inner-options]
-	    (let [options (merge options inner-options)
-		  timeout (:timeout options)
-		  timeout (cond
-			    (nil? timeout) -1
-			    (fn? timeout) (apply timeout args)
-			    :else timeout)]
-	      (with-thread-pool pool (assoc options
-				       :args args
-				       :timeout timeout)
-		(apply f args)))))
-       (merge
-	 {:name (gensym "executor.")}
-	 options
-	 {:args-transform first}))))
+     (let [thread-pool-timeout (-> pool meta ::x/options :timeout)]
+       (trace-wrap
+	 (fn this
+	   ([args]
+	      (this args nil))
+	   ([args inner-options]
+	      (let [options (merge options inner-options)
+		    timeout (or (:timeout options) thread-pool-timeout)
+		    timeout (cond
+			      (nil? timeout) -1
+			      (fn? timeout) (apply timeout args)
+			      :else timeout)]
+		(with-thread-pool pool (assoc options
+					 :args args
+					 :timeout timeout)
+		  (apply f args)))))
+	(merge
+	  {:name (gensym "executor.")}
+	  options
+	  {:args-transform first})))))
