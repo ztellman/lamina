@@ -10,6 +10,8 @@
   lamina.core.observable
   (:use
     [clojure.walk])
+  (:require
+    [clojure.contrib.logging :as log])
   (:import
     [java.util.concurrent
      ScheduledThreadPoolExecutor
@@ -36,14 +38,23 @@
        (consumer? [_]
 	 (boolean message-callback))
        (on-message [_ msgs]
-	 (when message-callback
-	   (message-callback msgs)))
+	 (try
+	   (when message-callback
+	     (message-callback msgs))
+	   (catch Exception e
+	     (log/error "Error in message callback" e))))
        (on-close [_]
-	 (when close-callback
-	   (close-callback)))
+	 (try
+	   (when close-callback
+	     (close-callback))
+	   (catch Exception e
+	     (log/error "Error in close callback" e))))
        (on-observers-changed [_ observers]
-	 (when observers-callback
-	   (observers-callback observers))))))
+	 (try
+	   (when observers-callback
+	     (observers-callback observers))
+	   (catch Exception e
+	     (log/error "Error in observers-changed callback" e)))))))
 
 ;;;
 

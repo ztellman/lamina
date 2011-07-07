@@ -51,7 +51,7 @@
   ([pool f]
      (executor pool f nil))
   ([pool f options]
-     (let [thread-pool-timeout (-> pool meta ::x/options :timeout)]
+     (let [thread-pool-timeout (-> pool meta :lamina.executors.core/options :timeout)]
        (trace-wrap
 	 (fn this
 	   ([args]

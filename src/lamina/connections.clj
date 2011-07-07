@@ -270,7 +270,6 @@
 			 (if (or (nil? t) (thread-pool? t))
 			   t
 			   (thread-pool t)))
-	   timeout-fn (or (:timeout options) (constantly -1))
 	   handler (executor thread-pool (wrap-constant-response handler options) options)]
 
        (siphon-probes (:name options) (:probes options))
@@ -284,7 +283,7 @@
 	 (fn [request]
 	   (when-not (and (nil? request) (drained? ch))
 	     (run-pipeline request
-	       #(handler [%] {:timeout (timeout-fn %)})
+	       #(handler [%])
 	       #(enqueue ch %))))
 	 (fn [_]
 	   (if-not (drained? ch)
@@ -303,7 +302,6 @@
 			 (if (or (nil? t) (thread-pool? t))
 			   t
 			   (thread-pool t)))
-	   timeout-fn (or (:timeout options) (constantly -1))
 	   handler (executor thread-pool handler options)
 	   requests (channel)
 	   responses (channel)]
@@ -326,7 +324,7 @@
 			   (constant-channel))]
 		   (run-pipeline request
 		     :error-handler #(redirect (pipeline (constant-channel %)))
-		     #(handler [c %] {:timeout (timeout-fn %)})
+		     #(handler [c %])
 		     (fn [_] c))))
 	       #(enqueue responses %))))
 	 (fn [_]
