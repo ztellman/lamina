@@ -233,9 +233,11 @@
 ;;;
 
 (defn copy [ch]
-  (let [ch* (channel)]
+  (let [ch* (channel)
+	close-callback #(close ch*)]
     (siphon ch {ch* identity})
-    (on-drained ch #(close ch*))
+    (on-drained ch close-callback)
+    (on-closed ch* #(cancel-callback ch close-callback))
     ch*))
 
 (defn dst-channel [ch]
