@@ -15,6 +15,8 @@
    [clojure.contrib.logging :as log])
   (:import java.util.concurrent.TimeoutException))
 
+;;;;
+
 (defn simple-echo-server []
   (let [[a b] (channel-pair)]
     (run-pipeline
@@ -135,3 +137,34 @@
 (deftest test-error-propagation
   (errors-propagate client)
   (errors-propagate pipelined-client))
+
+;;;;
+
+(def exception (Exception. "boom"))
+
+(defmacro with-handler [handler options & body]
+  `(do
+     (let [[a# b#] (channel-pair)
+	   ~'ch a#
+	   server# (server b# ~handler ~options)]
+       ~@body)
+     (let [[a# b#] (channel-pair)
+	   ~'ch a#
+	   server# (pipelined-server b# ~handler ~options)]
+       ~@body)))
+
+(deftest test-server-error-handler
+  (with-handler (fn [_ _] (throw exception)) nil
+    (enqueue ch 1 2)
+    (is (= [exception exception] (channel-seq ch))))
+  (with-handler (fn [_ _] (throw exception)) {:include-request true}
+    (enqueue ch 1 2)
+    (is (= [{:request 1, :response exception} {:request 2, :response exception}] (channel-seq ch)))))
+
+(deftest test-server-handler
+  (with-handler (fn [ch req] (enqueue ch req)) nil
+    (enqueue ch 1 2)
+    (is (= [1 2] (channel-seq ch))))
+  (with-handler (fn [ch req] (enqueue ch req)) {:include-request true}
+    (enqueue ch 1 2)
+    (is (= [{:request 1, :response 1} {:request 2, :response 2}] (channel-seq ch)))))
