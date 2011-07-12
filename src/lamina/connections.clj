@@ -251,11 +251,9 @@
 
 ;;
 
-(defn- wrap-constant-response [f options]
+(defn- wrap-constant-response [f channel-generator options]
   (fn [x]
-    (let [ch (if-let [response-channel-generator (:response-channel options)]
-	       (response-channel-generator)
-	       (constant-channel))]
+    (let [ch (channel-generator)]
       (f ch x)
       (read-channel ch))))
 
@@ -271,7 +269,11 @@
 			   t
 			   (thread-pool t)))
 	   include-request? (:include-request options)
-	   handler (executor thread-pool (wrap-constant-response handler options) options)]
+	   handler (executor thread-pool
+		     (wrap-constant-response handler
+		       (or (:response-channel options) constant-channel)
+		       options)
+		     options)]
 
        (siphon-probes (:name options) (:probes options))
 
@@ -308,9 +310,15 @@
 			   t
 			   (thread-pool t)))
 	   include-request? (:include-request options)
-	   handler (executor thread-pool handler options)
+	   response-channel-generator (or (:response-channel options) constant-channel)
 	   requests (channel)
-	   responses (channel)]
+	   responses (channel)
+	   handler (executor thread-pool
+		     (fn [req]
+		       (let [ch (response-channel-generator)]
+			 (handler ch req)
+			 ch))
+		     options)]
 
        (siphon-probes (:name options) (:probes options))
        
@@ -330,21 +338,18 @@
 	 read-channel
 	 (fn [request]
 	   (when-not (and (nil? request) (drained? ch))
-	     (let [c (if-let [response-channel-generator (:response-channel options)]
-		       (response-channel-generator)
-		       (constant-channel))]
-	       (run-pipeline request
-		 :error-handler #(complete
-				   (enqueue responses
-				     (if include-request?
-				       {:request request, :response (constant-channel %)}
-				       (constant-channel %))))
-		 #(handler [c %])
-		 (fn [_]
-		   (if include-request?
-		     {:request request, :response c}
-		     c))
-		 #(enqueue responses %)))))
+	     (run-pipeline request
+	       :error-handler #(complete
+				 (enqueue responses
+				   (if include-request?
+				     {:request request, :response (constant-channel %)}
+				     (constant-channel %))))
+	       #(handler [%])
+	       (fn [c]
+		 (if include-request?
+		   {:request request, :response c}
+		   c))
+	       #(enqueue responses %))))
 	 (fn [_]
 	   (if-not (drained? ch)
 	     (restart)
