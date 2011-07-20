@@ -30,17 +30,13 @@
 (import-fn #'trace/probe-channel)
 
 (defn registered-probes []
-  @trace/registered-probes)
+  @trace/probe-switches)
 
 (defmacro trace
   "Enqueues the value into a probe-channel only if there's a consumer for it.  If there
    is no consumer, the body will not be evaluated."
   [probe & body]
   (apply trace/expand-trace probe body))
-
-(defmacro trace*
-  [canonical-probe & body]
-  (apply trace/expand-trace* canonical-probe body))
 
 (defmacro trace->> [probe & forms]
   (apply trace/expand-trace->> probe forms))
@@ -56,9 +52,8 @@
 	args-transform (if-let [transform-fn (:args-transform options)]
 			transform-fn
 			identity)]
-    (register-probe probe)
     (fn [args]
-      (trace* probe (args-transform args)))))
+      (trace probe (args-transform args)))))
 
 (defn- result-tracer [options]
   (let [probe (canonical-probe [(:name options) :results])
@@ -68,9 +63,8 @@
 	result-transform (if-let [transform-fn (:result-transform options)]
 			   transform-fn
 			   identity)]
-    (register-probe probe)
     (fn [args result start]
-      (trace* probe
+      (trace probe
 	(let [end (System/nanoTime)]
 	  {:args (args-transform args)
 	   :result (result-transform result)
@@ -83,9 +77,8 @@
 	args-transform (if-let [transform-fn (:args-transform options)]
 			 transform-fn
 			 identity)]
-    (register-probe probe)
     (fn [args start ex]
-      (trace* probe
+      (trace probe
 	(let [end (System/nanoTime)]
 	  {:args (args-transform args)
 	   :exception ex

@@ -15,7 +15,7 @@
    [clojure.contrib.logging :as log])
   (:import java.util.concurrent.TimeoutException))
 
-;;;;
+;;;
 
 (defn simple-echo-server []
   (let [[a b] (channel-pair)]
@@ -52,6 +52,8 @@
 			 (reset! chs# nil))]
      ~@body))
 
+;;;
+
 (deftest test-persistent-connection
   (with-server simple-echo-server
     (let [connection (persistent-connection #(connect) {:description "test-connection"})]
@@ -86,7 +88,7 @@
 (deftest timeouts-can-be-used
   (simple-response client 1000)
   (simple-response pipelined-client 1000))
-
+ 
 (defn dropped-connection [client-fn]
   (with-server simple-echo-server
     (let [f (client-fn #(connect) {:description "dropped-connection"})]
@@ -168,3 +170,6 @@
   (with-handler (fn [ch req] (enqueue ch req)) {:include-request true}
     (enqueue ch 1 2)
     (is (= [{:request 1, :response 1} {:request 2, :response 2}] (channel-seq ch)))))
+
+;;;
+

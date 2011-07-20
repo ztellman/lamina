@@ -75,7 +75,7 @@
    :min-thread-count 0
    :idle-threshold (* 60 1000)
    :thread-wrapper (fn [f] (.run ^Runnable f))
-   :name (gensym "thread-pool.")})
+   :name (str (gensym "thread-pool."))})
 
 (defn thread-pool
   "Creates a thread pool that will grow to a specified size when necessary, and dispose
@@ -118,7 +118,7 @@
 	 (errors-probe [_] errors-probe)
 	 (timeouts-probe [_] timeouts-probe)
 	 (execute [_ f]
-	   (trace* threads-probe
+	   (trace threads-probe
 	     (thread-pool-state pool))
 	   (let [active (.getActiveCount pool)]
 	     (if (= (.getPoolSize pool) active)
@@ -142,7 +142,7 @@
 	    (when-not x#
 	      (when-let [timeout-handler (:timeout-handler options)]
 		(timeout-handler {:result-channel result, :thread thread, :timeout timeout}))
-	      (trace* probe
+	      (trace probe
 		(let [start (/ (double start) 1e6)
 		      end (/ (double (System/nanoTime)) 1e6)]
 		  {:start-time start
@@ -155,7 +155,7 @@
 
 (defn thread-pool-result
   [enqueued start args result probe options]
-  (trace* probe
+  (trace probe
     (let [result-transform (if-let [result-transform (:result-transform options)]
 			     result-transform
 			     identity)
@@ -178,7 +178,7 @@
 
 (defn thread-pool-error
   [enqueued start args ex probe options]
-  (trace* probe
+  (trace probe
     (let [args-transform (if-let [transform-fn (:args-transform options)]
 			   transform-fn
 			   identity)

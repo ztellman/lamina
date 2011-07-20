@@ -19,9 +19,8 @@
 ;;;
 
 (def probe-channels (ref {}))
-(def enabled-probe-channels (atom {}))
-(def registered-probes (atom {}))
-(def *probe-prefix* "")
+(def probe-switches (atom {}))
+(def *probe-prefix* nil)
 
 (def new-probe-publisher (channel))
 (receive-all new-probe-publisher (fn [_] ))
@@ -46,22 +45,28 @@
 ;;;
 
 (defn canonical-probe [probe]
-  (if (coll? probe)
-    (mapcat canonical-probe probe)
-    (str/split
-      (if (keyword? probe)
-	(name probe)
-	(str probe))
-      #"[.]")))
+  (cond
+    (keyword? probe) probe
+    (string? probe) (keyword probe)
+    (coll? probe) (->> probe
+		    (map canonical-probe)
+		    (map name)
+		    (interpose ":")
+		    (apply str)
+		    keyword)
+    :else (throw (Exception. (str "Can't convert " (pr-str probe) " " (class probe) " to probe")))))
 
 (defn register-probe [& probes]
   (doseq [probe probes]
-    (if (= ::none (get-in @registered-probes probe ::none))
+    (swap! probe-switches update-in [probe] #(or % (atom false)))))
+
+(defn probe-switch [probe]
+  (let [switch (get @probe-switches probe ::none)]
+    (if-not (= ::none switch)
+      switch
       (do
-	(swap! registered-probes update-in probe #(or % {}))
-	(enqueue new-probe-publisher probe)
-	true)
-      false)))
+	(register-probe probe)
+	(get @probe-switches probe)))))
 
 (defn on-new-probe [& callbacks]
   (apply receive-all new-probe-publisher callbacks))
@@ -73,16 +78,15 @@
     (and (coll? probe) (every? constant-probe? probe))))
 
 (defn- probe-channel- [probe]
-  (let [ch (channel)]
+  (let [ch (channel)
+	switch (probe-switch probe)]
     (o/subscribe (-> ch queue q/distributor)
       {::probe
        (o/observer
 	 (fn [_] )
 	 nil
 	 (fn [observers]
-	   (if-not (= 3 (count observers))
-	     (swap! enabled-probe-channels update-in probe #(or % {}))
-	     (swap! enabled-probe-channels dissoc-in probe))))})
+	   (reset! switch (not= 3 (count observers)))))})
     ch))
 
 (defn probe-channel
@@ -90,13 +94,15 @@
    consumers."
   [probe]
   (let [probe (canonical-probe probe)]
-    (dosync
-      (let [channels (ensure probe-channels)]
-	(if (contains? channels probe)
-	  (channels probe)
-	  (let [ch (probe-channel- probe)]
-	    (alter probe-channels assoc probe ch)
-	    ch))))))
+    (if-let [ch (get @probe-channels probe)]
+      ch
+      (dosync
+	(let [channels (ensure probe-channels)]
+	  (if (contains? channels probe)
+	    (channels probe)
+	    (let [ch (probe-channel- probe)]
+	      (alter probe-channels assoc probe ch)
+	      ch)))))))
 
 ;;;
 
@@ -104,38 +110,36 @@
   "Enqueues the value into a probe-channel only if there's a consumer for it.  If there
    is no consumer, the body will not be evaluated."
   [probe & body]
-  (when (constant-probe? probe)
-    (register-probe (canonical-probe probe)))
-  (let [probe-sym (gensym "probe")]
-    `(let [~probe-sym ~(if (constant-probe? probe)
-			 (canonical-probe probe)
-			 `(canonical-probe ~probe))]
-       ~@(when-not (constant-probe? probe)
-	   `((register-probe ~probe-sym)))
-       (if-not (= ::empty (get-in @enabled-probe-channels ~probe-sym ::empty))
+  (if (constant-probe? probe)
+    (let [probe (canonical-probe probe)
+	  ch-sym (gensym "ch")
+	  switch-sym (gensym "switch")]
+      (eval
+	`(do
+	   (def ~ch-sym (probe-channel ~probe))
+	   (def ~switch-sym (probe-switch ~probe))))
+      `(if (deref ~switch-sym)
 	 (do
-	   (enqueue (probe-channel ~probe-sym) (do ~@body))
+	   (enqueue ~ch-sym (do ~@body))
+	   true)
+	 false))
+    `(let [probe# (canonical-probe ~probe)
+	   switch# (probe-switch probe#)]
+       (if (deref switch#)
+	 (do
+	   (enqueue (probe-channel probe#) (do ~@body))
 	   true)
 	 false))))
 
-(defn expand-trace*
-  "Enqueues the value into a probe-channel only if there's a consumer for it.  If there
-   is no consumer, the body will not be evaluated."
-  [probe & body]
-  `(if-not (= ::empty (get-in @enabled-probe-channels ~probe ::empty))
-    (do
-      (enqueue (probe-channel ~probe) (do ~@body))
-      true)
-    false))
-
 (defn expand-trace->> [probe & forms]
   (let [ch-sym (gensym "ch")
-	dests? (vector? (last forms))
-	probe-sym (gensym "probe")]
+	dests? (vector? (last forms))]
     `(let [~ch-sym (channel)
-	   ~probe-sym (concat *probe-prefix* (canonical-probe ~probe))]
-       (register-probe ~probe-sym)
-       (binding [*probe-prefix* ~probe-sym]
+	   probe# (canonical-probe
+		    (if *probe-prefix*
+		      [*probe-prefix* ~probe]
+		      ~probe))]
+       (binding [*probe-prefix* probe#]
 	 (lamina.core.seq/siphon
 	   ~(let [operators (if dests? (butlast forms) forms)]
 	      (if (empty? operators)
@@ -148,11 +152,12 @@
 		   (nil? dsts#) []
 		   (coll? dsts#) (vec dsts#)
 		   :else [dsts#])
-		 (probe-channel ~probe-sym))
+		 (probe-channel probe#))
 	       (repeat identity)))))
-       (let [ch# (channel)]
+       (let [ch# (channel)
+	     switch# (probe-switch probe#)]
 	 (receive-all ch#
 	   (fn [msg#]
-	     (when-not (= ::empty (get-in @enabled-probe-channels ~probe-sym ::empty))
+	     (when (deref switch#)
 	       (enqueue ~ch-sym msg#))))
 	 ch#))))

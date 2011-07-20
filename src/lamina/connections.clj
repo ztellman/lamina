@@ -81,7 +81,7 @@
      (persistent-connection connection-generator nil))
   ([connection-generator options]
      (let [options (merge
-		     {:name (gensym "connection."), :description "unknown"}
+		     {:name (str (gensym "connection.")), :description "unknown"}
 		     options)
 	   close-signal (constant-channel)
 	   result (connect-loop close-signal connection-generator options)]
@@ -115,7 +115,7 @@
      (client connection-generator nil))
   ([connection-generator options]
      (let [options (merge
-		     {:name (gensym "client.")
+		     {:name (str (gensym "client."))
 		      :description "unknown"}
 		     options)
 	   connection (persistent-connection connection-generator options)
@@ -179,7 +179,7 @@
 		(enqueue requests [request result timeout])
 		result)))
 	 (merge
-	   {:name (gensym "client.")}
+	   {:name (str (gensym "client."))}
 	   options)))))
 
 (defn pipelined-client
@@ -187,7 +187,7 @@
      (pipelined-client connection-generator nil))
   ([connection-generator options]
      (let [options (merge
-		     {:name (gensym "client.")
+		     {:name (str (gensym "client."))
 		      :description "unknown"}
 		     options) 
 	   connection (persistent-connection connection-generator options)
@@ -246,7 +246,7 @@
 		(enqueue requests [request result timeout])
 		result)))
 	 (merge
-	   {:name (gensym "client.")}
+	   {:name (str (str (gensym "client.")))}
 	   options)))))
 
 ;;
@@ -262,7 +262,7 @@
      (server ch handler {}))
   ([ch handler options]
      (let [options (merge
-		     {:name (gensym "server.")}
+		     {:name (str (gensym "server."))}
 		     options)
 	   thread-pool (let [t (:thread-pool options)]
 			 (if (or (nil? t) (thread-pool? t))
@@ -303,7 +303,7 @@
      (pipelined-server ch handler {}))
   ([ch handler options]
      (let [options (merge
-		     {:name (gensym "server.")}
+		     {:name (str (gensym "server."))}
 		     options)
 	   thread-pool (let [t (:thread-pool options)]
 			 (if (or (nil? t) (thread-pool? t))

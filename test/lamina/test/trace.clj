@@ -9,22 +9,30 @@
 (ns lamina.test.trace
   (:use
     [lamina core trace]
-    [lamina.trace.core :only (probe-channels enabled-probe-channels)]
+    [lamina.trace.core :only (probe-channels probe-switches)]
     [clojure test]))
 
 (defn clear-probe-channels []
   (dosync
     (ref-set probe-channels {})
-    (reset! enabled-probe-channels {})))
+    (reset! probe-switches {})))
 
 (deftest test-trace
   (clear-probe-channels)
-  (let [marker (atom false)]
-    (trace :trace (reset! marker true))
+  (let [marker (atom false)
+	probe :foo]
+    (trace probe (reset! marker true))
     (is (not @marker))
-    (receive-all (probe-channel :trace) (fn [_] ))
-    (trace :trace (reset! marker true))
-    (is @marker)))
+    (receive-all (probe-channel probe) (fn [_] ))
+    (trace probe (reset! marker true))
+    (is @marker))
+  (eval
+    `(let [marker# (atom false)]
+       (trace :bar (reset! marker# true))
+       (is (not @marker#))
+       (receive-all (probe-channel :bar) (fn [_#] ))
+       (trace :bar (reset! marker# true))
+       (is @marker#))))
 
 (deftest test-trace->>
   (clear-probe-channels)
@@ -34,7 +42,7 @@
     (enqueue
       (trace->> :trace (map* inc) [ch])
       1)
-    (is (= nil @marker)))
+    (is (nil? @marker)))
   (let [marker (atom nil)
 	trace-marker (atom nil)
 	ch (channel)]
@@ -48,7 +56,7 @@
   (let [a-marker (atom nil)
 	a-b-marker (atom nil)]
     (receive-all (probe-channel :a) #(reset! a-marker %))
-    (receive-all (probe-channel :a.b) #(reset! a-b-marker %))
+    (receive-all (probe-channel :a:b) #(reset! a-b-marker %))
     (enqueue
       (trace->> :a (map* inc) [(trace->> :b (map* inc))])
       1)
