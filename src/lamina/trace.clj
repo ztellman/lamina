@@ -108,7 +108,7 @@
 
 (defmacro defn-trace [name & forms]
   (let [options (->> forms
-		  (take-while (complement vector?))
+		  (take-while #(or (symbol? %) (string? %) (map? %)))
 		  (filter map?)
 		  first)]
     `(do
