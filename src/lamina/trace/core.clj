@@ -54,7 +54,7 @@
 		    (interpose ":")
 		    (apply str)
 		    keyword)
-    :else (throw (Exception. (str "Can't convert " (pr-str probe) " " (class probe) " to probe")))))
+    :else (throw (Exception. (str "Can't convert " (pr-str probe) " to probe")))))
 
 (defn register-probe [& probes]
   (doseq [probe probes]
