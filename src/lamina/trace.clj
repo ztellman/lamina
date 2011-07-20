@@ -113,4 +113,8 @@
 		  first)]
     `(do
        (defn ~name ~@forms)
-       (def ~name (trace-wrap ~name (assoc ~options :name ~(str (name *ns*) "." name)))))))
+       (def ~name
+	 (trace-wrap ~name
+	   (merge
+	     {:name (str (str *ns*) ":" ~name)}
+	     ~(or options {})))))))
