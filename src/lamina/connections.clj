@@ -315,21 +315,13 @@
 		     (fn [req]
 		       (let [ch (response-channel-generator)]
 			 (handler ch req)
-			 ch))
+			 (read-channel ch)))
 		     options)]
 
        (siphon-probes (:name options) (:probes options))
        
        (run-pipeline responses
 	 read-channel
-	 (if include-request?
-	   (fn [{:keys [response request]}]
-	     (run-pipeline response
-	       read-channel
-	       #(hash-map
-		  :request request
-		  :response %)))
-	   read-channel)
 	 #(enqueue ch %)
 	 (fn [_] (restart)))
        (run-pipeline ch
@@ -340,8 +332,8 @@
 	       :error-handler #(complete
 				 (enqueue responses
 				   (if include-request?
-				     {:request request, :response (constant-channel %)}
-				     (constant-channel %))))
+				     {:request request, :response %}
+				     %)))
 	       #(handler [%])
 	       (fn [c]
 		 (if include-request?

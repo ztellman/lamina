@@ -126,7 +126,7 @@
 	       (.setCorePoolSize pool (max min-thread-count (inc active)))))
 	   (.execute pool f))))))
 
-(def default-executor (atom (thread-pool {:name "thread-pool.default"})))
+(def default-executor (atom (thread-pool {:name "thread-pool:default"})))
 
 (defn thread-pool? [x]
   (instance? Executor x))
