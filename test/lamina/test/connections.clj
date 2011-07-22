@@ -171,5 +171,22 @@
     (enqueue ch 1 2)
     (is (= [{:request 1, :response 1} {:request 2, :response 2}] (channel-seq ch)))))
 
+(deftest test-server-probes
+  (let [calls (channel)
+	results (channel)
+	errors (channel)]
+    (with-handler (fn [ch req] (enqueue ch req)) {:probes {:calls calls, :results results}}
+      (enqueue ch 1 2)
+      (let [calls (channel-seq calls)
+	    results (channel-seq results)]
+	(is (= [[1] [2]] calls))
+	(is (= [[1] [2]] (map :args results)))))
+    (with-handler (fn [ch req] (throw exception)) {:probes {:calls calls, :errors errors}}
+      (enqueue ch 1 2)
+      (let [calls (channel-seq calls)
+	    errors (channel-seq errors)]
+	(is (= [[1] [2]] calls))
+	(is (= [[1] [2]] (map :args errors)))))))
+
 ;;;
 

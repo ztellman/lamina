@@ -140,18 +140,20 @@
 	(receive (poll-result result remaining-timeout)
 	  (fn [x#]
 	    (when-not x#
-	      (when-let [timeout-handler (:timeout-handler options)]
-		(timeout-handler {:result-channel result, :thread thread, :timeout timeout}))
-	      (trace probe
-		(let [start (/ (double start) 1e6)
-		      end (/ (double (System/nanoTime)) 1e6)]
+	      (let [start (/ (double start) 1e6)
+		    end (/ (double (System/nanoTime)) 1e6)]
+		(when-let [timeout-handler (:timeout-handler options)]
+		  (timeout-handler {:result-channel result, :thread thread, :timeout timeout}))
+		(trace probe
 		  {:start-time start
 		   :end-time end
 		   :args args
 		   :timeout timeout
-		   :duration (- end start)}))
-	      (error! result (TimeoutException. (str "Timed out after " timeout "ms.")))
-	      (.interrupt ^Thread thread))))))))
+		   :duration (- end start)})
+		(error! result (TimeoutException. (str "Timed out after " (int (- end start)) "ms")))
+		(when-let [timeout-callback (:timeout-callback options)]
+		  (timeout-callback thread))
+		(.interrupt ^Thread thread)))))))))
 
 (defn thread-pool-result
   [enqueued start args result probe options]
@@ -206,7 +208,11 @@
 		    ~options)
 	 body-fn# (fn []
 		    (let [start-time# (System/nanoTime)
-			  result# (run-pipeline (do ~@body))]
+			  result# (run-pipeline
+				    (try
+				      ~@body
+				      (catch InterruptedException e#
+					(throw (TimeoutException. (str "Timed out after " (-> (- (System/nanoTime) enqueued-time#) (/ 1e6) int) "ms"))))))]
 		      (run-pipeline result#
 			:error-handler (fn [ex#]
 					 (when pool#
