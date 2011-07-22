@@ -52,7 +52,9 @@
       :error-handler (fn [ex]
 		       (swap! delay incr-delay)
 		       (reset! result (result-channel))
-		       (restart))
+		       (if @latch
+			 (restart)
+			 (complete nil)))
       (do-stage
       	(when (pos? @delay)
 	  (trace [probe-prefix :connection :failed] (merge desc {:delay @delay}))))
@@ -178,9 +180,7 @@
 	      (let [result (result-channel)]
 		(enqueue requests [request result timeout])
 		result)))
-	 (merge
-	   {:name (str (gensym "client."))}
-	   options)))))
+	 options))))
 
 (defn pipelined-client
   ([connection-generator]
@@ -245,9 +245,7 @@
 	      (let [result (result-channel)]
 		(enqueue requests [request result timeout])
 		result)))
-	 (merge
-	   {:name (str (str (gensym "client.")))}
-	   options)))))
+	 options))))
 
 ;;
 
