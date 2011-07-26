@@ -52,9 +52,13 @@ namespace.
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/cancel-callback">cancel-callback</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core/channel">channel</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/channel-pair">channel-pair</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/channel-seq">channel-seq</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core/channel?">channel?</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/close">close</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
@@ -63,6 +67,8 @@ namespace.
       <a href="#lamina.core/closed?">closed?</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/complete">complete</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core/constant-channel">constant-channel</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/defn-async">defn-async</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
@@ -93,6 +99,8 @@ namespace.
       <a href="#lamina.core/partition*">partition*</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/partition-all*">partition-all*</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.core/permanent-channel">permanent-channel</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.core/pipeline">pipeline</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
@@ -185,6 +193,15 @@ returned by the async block will be a result-channel.</pre>
 </div><div id="var-entry">
   <br />
   <hr />
+  <h2 id="lamina.core/channel">channel</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (channel &amp; messages)
+</pre>
+  <pre id="var-docstr">Returns a channel that contains the specified messages.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
   <h2 id="lamina.core/channel-pair">channel-pair</h2>
   <span id="var-type">function</span><br />
   <pre id="var-usage">Usage: (channel-pair)
@@ -207,6 +224,15 @@ currently within the channel.
 
 This call is synchronous, and will hang the thread until the timeout is reached or the channel
 is drained.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.core/channel?">channel?</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (channel? x)
+</pre>
+  <pre id="var-docstr">Returns true if 'x' is a channel or a constant channel.</pre>
   
 </div><div id="var-entry">
   <br />
@@ -243,6 +269,16 @@ is drained.</pre>
   <pre id="var-usage">Usage: (complete result)
 </pre>
   <pre id="var-docstr">Skips to the end of the inner-most pipeline, causing it to emit 'result'.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.core/constant-channel">constant-channel</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (constant-channel)
+       (constant-channel message)
+</pre>
+  <pre id="var-docstr">Returns a constant channel that optionally already contains a message.</pre>
   
 </div><div id="var-entry">
   <br />
@@ -401,6 +437,16 @@ a channel is created, and 'creation-callback' is invoked.</pre>
        (partition-all* n step ch)
 </pre>
   <pre id="var-docstr">Returns a partitioned channel, including any trailing messages that aren't evenly divisable.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.core/permanent-channel">permanent-channel</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (permanent-channel &amp; messages)
+</pre>
+  <pre id="var-docstr">Returns a channel that will not be automatically closed when a destination channel
+is closed.</pre>
   
 </div><div id="var-entry">
   <br />
