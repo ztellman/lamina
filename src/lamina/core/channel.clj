@@ -34,11 +34,16 @@
   (meta [_] metadata)
   (withMeta [_ meta] (Channel. consumer queue meta)))
 
-(defn channel [& messages]
+(defn channel
+  "Returns a channel that contains the specified messages."
+  [& messages]
   (let [source (o/observable)]
     (Channel. source (q/queue source messages) nil)))
 
-(defn permanent-channel [& messages]
+(defn permanent-channel
+  "Returns a channel that will not be automatically closed when a destination channel
+   is closed."
+  [& messages]
   (let [source (o/permanent-observable)]
     (Channel. source (q/queue source (o/permanent-observable) messages) nil)))
 
@@ -53,19 +58,24 @@
   (withMeta [_ meta] (ConstantChannel. consumer queue meta)))
 
 (defn constant-channel
+  "Returns a constant channel that optionally already contains a message."
   ([]
      (constant-channel o/empty-value))
   ([message]
      (let [source (o/constant-observable message)]
        (ConstantChannel. source (q/constant-queue source) nil))))
 
-(defn constant-channel? [ch]
-  (instance? ConstantChannel ch))
+(defn constant-channel?
+  "Returns true if 'x' is a constant channel."
+  [x]
+  (instance? ConstantChannel x))
 
-(defn channel? [ch]
+(defn channel?
+  "Returns true if 'x' is a channel or a constant channel."
+  [x]
   (or
-    (instance? Channel ch)
-    (instance? ConstantChannel ch)))
+    (instance? Channel x)
+    (instance? ConstantChannel x)))
 
 (defn proxy-channel [f ch]
   (if (constant-channel? ch)
