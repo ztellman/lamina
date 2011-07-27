@@ -247,7 +247,23 @@
 		result)))
 	 options))))
 
-;;
+
+(defn client-pool
+  "Returns a client function that distributes requests across n-many clients."
+  [n client-generator]
+  (let [clients (take num (repeatedly client-generator))
+	counter (atom 0)]
+    (fn this
+      ([request]
+	 (this request -1))
+      ([request timeout]
+	 (if (= ::close request)
+	   (async (force-all (map close-connection clients)))
+	   (let [idx (swap! counter #(rem (inc %) n))
+		 client (nth clients idx)]
+	     (client request timeout)))))))
+
+;;;
 
 (defn- wrap-constant-response [f channel-generator options]
   (fn [x]
