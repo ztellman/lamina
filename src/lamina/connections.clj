@@ -251,7 +251,7 @@
 (defn client-pool
   "Returns a client function that distributes requests across n-many clients."
   [n client-generator]
-  (let [clients (take num (repeatedly client-generator))
+  (let [clients (take n (repeatedly client-generator))
 	counter (atom 0)]
     (fn this
       ([request]

@@ -83,11 +83,13 @@
 
 (deftest test-simple-response
   (simple-response client)
-  (simple-response pipelined-client))
+  (simple-response pipelined-client)
+  (simple-response (fn [& args] (client-pool 1 #(apply client args)))))
 
 (deftest timeouts-can-be-used
   (simple-response client 1000)
-  (simple-response pipelined-client 1000))
+  (simple-response pipelined-client 1000)
+  (simple-response (fn [& args] (client-pool 1 #(apply client args)))))
  
 (defn dropped-connection [client-fn]
   (with-server simple-echo-server
@@ -104,7 +106,8 @@
 
 (deftest test-dropped-connection
   (dropped-connection client)
-  (dropped-connection pipelined-client))
+  (dropped-connection pipelined-client)
+  (dropped-connection (fn [& args] (client-pool 1 #(apply client args)))))
 
 (defn works-after-a-timed-out-request [client-fn initially-disconnected]
   (with-server simple-echo-server
@@ -138,7 +141,8 @@
 
 (deftest test-error-propagation
   (errors-propagate client)
-  (errors-propagate pipelined-client))
+  (errors-propagate pipelined-client)
+  (errors-propagate (fn [& args] (client-pool 1 #(apply client args)))))
 
 ;;;;
 
