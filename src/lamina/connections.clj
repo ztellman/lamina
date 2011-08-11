@@ -57,13 +57,13 @@
 			 (complete nil)))
       (do-stage
       	(when (pos? @delay)
-	  (trace [probe-prefix :connection :failed] (merge desc {:delay @delay}))))
+	  (trace [probe-prefix :connection:failed] (merge desc {:delay @delay}))))
       (wait-stage @delay)
       (fn [_]
-	(trace [probe-prefix :connection :attempted] desc)
+	(trace [probe-prefix :connection:attempted] desc)
 	(connection-generator))
       (fn [ch]
-	(trace [probe-prefix :connection :opened] desc)
+	(trace [probe-prefix :connection:opened] desc)
 	(run-pipeline
 	  (when-let [new-connection-callback (:connection-callback options)]
 	    (new-connection-callback ch))
@@ -72,6 +72,7 @@
 	    (wait-for-close ch options))))
       ;; wait here for connection to drop
       (fn [_]
+	(trace [probe-prefix :connection:lost] desc)
 	(when @latch
 	  (reset! delay 0)
 	  (reset! result (result-channel))

@@ -26,7 +26,6 @@
 
 ;;;
 
-(def *current-executor* nil)
 (declare default-executor)
 (def ns-executors (atom {}))
 
@@ -44,7 +43,7 @@
 
 (defmacro current-executor []
   `(or
-     lamina.executors.core/*current-executor*
+     lamina.core.pipeline/*current-executor*
      (@lamina.executors.core/ns-executors ~*ns*)
      @lamina.executors.core/default-executor))
 
@@ -117,14 +116,17 @@
 	 (results-probe [_] results-probe)
 	 (errors-probe [_] errors-probe)
 	 (timeouts-probe [_] timeouts-probe)
-	 (execute [_ f]
+	 (execute [this f]
 	   (trace threads-probe
 	     (thread-pool-state pool))
 	   (let [active (.getActiveCount pool)]
 	     (if (= (.getPoolSize pool) active)
 	       (.setCorePoolSize pool (min max-thread-count (inc active)))
 	       (.setCorePoolSize pool (max min-thread-count (inc active)))))
-	   (.execute pool f))))))
+	   (.execute pool
+	     (fn []
+	       (binding [*current-executor* this]
+		 (f)))))))))
 
 (def default-executor (atom (thread-pool {:name "thread-pool:default"})))
 
@@ -244,8 +246,7 @@
 	       result#
 	       (timeouts-probe pool#)
 	       options#)
-	     (binding [*current-executor* pool#
-		       *thread-pool-options* options#]
+	     (binding [*thread-pool-options* options#]
 	       (siphon-result
 		 (run-pipeline nil
 		   :error-handler (constantly nil)
