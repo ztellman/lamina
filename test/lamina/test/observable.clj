@@ -11,7 +11,7 @@
     [clojure test walk]
     [lamina.core.observable]))
 
-(declare accumulator)
+(declare ^{:dynamic true} accumulator)
 
 (defn sub [key o]
   (subscribe o {key (observer #(apply swap! accumulator conj %))}))

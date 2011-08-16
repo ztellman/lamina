@@ -29,7 +29,7 @@
 (declare default-executor)
 (def ns-executors (atom {}))
 
-(def *thread-pool-options* nil)
+(def ^{:dynamic true} *thread-pool-options* nil)
 
 (defn set-default-executor
   "Sets the default executor used by task."

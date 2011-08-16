@@ -195,7 +195,7 @@
       500)
     (is (= @t1 @t2))))
 
-(declare to-be-bound)
+(declare ^{:dynamic true} to-be-bound)
 
 (deftest test-bindings
   (let [t1 (atom nil)

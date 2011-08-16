@@ -20,7 +20,7 @@
 
 (def probe-channels (ref {}))
 (def probe-switches (atom {}))
-(def *probe-prefix* nil)
+(def ^{:dynamic true} *probe-prefix* nil)
 
 (def new-probe-publisher (channel))
 (receive-all new-probe-publisher (fn [_] ))

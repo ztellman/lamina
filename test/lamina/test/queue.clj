@@ -13,7 +13,7 @@
   (:require
     [lamina.core.observable :as o]))
 
-(declare accumulator)
+(declare ^{:dynamic true} accumulator)
 
 (defmacro output= [value & body]
   `(binding [accumulator (atom [])]
