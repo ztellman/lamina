@@ -122,7 +122,8 @@
 		      :description "unknown"}
 		     options)
 	   connection (persistent-connection connection-generator options)
-	   requests (channel)]
+	   requests (channel)
+	   closed? (atom false)]
 
        (siphon-probes (:name options) (:probes options))
        
@@ -210,15 +211,17 @@
 
 	       ;; send requests
 	       (run-pipeline nil 
-                 :error-handler (fn [_]
+                 :error-handler (fn [ex]
                                   (if-not (has-completed? result)
 				    (restart)
                                     (complete nil)))
                  (fn [_] (connection))
 		 (fn [ch]
-                   (when-not (has-completed? result)
-                     (enqueue ch request)
-                     (enqueue responses [request result ch]))))))))
+                   (if (= ::close ch)
+		     (error! result (Exception. "Client has been deactivated."))
+		     (when-not (has-completed? result)
+		       (enqueue ch request)
+		       (enqueue responses [request result ch])))))))))
 
        ;; handle responses
        (receive-in-order responses
