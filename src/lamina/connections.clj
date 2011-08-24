@@ -38,6 +38,12 @@
 	result (atom (result-channel))
 	latch (atom true)
 	probe-prefix (:name options)
+	timestamp (ref (System/nanoTime))
+	elapsed #(dosync
+		   (let [last-time (ensure timestamp)
+			 current-time (System/nanoTime)]
+		     (ref-set timestamp current-time)
+		     (/ (- current-time last-time) 1e6)))
 	desc (select-keys options [:name :description])]
     ;; handle signal to close persistent connection
     (receive halt-signal
@@ -57,13 +63,13 @@
 			 (complete nil)))
       (do-stage
       	(when (pos? @delay)
-	  (trace [probe-prefix :connection:failed] (merge desc {:delay @delay}))))
+	  (trace [probe-prefix :connection:failed] (merge desc {:event :connect-attempt-failed, :delay @delay}))))
       (wait-stage @delay)
       (fn [_]
-	(trace [probe-prefix :connection:attempted] desc)
+	(trace [probe-prefix :connection:attempting] (assoc desc :event :attempting-connection))
 	(connection-generator))
       (fn [ch]
-	(trace [probe-prefix :connection:opened] desc)
+	(trace [probe-prefix :connection:opened] (assoc desc :event :connection-opened, :elapsed (elapsed)))
 	(run-pipeline
 	  (when-let [new-connection-callback (:connection-callback options)]
 	    (new-connection-callback ch))
@@ -72,7 +78,7 @@
 	    (wait-for-close ch options))))
       ;; wait here for connection to drop
       (fn [_]
-	(trace [probe-prefix :connection:lost] desc)
+	(trace [probe-prefix :connection:lost] (assoc desc :event :connection-lost, :elapsed (elapsed)))
 	(when @latch
 	  (reset! delay 0)
 	  (reset! result (result-channel))
