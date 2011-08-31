@@ -6,3 +6,4 @@ push
 local-push
 DS_Store
 autodoc
+.lein-failures

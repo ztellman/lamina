@@ -142,9 +142,6 @@
 	       (close-connection connection)
 	       (success! result true))
 	     (do
-	       ;; set up timeout
-	       (setup-result-timeout result timeout)
-
 	       ;; make request
 	       (run-pipeline nil ;; don't wait anything initially
 		 :error-handler (fn [_]
@@ -187,6 +184,7 @@
 	   ([request timeout]
 	      (let [result (result-channel)]
 		(enqueue requests [request result timeout])
+		(setup-result-timeout result timeout)
 		result)))
 	 options))))
 
