@@ -210,11 +210,13 @@
 		    ~options)
 	 body-fn# (fn []
 		    (let [start-time# (System/nanoTime)
-			  result# (run-pipeline
-				    (try
-				      ~@body
-				      (catch InterruptedException e#
-					(throw (TimeoutException. (str "Timed out after " (-> (- (System/nanoTime) enqueued-time#) (/ 1e6) int) "ms"))))))]
+			  result# (run-pipeline nil
+				    :error-handler (fn [_#])
+				    (fn [_#]
+				      (try
+					~@body
+					(catch InterruptedException e#
+					  (throw (TimeoutException. (str "Timed out after " (-> (- (System/nanoTime) enqueued-time#) (/ 1e6) int) "ms")))))))]
 		      (run-pipeline result#
 			:error-handler (fn [ex#]
 					 (when pool#
@@ -236,7 +238,9 @@
 			      options#))))
 		      result#))]
      (if-not pool#
-       (run-pipeline nil (fn [_#] (body-fn#)))
+       (run-pipeline nil
+	 :error-handler (fn [_#])
+	 (fn [_#] (body-fn#)))
        (let [result# (result-channel)]
 	 (.execute ^Executor pool#
 	   (fn []
