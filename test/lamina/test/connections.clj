@@ -163,7 +163,16 @@
   (with-handler (fn [_ _] (throw exception)) nil
     (enqueue ch 1 2)
     (is (= [exception exception] (channel-seq ch))))
+
+  (with-handler (fn [_ _] (run-pipeline nil :error-handler (fn [_]) (fn [_] (throw exception)))) nil
+    (enqueue ch 1 2)
+    (is (= [exception exception] (channel-seq ch))))
+
   (with-handler (fn [_ _] (throw exception)) {:include-request true}
+    (enqueue ch 1 2)
+    (is (= [{:request 1, :response exception} {:request 2, :response exception}] (channel-seq ch))))
+  
+  (with-handler (fn [_ _] (run-pipeline nil :error-handler (fn [_]) (fn [_] (throw exception)))) {:include-request true}
     (enqueue ch 1 2)
     (is (= [{:request 1, :response exception} {:request 2, :response exception}] (channel-seq ch)))))
 

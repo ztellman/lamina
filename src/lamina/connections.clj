@@ -276,9 +276,14 @@
 
 (defn- wrap-constant-response [f channel-generator options]
   (fn [x]
-    (let [ch (channel-generator)]
-      (f ch x)
-      (read-channel ch))))
+    (let [result (result-channel)
+	  ch (channel-generator)]
+      (run-pipeline nil
+	:error-handler #(error! result %)
+	(fn [_] (f ch x)))
+      (siphon-result
+	(read-channel ch)
+	result))))
 
 (defn server
   ([ch handler]
@@ -333,14 +338,12 @@
 			   t
 			   (thread-pool t)))
 	   include-request? (:include-request options)
-	   response-channel-generator (or (:response-channel options) constant-channel)
 	   requests (channel)
 	   responses (channel)
 	   handler (executor thread-pool
-		     (fn [req]
-		       (let [ch (response-channel-generator)]
-			 (handler ch req)
-			 (read-channel ch)))
+		     (wrap-constant-response handler
+		       (or (:response-channel options) constant-channel)
+		       options)
 		     options)]
 
        (siphon-probes (:name options) (:probes options))
