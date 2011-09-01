@@ -237,7 +237,7 @@
   [src dst]
   (on-success src #(success! dst %))
   (on-error src #(error! dst %))
-  src)
+  dst)
 
 ;;;
 

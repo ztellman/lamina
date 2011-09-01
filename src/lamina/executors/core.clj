@@ -236,7 +236,7 @@
 			      options#))))
 		      result#))]
      (if-not pool#
-       (body-fn#)
+       (run-pipeline nil (fn [_#] (body-fn#)))
        (let [result# (result-channel)]
 	 (.execute ^Executor pool#
 	   (fn []
@@ -249,7 +249,7 @@
 	     (binding [*thread-pool-options* options#]
 	       (siphon-result
 		 (run-pipeline nil
-		   :error-handler (constantly nil)
+		   :error-handler (fn [_#])
 		   (fn [_#]
 		     (body-fn#)))
 		 result#))))

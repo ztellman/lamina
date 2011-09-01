@@ -154,6 +154,7 @@
 		     ;; if timeout has already elapsed, exit
 		     (complete nil)
 
+		     
 		     ;; send the request
 		     (run-pipeline (connection)
 		       (fn [ch]
