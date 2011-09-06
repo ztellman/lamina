@@ -162,11 +162,11 @@
     (is (= (range num) @coll))))
 
 (deftest test-on-closed
-  (let [num 1e2
+  (let [num 1e6
 	cnt (atom 0)]
     (dotimes [i num]
       (let [ch (channel)]
-	(future (close ch))
+	(.start (Thread. #(close ch)))
 	(Thread/sleep (rand-int 10))
 	(on-closed ch #(swap! cnt inc))))
     (Thread/sleep 20)

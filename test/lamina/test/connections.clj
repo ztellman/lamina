@@ -9,13 +9,18 @@
 (ns lamina.test.connections
   (:use
     [clojure test walk]
-    [lamina core connections]
+    [lamina core connections trace]
     [lamina.core.pipeline :only (success-result error-result)])
   (:require
    [clojure.contrib.logging :as log])
   (:import java.util.concurrent.TimeoutException))
 
 ;;;
+
+(def probes
+  {:connection:lost log-info
+   :connection:opened log-info
+   :connection:failed log-info})
 
 (defn simple-echo-server []
   (let [[a b] (channel-pair)]
@@ -32,24 +37,27 @@
     [a #(do (close a) (close b))]))
 
 (defmacro with-server [server-fn & body]
-  `(let [chs# (atom nil)
-	 close-fns# (atom nil)
-	 server# (atom true)
+  `(let [chs# (ref nil)
+	 close-fns# (ref nil)
+	 server# (ref true)
 	 ~'connect (fn []
-		     (if-not @server#
-		       (error-result [nil nil])
-		       (let [[ch# close-fn#] (~server-fn)]
-			 (swap! chs# conj ch#)
-			 (swap! close-fns# conj close-fn#)
-			 (success-result ch#))))
+		     (dosync
+		       (if-not (ensure server#)
+			 (error-result nil)
+			 (let [[ch# close-fn#] (~server-fn)]
+			   (alter chs# conj ch#)
+			   (alter close-fns# conj close-fn#)
+			   (success-result ch#)))))
 	 ~'start-server (fn []
-			  (reset! server# true))
+			  (dosync (ref-set server# true)))
 	 ~'stop-server (fn []
-			 (reset! server# false)
-			 (doseq [f# @close-fns#]
-			   (f#))
-			 (reset! close-fns# nil)
-			 (reset! chs# nil))]
+			 (doseq [f# (dosync
+				      (ref-set server# false)
+				      (let [fns# (ensure close-fns#)]
+					(ref-set close-fns# nil)
+					(ref-set chs# nil)
+					fns#))]
+			   (f#)))]
      ~@body))
 
 ;;;
@@ -117,13 +125,39 @@
       (when-not initially-disconnected
         (stop-server))
       (try
-        (is (thrown? TimeoutException (wait-for-result (f "echo" 100))))
+        (is (thrown? TimeoutException @(f "echo" 100)))
         (start-server)
 	;; big timeout to ensure the persistent connection catches up
-        (is (= "echo2" (wait-for-result (f "echo2" 4000))))
+        (is (= "echo2" @(f "echo2" 4000)))
         (finally
 	  (close-connection f))))))
 
+(defn persistent-connection-stress-test [client-fn]
+  (with-server simple-echo-server
+    (let [continue (atom true)
+	  f (client-fn #(connect) {:probes probes :description "stress-test"})]
+      ; periodically drop
+      (.start
+	(Thread.
+	  #(loop []
+	     (Thread/sleep 100)
+	     (stop-server)
+	     ;;(Thread/sleep 1000)
+	     (start-server)
+	     (when @continue
+	       (recur)))))
+      (try
+        (let [s (range 1e5)]
+	  (is (= s (map
+		     #(let [val (wait-for-result (f %) 5000)]
+			(when (zero? (rem val 1000))
+			  (println val))
+			val)
+		     s))))
+        (finally
+	  (reset! continue false)
+	  (close-connection f))))))
+    
 (deftest test-keeps-on-working-after-a-timed-out-request
   (testing "with the connection initially disconnected"
     (works-after-a-timed-out-request pipelined-client true)

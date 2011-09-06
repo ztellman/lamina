@@ -16,19 +16,18 @@
 
 ;;
 
+(defn- has-completed? [result-ch]
+  (wait-for-message (poll-result result-ch 0)))
+
 (defn- incr-delay [delay]
   (if (zero? delay)
-    500
+    125
     (min 64000 (* 2 delay))))
 
 (defn- wait-for-close
   "Returns a result-channel representing the closing of the channel."
   [ch options]
-  (run-pipeline (closed-result ch)
-    (fn [_]
-      (trace [(:name options) :connection :lost]
-	(select-keys options [:name :description]))
-      true)))
+  (closed-result ch))
 
 (defn- connect-loop
   "Continually reconnects to server. Returns an atom which will always contain a result-channel
@@ -57,7 +56,8 @@
     (run-pipeline nil
       :error-handler (fn [ex]
 		       (swap! delay incr-delay)
-		       (reset! result (result-channel))
+		       (when (has-completed? @result)
+			 (reset! result (result-channel)))
 		       (if @latch
 			 (restart)
 			 (complete nil)))
@@ -110,9 +110,6 @@
 
 ;;;
 
-(defn- has-completed? [result-ch]
-  (wait-for-message (poll-result result-ch 0)))
-
 (defn setup-result-timeout [result timeout]
   (when-not (neg? timeout)
     (receive (poll-result result timeout)
@@ -144,7 +141,7 @@
 	     (do
 	       ;; make request
 	       (run-pipeline nil ;; don't wait anything initially
-		 :error-handler (fn [_]
+		 :error-handler (fn [ex]
 				  (when-not (has-completed? result)
 				    (restart)))
 		   
@@ -153,10 +150,10 @@
 		       
 		     ;; if timeout has already elapsed, exit
 		     (complete nil)
-
 		     
 		     ;; send the request
-		     (run-pipeline (connection)
+		     (run-pipeline
+		       (connection)
 		       (fn [ch]
 			 (if (= ::close ch)
 
@@ -169,7 +166,10 @@
 			     ch))))))
 		 (fn [ch]
 		   (run-pipeline ch
+		     :error-handler (fn [_])
+
 		     read-channel
+
 		     (fn [response]
 		       (if-not (and (nil? response) (drained? ch))
 			 (if (instance? Exception response)
@@ -210,17 +210,15 @@
 	     (do
 	       (close-connection connection)
 	       (success! result true))
-	     (do
-	       ;; setup timeout
-	       (setup-result-timeout result timeout)
-
+	     (when-not (has-completed? result)
 	       ;; send requests
 	       (run-pipeline nil 
                  :error-handler (fn [ex]
-                                  (if-not (has-completed? result)
+				  (if-not (has-completed? result)
 				    (restart)
                                     (complete nil)))
-                 (fn [_] (connection))
+                 (fn [_]
+		   (connection))
 		 (fn [ch]
                    (if (= ::close ch)
 		     (error! result (Exception. "Client has been deactivated."))
@@ -232,7 +230,7 @@
        (receive-in-order responses
 	 (fn [[request result ch]]
 	   (run-pipeline ch
-	     :error-handler (fn [_]
+	     :error-handler (fn [ex]
 			      ;; re-send request
 			      (when-not (has-completed? result)
 				(enqueue requests [request result -1]))
@@ -252,6 +250,7 @@
 	      (this request -1))
 	   ([request timeout]
 	      (let [result (result-channel)]
+		(setup-result-timeout result timeout)
 		(enqueue requests [request result timeout])
 		result)))
 	 options))))
