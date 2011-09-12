@@ -35,7 +35,8 @@
   (withMeta [_ meta] (Channel. consumer queue meta)))
 
 (defn channel
-  "Returns a channel that contains the specified messages."
+  "Returns a channel that c
+ontains the specified messages."
   [& messages]
   (let [source (o/observable)]
     (Channel. source (q/queue source messages) nil)))

@@ -110,11 +110,25 @@
 
 ;;;
 
-(defn setup-result-timeout [result timeout]
+(defn- setup-result-timeout [result timeout]
   (when-not (neg? timeout)
     (receive (poll-result result timeout)
       #(when-not %
 	 (error! result (TimeoutException. (str "Timed out after " timeout "ms.")))))))
+
+(defn- close-current-connection [connection-fn]
+  (let [connection (connection-fn)]
+    (when (has-completed? connection)
+      (let [ch @connection]
+	(when (channel? ch)
+	  (close ch))))))
+
+(defn- setup-connection-timeout [result ch]
+  (run-pipeline result
+    :error-handler
+    (fn [ex]
+      (when (instance? TimeoutException ex)
+	(close ch)))))
 
 (defn client
   ([connection-generator]
@@ -122,10 +136,13 @@
   ([connection-generator options]
      (let [options (merge
 		     {:name (str (gensym "client:"))
-		      :description "unknown"}
+		      :description "unknown"
+		      :reconnect-on-timeout? true}
 		     options)
+	   reconnect-on-timeout? (:reconnect-on-timeout? options)
 	   connection (persistent-connection connection-generator options)
 	   requests (channel)
+	   pause? (atom false)
 	   closed? (atom false)]
 
        (siphon-probes (:name options) (:probes options))
@@ -140,16 +157,27 @@
 	       (success! result true))
 	     (do
 	       ;; make request
-	       (run-pipeline nil ;; don't wait anything initially
+	       (run-pipeline nil
 		 :error-handler (fn [ex]
-				  (when-not (has-completed? result)
-				    (restart)))
+				  (reset! pause? true)
+				  (if-not (has-completed? result)
+				    (restart)
+				    (complete nil)))
+
+		 (fn [_]
+		   (when (compare-and-set! pause? true false)
+		     (run-pipeline nil
+		       (wait-stage 1))))
 		   
 		 (fn [_]
+
 		   (if (has-completed? result)
 		       
 		     ;; if timeout has already elapsed, exit
-		     (complete nil)
+		     (do
+		       (when reconnect-on-timeout?
+			 (close-current-connection connection))
+		       (complete nil))
 		     
 		     ;; send the request
 		     (run-pipeline
@@ -162,11 +190,13 @@
 
 			   ;; send request, and wait for response
 			   (do
+			     (when reconnect-on-timeout?
+			       (setup-connection-timeout result ch))
 			     (enqueue ch request)
 			     ch))))))
 		 (fn [ch]
 		   (run-pipeline ch
-		     :error-handler (fn [_])
+		     :error-handler (fn [_] )
 
 		     read-channel
 
@@ -195,10 +225,13 @@
   ([connection-generator options]
      (let [options (merge
 		     {:name (str (gensym "client:"))
-		      :description "unknown"}
-		     options) 
+		      :description "unknown"
+		      :reconnect-on-timeout? true}
+		     options)
+	   reconnect-on-timeout? (:reconnect-on-timeout? options)
 	   connection (persistent-connection connection-generator options)
 	   requests (channel)
+	   pause? (atom false)
 	   responses (channel)]
 
        (siphon-probes (:name options) (:probes options))
@@ -210,16 +243,28 @@
 	     (do
 	       (close-connection connection)
 	       (success! result true))
-	     (when-not (has-completed? result)
+	     (if (has-completed? result)
+
+	       ;; check if we should reconnect
+	       (when reconnect-on-timeout?
+		 (close-current-connection connection))
+	       
 	       ;; send requests
 	       (run-pipeline nil 
                  :error-handler (fn [ex]
+				  (reset! pause? true)
 				  (if-not (has-completed? result)
 				    (restart)
                                     (complete nil)))
+		 (fn [_]
+		   (when (compare-and-set! pause? true false)
+		     (run-pipeline nil
+		       (wait-stage 1))))
                  (fn [_]
 		   (connection))
 		 (fn [ch]
+		   (when reconnect-on-timeout?
+		     (setup-connection-timeout result ch))
                    (if (= ::close ch)
 		     (error! result (Exception. "Client has been deactivated."))
 		     (when-not (has-completed? result)

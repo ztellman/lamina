@@ -29,6 +29,21 @@
       (fn [_] (do (close a) (close b))))
     [a #(do (close a) (close b))]))
 
+(defn alternating-delay-echo-server []
+  (let [[a b] (channel-pair)]
+    (run-pipeline b
+      :error-handler (fn [_] (close a) (close b))
+      read-channel
+      (wait-stage 100)
+      #(when-not (drained? b)
+	 (enqueue b %))
+      (constantly b)
+      read-channel
+      #(when-not (drained? b)
+	 (enqueue b %))
+      (fn [_] (restart)))
+    [a #(do (close a) (close b))]))
+
 (defn error-server []
   (let [[a b] (channel-pair)]
     (run-pipeline
@@ -118,39 +133,39 @@
   (dropped-connection (fn [& args] (client-pool 1 #(apply client args)))))
 
 (defn works-after-a-timed-out-request [client-fn initially-disconnected]
-  (with-server simple-echo-server
+  (with-server alternating-delay-echo-server
     (when initially-disconnected
       (stop-server))
-    (let [f (client-fn #(connect) {:description "dropped-and-restored"})]
+    (let [f (client-fn #(connect) {:probes (comment probes) :description "dropped-and-restored"})]
       (when-not initially-disconnected
         (stop-server))
       (try
-        (is (thrown? TimeoutException @(f "echo" 100)))
+        (is (thrown? TimeoutException @(f "echo" 10)))
         (start-server)
-	;; big timeout to ensure the persistent connection catches up
-        (is (= "echo2" @(f "echo2" 4000)))
+	(is (thrown? TimeoutException @(f "echo2" 10)))
+        (is (= "echo3" @(f "echo3" 2000)))
         (finally
 	  (close-connection f))))))
 
 (defn persistent-connection-stress-test [client-fn]
   (with-server simple-echo-server
     (let [continue (atom true)
-	  f (client-fn #(connect) {:probes probes :description "stress-test"})]
+	  f (client-fn #(connect) {:probes (comment probes) :description "stress-test"})]
       ; periodically drop
       (.start
 	(Thread.
 	  #(loop []
-	     (Thread/sleep 100)
+	     (Thread/sleep 200)
 	     (stop-server)
-	     ;;(Thread/sleep 1000)
+	     ;;(Thread/sleep 100)
 	     (start-server)
 	     (when @continue
 	       (recur)))))
       (try
-        (let [s (range 1e5)]
+        (let [s (range 1e3)]
 	  (is (= s (map
 		     #(let [val (wait-for-result (f %) 5000)]
-			(when (zero? (rem val 1000))
+			#_(when (zero? (rem val 1000))
 			  (println val))
 			val)
 		     s))))
@@ -164,7 +179,12 @@
     (works-after-a-timed-out-request client true))
   (testing "with the connection disconnected afterwards"
     (works-after-a-timed-out-request pipelined-client false)
-    (works-after-a-timed-out-request client false)))
+    (works-after-a-timed-out-request client false)
+    ))
+
+(deftest test-keeps-working-despite-constant-disconnects
+  (persistent-connection-stress-test client)
+  (persistent-connection-stress-test pipelined-client))
 
 (defn errors-propagate [client-fn]
   (with-server error-server

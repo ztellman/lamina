@@ -162,7 +162,7 @@
     (is (= (range num) @coll))))
 
 (deftest test-on-closed
-  (let [num 1e6
+  (let [num 1e3
 	cnt (atom 0)]
     (dotimes [i num]
       (let [ch (channel)]
