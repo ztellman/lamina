@@ -42,6 +42,7 @@
 	 2000))))
 
 (deftest test-basic-exprs
+  (is (= 3 @(async 1 2 3)))
   (is= 6 (task* (+ 1 (task* (+ 2 3)))))
   (is= 6 (reduce #(task* (+ %1 %2)) [1 2 3]))
   (is= 6 (->> (range 3) (map inc) (reduce +)))

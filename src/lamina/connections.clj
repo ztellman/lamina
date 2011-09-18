@@ -116,13 +116,6 @@
       #(when-not %
 	 (error! result (TimeoutException. (str "Timed out after " timeout "ms.")))))))
 
-(defn- close-current-connection [connection-fn]
-  (let [connection (connection-fn)]
-    (when (has-completed? connection)
-      (let [ch @connection]
-	(when (channel? ch)
-	  (close ch))))))
-
 (defn- setup-connection-timeout [result ch]
   (run-pipeline result
     :error-handler
@@ -174,10 +167,7 @@
 		   (if (has-completed? result)
 		       
 		     ;; if timeout has already elapsed, exit
-		     (do
-		       (when reconnect-on-timeout?
-			 (close-current-connection connection))
-		       (complete nil))
+		     (complete nil)
 		     
 		     ;; send the request
 		     (run-pipeline
@@ -243,12 +233,8 @@
 	     (do
 	       (close-connection connection)
 	       (success! result true))
-	     (if (has-completed? result)
+	     (when-not (has-completed? result)
 
-	       ;; check if we should reconnect
-	       (when reconnect-on-timeout?
-		 (close-current-connection connection))
-	       
 	       ;; send requests
 	       (run-pipeline nil 
                  :error-handler (fn [ex]

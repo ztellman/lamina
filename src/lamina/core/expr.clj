@@ -170,7 +170,8 @@
    'task (fn [x] `(with-thread-pool (current-executor) nil ~@(rest x)))})
 
 (defn async [body]
-  (let [body (->> body
+  (let [body `(do ~@body)
+	body (->> body
 	       (prewalk partial-macroexpand)
 	       (auto-force 'read-channel)
 	       tag-exprs)
@@ -184,5 +185,5 @@
 		   body)))]
     `(run-pipeline nil
        (fn [_#]
-	 ~@body))))
+	 ~body))))
 
