@@ -21,6 +21,8 @@
 
 ;;;
 
+(def instrument-exceptions false)
+
 (def *inside-pipeline?* false)
 
 (def *current-executor* nil)
@@ -256,7 +258,7 @@
   [& opts+stages]
   (let [opts (apply hash-map (get-opts opts+stages))
 	stages (drop (* 2 (count opts)) opts+stages)
-	executor (or (:executor opts) *current-executor*)
+	executor (or (:thread-pool opts) *current-executor*)
 	pipeline {:stages stages
 		  :error-handler (:error-handler opts)
 		  :executor executor}
@@ -264,9 +266,12 @@
 		      (start-pipeline
 			(update-in pipeline [:error-handler]
 			  #(or %
-			     (fn [ex]
-			       (when (instance? Throwable ex)
-				 (log/warn "lamina.core.pipeline" ex)))))
+			     (let [current-stack (when instrument-exceptions (Exception.))]
+			       (fn [ex]
+				 (when current-stack
+				   (.printStackTrace current-stack))
+				 (when (instance? Throwable ex)
+				   (log/warn "lamina.core.pipeline" ex))))))
 			val))]
     (when-not (every? ifn? stages)
       (throw (Exception. "Every stage in a pipeline must be a function.")))

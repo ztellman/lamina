@@ -166,7 +166,7 @@
 	cnt (atom 0)]
     (dotimes [i num]
       (let [ch (channel)]
-	(.start (Thread. #(close ch)))
+	(future (close ch))
 	(Thread/sleep (rand-int 10))
 	(on-closed ch #(swap! cnt inc))))
     (Thread/sleep 20)

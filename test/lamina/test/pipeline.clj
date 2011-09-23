@@ -184,7 +184,7 @@
 
     (wait-for-result
       (run-pipeline nil
-	:executor (thread-pool {:max-thread-count 1})
+	:thread-pool (thread-pool {:max-thread-count 1})
 	(fn [_]
 	  (reset! t1 (Thread/currentThread))
 	  (future (Thread/sleep 100) (enqueue ch 1))
@@ -205,7 +205,7 @@
     (wait-for-result
       (binding [to-be-bound "foo"]
 	(run-pipeline nil
-	  :executor (thread-pool)
+	  :thread-pool (thread-pool)
 	  (fn [_]
 	    (reset! t1 to-be-bound)
 	    (future (Thread/sleep 100) (enqueue ch 1))
