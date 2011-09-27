@@ -13,7 +13,7 @@
     [lamina.core.seq :only (receive-all siphon fork channel-seq)]
     [lamina trace])
   (:require
-    [clojure.contrib.logging :as log])
+    [clojure.tools.logging :as log])
   (:import
     [java.util.concurrent
      ExecutorService

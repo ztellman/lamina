@@ -11,7 +11,7 @@
     [clojure test walk]
     [lamina core executors api])
   (:require
-   [clojure.contrib.logging :as log])
+   [clojure.tools.logging :as log])
   (:import java.util.concurrent.TimeoutException))
 
 (def pool (thread-pool {:max-thread-pool 1}))
