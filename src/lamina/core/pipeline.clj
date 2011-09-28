@@ -200,7 +200,8 @@
 				      result)))))))))
 	   
 	   (empty? fns)
-	   (success! result value)
+	   (when-not (has-result? result)
+	     (success! result value))
 	   
 	   :else
 	   (let [f (first fns)]
@@ -242,8 +243,8 @@
 (defn siphon-result
   "Siphons the result from one result-channel to another."
   [src dst]
-  (on-success src #(success! dst %))
-  (on-error src #(error! dst %))
+  (on-success src #(when-not (has-result? dst) (success! dst %)))
+  (on-error src #(when-not (has-result? dst) (error! dst %)))
   dst)
 
 ;;;
@@ -282,20 +283,20 @@
       (throw (Exception. "Every stage in a pipeline must be a function.")))
     ^{:pipeline pipeline}
     (fn [x]
-      (let [result (if executor
-		     (let [result (result-channel)
-			   bindings (get-thread-bindings)]
-		       (with-executor* executor
-			 (with-bindings bindings
-			   (siphon-result (pipeline-fn x) result)))
-		       result)
-		     (pipeline-fn x))]
+      (let [result (result-channel)]
 	(when-let [timeout (:timeout opts)]
-	  (receive (timed-channel timeout)
-	    (fn [_]
-	      (when-not (has-result? result)
-		(error! result (TimeoutException. (str "Timed out after " timeout "ms")))))))
-	result))))
+	  (when-not (neg? timeout)
+	    (receive (timed-channel timeout)
+	      (fn [_]
+		(when-not (has-result? result)
+		  (error! result (TimeoutException. (str "Timed out after " timeout "ms"))))))))
+	(if executor
+	  (let [bindings (get-thread-bindings)]
+	    (with-executor* executor
+	      (with-bindings bindings
+		(siphon-result (pipeline-fn x) result)))
+	    result)
+	  (siphon-result (pipeline-fn x) result))))))
 
 (defn complete
   "Skips to the end of the inner-most pipeline, causing it to emit 'result'."
