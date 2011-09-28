@@ -8,7 +8,8 @@
 ;;   You must not remove this notice, or any other, from this software.
 
 (ns lamina.test.pipeline
-  (:use [lamina.core])
+  (:use
+    [lamina core executors])
   (:use [clojure.test])
   (:import [java.util.concurrent
 	    TimeoutException
@@ -149,7 +150,7 @@
 	(when-not (closed? ch)
 	  (restart)))))
 
-  (run-pipeline 1e4
+  (run-pipeline 1e5
     #(when (pos? %)
        (restart (dec %))))
 
@@ -157,3 +158,60 @@
   (run-pipeline nil
     :error-handler (fn [_] (restart))
     (fail-times 1e4)))
+
+(deftest test-executor
+
+  (let [t1 (atom nil)
+	t2 (atom nil)
+	ch (channel)]
+
+    (wait-for-result
+      (with-thread-pool (thread-pool {:max-thread-count 1}) nil
+	(run-pipeline nil
+	  (fn [_]
+	    (reset! t1 (Thread/currentThread))
+	    (future (Thread/sleep 100) (enqueue ch 1))
+	    (read-channel ch))
+	  (pipeline
+	    (fn [_]
+	      (reset! t2 (Thread/currentThread))))))
+       500)
+    (is (= @t1 @t2)))
+
+  (let [t1 (atom nil)
+	t2 (atom nil)
+	ch (channel)]
+
+    (wait-for-result
+      (run-pipeline nil
+	:thread-pool (thread-pool {:max-thread-count 1})
+	(fn [_]
+	  (reset! t1 (Thread/currentThread))
+	  (future (Thread/sleep 100) (enqueue ch 1))
+	  (read-channel ch))
+	(pipeline
+	  (fn [_]
+	    (reset! t2 (Thread/currentThread)))))
+      500)
+    (is (= @t1 @t2))))
+
+(declare to-be-bound)
+
+(deftest test-bindings
+  (let [t1 (atom nil)
+	t2 (atom nil)
+	ch (channel)]
+
+    (wait-for-result
+      (binding [to-be-bound "foo"]
+	(run-pipeline nil
+	  :thread-pool (thread-pool)
+	  (fn [_]
+	    (reset! t1 to-be-bound)
+	    (future (Thread/sleep 100) (enqueue ch 1))
+	    (read-channel ch))
+	  (pipeline
+	    (fn [_]
+	      (reset! t2 to-be-bound)))))
+      500)
+    (is (= @t1 @t2))))

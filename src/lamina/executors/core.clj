@@ -26,7 +26,6 @@
 
 ;;;
 
-(def *current-executor* nil)
 (declare default-executor)
 (def ns-executors (atom {}))
 
@@ -44,7 +43,7 @@
 
 (defmacro current-executor []
   `(or
-     lamina.executors.core/*current-executor*
+     lamina.core.pipeline/*current-executor*
      (@lamina.executors.core/ns-executors ~*ns*)
      @lamina.executors.core/default-executor))
 
@@ -117,14 +116,17 @@
 	 (results-probe [_] results-probe)
 	 (errors-probe [_] errors-probe)
 	 (timeouts-probe [_] timeouts-probe)
-	 (execute [_ f]
+	 (execute [this f]
 	   (trace threads-probe
 	     (thread-pool-state pool))
 	   (let [active (.getActiveCount pool)]
 	     (if (= (.getPoolSize pool) active)
 	       (.setCorePoolSize pool (min max-thread-count (inc active)))
 	       (.setCorePoolSize pool (max min-thread-count (inc active)))))
-	   (.execute pool f))))))
+	   (.execute pool
+	     (fn []
+	       (binding [*current-executor* this]
+		 (f)))))))))
 
 (def default-executor (atom (thread-pool {:name "thread-pool:default"})))
 
@@ -208,11 +210,13 @@
 		    ~options)
 	 body-fn# (fn []
 		    (let [start-time# (System/nanoTime)
-			  result# (run-pipeline
-				    (try
-				      ~@body
-				      (catch InterruptedException e#
-					(throw (TimeoutException. (str "Timed out after " (-> (- (System/nanoTime) enqueued-time#) (/ 1e6) int) "ms"))))))]
+			  result# (run-pipeline nil
+				    :error-handler (fn [_#])
+				    (fn [_#]
+				      (try
+					~@body
+					(catch InterruptedException e#
+					  (throw (TimeoutException. (str "Timed out after " (-> (- (System/nanoTime) enqueued-time#) (/ 1e6) int) "ms")))))))]
 		      (run-pipeline result#
 			:error-handler (fn [ex#]
 					 (when pool#
@@ -234,7 +238,10 @@
 			      options#))))
 		      result#))]
      (if-not pool#
-       (body-fn#)
+       (run-pipeline nil
+	 :error-handler (fn [_#])
+	 :timeout (:timeout options#)
+	 (fn [_#] (body-fn#)))
        (let [result# (result-channel)]
 	 (.execute ^Executor pool#
 	   (fn []
@@ -244,11 +251,10 @@
 	       result#
 	       (timeouts-probe pool#)
 	       options#)
-	     (binding [*current-executor* pool#
-		       *thread-pool-options* options#]
+	     (binding [*thread-pool-options* options#]
 	       (siphon-result
 		 (run-pipeline nil
-		   :error-handler (constantly nil)
+		   :error-handler (fn [_#])
 		   (fn [_#]
 		     (body-fn#)))
 		 result#))))

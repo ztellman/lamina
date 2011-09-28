@@ -21,14 +21,25 @@
 
 ;;;
 
-(defmacro with-executor [executor & body]
-  `(if-let [executor# ~executor]
-     (.execute ^Executor executor# (fn [] ~@body))
-     (do ~@body)))
-
-;;;
+(def instrument-exceptions false)
 
 (def *inside-pipeline?* false)
+
+(def *current-executor* nil)
+
+(defmacro with-executor [executor & body]
+  `(let [f# (fn [] ~@body)]
+     (if-let [executor# ~executor]
+       (.execute ^Executor executor# f#)
+       (f#))))
+
+(defmacro with-executor* [executor & body]
+  `(let [f# (fn [] ~@body)]
+     (if-let [executor# ~executor]
+       (if-not (= executor# *current-executor*)
+	 (.execute ^Executor executor# f#)
+	 (f#))
+       (f#))))
 
 ;;;
 
@@ -84,6 +95,11 @@
      (poll-result result-channel -1))
   ([^ResultChannel result-channel timeout]
      (poll {:success (.success result-channel) :error (.error result-channel)} timeout)))
+
+(defn has-result? [^ResultChannel result-channel]
+  (or
+    (not= ::none (dequeue (.error result-channel) ::none))
+    (not= ::none (dequeue (.success result-channel) ::none))))
 
 ;;;
 
@@ -169,23 +185,23 @@
 	       (let [bindings (get-thread-bindings)]
 		 (receive (poll-result value)
 		   (fn [[outcome value]]
-		     (case outcome
-		       :error (with-bindings bindings
-				(when-let [redirect (handle-error pipeline ch result)]
-				  (let [[pipeline value] (process-redirect
-							   redirect
-							   pipeline
-							   initial-value)]
-				    (start-pipeline pipeline value result))))
-		       :success (with-executor (:executor pipeline)
-				  (with-bindings bindings
-				    (start-pipeline
+		     (with-executor (:executor pipeline)
+		       (with-bindings bindings
+			 (case outcome
+			   :error (when-let [redirect (handle-error pipeline ch result)]
+				    (let [[pipeline value] (process-redirect
+							     redirect
+							     pipeline
+							     initial-value)]
+				      (start-pipeline pipeline value result)))
+			   :success (start-pipeline
 				      pipeline fns
 				      value initial-value
 				      result)))))))))
 	   
 	   (empty? fns)
-	   (success! result value)
+	   (when-not (has-result? result)
+	     (success! result value))
 	   
 	   :else
 	   (let [f (first fns)]
@@ -205,6 +221,34 @@
 
 ;;;
 
+(defn wait-for-result
+  "Waits for a result-channel to emit a result.  If it succeeds, returns the result.
+   If there was an error, the exception is re-thrown.
+
+   If the timeout elapses, a java.util.concurrent.TimeoutException is thrown."
+  ([result-channel]
+     (wait-for-result result-channel -1))
+  ([^ResultChannel result-channel timeout]
+     (let [value (promise)]
+       (receive (poll-result result-channel timeout)
+	 #(deliver value %))
+       (let [value @value]
+	 (if (nil? value)
+	   (throw (TimeoutException. "Timed out waiting for result from pipeline."))
+	   (let [[k result] value]
+	     (case k
+	       :error (throw result)
+	       :success result)))))))
+
+(defn siphon-result
+  "Siphons the result from one result-channel to another."
+  [src dst]
+  (on-success src #(when-not (has-result? dst) (success! dst %)))
+  (on-error src #(when-not (has-result? dst) (error! dst %)))
+  dst)
+
+;;;
+
 (defn- get-opts [opts+rest]
   (if (-> opts+rest first keyword?)
     (concat (take 2 opts+rest) (get-opts (drop 2 opts+rest)))
@@ -212,29 +256,47 @@
 
 (defn ^ResultChannel pipeline
   "Returns a function with an arity of one.  Invoking the function will return
-   a pipeline channel.
+   a result channel.
 
    Stages should either be pipelines, or functions with an arity of one.  These functions
-   should either return a pipeline channel, a redirect signal, or a value which will be passed
+   should either return a result channel, a redirect signal, or a value which will be passed
    into the next stage."
   [& opts+stages]
   (let [opts (apply hash-map (get-opts opts+stages))
 	stages (drop (* 2 (count opts)) opts+stages)
+	executor (or (:thread-pool opts) *current-executor*)
 	pipeline {:stages stages
 		  :error-handler (:error-handler opts)
-		  :executor (:executor opts)}]
+		  :executor executor}
+	pipeline-fn (fn [val]
+		      (start-pipeline
+			(update-in pipeline [:error-handler]
+			  #(or %
+			     (let [current-stack (when instrument-exceptions (Exception.))]
+			       (fn [ex]
+				 (when current-stack
+				   (.printStackTrace current-stack))
+				 (when (instance? Throwable ex)
+				   (log/warn "lamina.core.pipeline" ex))))))
+			val))]
     (when-not (every? ifn? stages)
       (throw (Exception. "Every stage in a pipeline must be a function.")))
     ^{:pipeline pipeline}
     (fn [x]
-      (start-pipeline
-	(update-in pipeline [:error-handler]
-	  #(or %
-	     (when-not *inside-pipeline?*
-	       (fn [ex]
-		 (when (instance? Throwable ex)
-		   (log/error "lamina.core.pipeline" ex))))))
-	x))))
+      (let [result (result-channel)]
+	(when-let [timeout (:timeout opts)]
+	  (when-not (neg? timeout)
+	    (receive (timed-channel timeout)
+	      (fn [_]
+		(when-not (has-result? result)
+		  (error! result (TimeoutException. (str "Timed out after " timeout "ms"))))))))
+	(if executor
+	  (let [bindings (get-thread-bindings)]
+	    (with-executor* executor
+	      (with-bindings bindings
+		(siphon-result (pipeline-fn x) result)))
+	    result)
+	  (siphon-result (pipeline-fn x) result))))))
 
 (defn complete
   "Skips to the end of the inner-most pipeline, causing it to emit 'result'."
@@ -310,32 +372,6 @@
     result))
 
 ;;;
-
-(defn wait-for-result
-  "Waits for a result-channel to emit a result.  If it succeeds, returns the result.
-   If there was an error, the exception is re-thrown.
-
-   If the timeout elapses, a java.util.concurrent.TimeoutException is thrown."
-  ([result-channel]
-     (wait-for-result result-channel -1))
-  ([^ResultChannel result-channel timeout]
-     (let [value (promise)]
-       (receive (poll-result result-channel timeout)
-	 #(deliver value %))
-       (let [value @value]
-	 (if (nil? value)
-	   (throw (TimeoutException. "Timed out waiting for result from pipeline."))
-	   (let [[k result] value]
-	     (case k
-	       :error (throw result)
-	       :success result)))))))
-
-(defn siphon-result
-  "Siphons the result from one result-channel to another."
-  [src dst]
-  (on-success src #(success! dst %))
-  (on-error src #(error! dst %))
-  src)
 
 (defmethod print-method ResultChannel [ch writer]
   (.write writer (.toString ch)))

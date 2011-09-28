@@ -68,6 +68,6 @@
 					 :timeout timeout)
 		  (apply f args)))))
 	(merge
-	  {:name (gensym "executor.")}
+	  {:name (str (gensym "executor."))}
 	  options
 	  {:args-transform first})))))

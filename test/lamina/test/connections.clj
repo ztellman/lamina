@@ -9,7 +9,7 @@
 (ns lamina.test.connections
   (:use
     [clojure test walk]
-    [lamina core connections]
+    [lamina core connections trace]
     [lamina.core.pipeline :only (success-result error-result)])
   (:require
    [clojure.contrib.logging :as log])
@@ -17,11 +17,31 @@
 
 ;;;
 
+(def probes
+  {:connection:lost log-info
+   :connection:opened log-info
+   :connection:failed log-info})
+
 (defn simple-echo-server []
   (let [[a b] (channel-pair)]
     (run-pipeline
       (receive-in-order b #(enqueue b %))
       (fn [_] (do (close a) (close b))))
+    [a #(do (close a) (close b))]))
+
+(defn alternating-delay-echo-server []
+  (let [[a b] (channel-pair)]
+    (run-pipeline b
+      :error-handler (fn [_] (close a) (close b))
+      read-channel
+      (wait-stage 100)
+      #(when-not (drained? b)
+	 (enqueue b %))
+      (constantly b)
+      read-channel
+      #(when-not (drained? b)
+	 (enqueue b %))
+      (fn [_] (restart)))
     [a #(do (close a) (close b))]))
 
 (defn error-server []
@@ -32,24 +52,27 @@
     [a #(do (close a) (close b))]))
 
 (defmacro with-server [server-fn & body]
-  `(let [chs# (atom nil)
-	 close-fns# (atom nil)
-	 server# (atom true)
+  `(let [chs# (ref nil)
+	 close-fns# (ref nil)
+	 server# (ref true)
 	 ~'connect (fn []
-		     (if-not @server#
-		       (error-result [nil nil])
-		       (let [[ch# close-fn#] (~server-fn)]
-			 (swap! chs# conj ch#)
-			 (swap! close-fns# conj close-fn#)
-			 (success-result ch#))))
+		     (dosync
+		       (if-not (ensure server#)
+			 (error-result nil)
+			 (let [[ch# close-fn#] (~server-fn)]
+			   (alter chs# conj ch#)
+			   (alter close-fns# conj close-fn#)
+			   (success-result ch#)))))
 	 ~'start-server (fn []
-			  (reset! server# true))
+			  (dosync (ref-set server# true)))
 	 ~'stop-server (fn []
-			 (reset! server# false)
-			 (doseq [f# @close-fns#]
-			   (f#))
-			 (reset! close-fns# nil)
-			 (reset! chs# nil))]
+			 (doseq [f# (dosync
+				      (ref-set server# false)
+				      (let [fns# (ensure close-fns#)]
+					(ref-set close-fns# nil)
+					(ref-set chs# nil)
+					fns#))]
+			   (f#)))]
      ~@body))
 
 ;;;
@@ -83,11 +106,13 @@
 
 (deftest test-simple-response
   (simple-response client)
-  (simple-response pipelined-client))
+  (simple-response pipelined-client)
+  (simple-response (fn [& args] (client-pool 1 #(apply client args)))))
 
 (deftest timeouts-can-be-used
   (simple-response client 1000)
-  (simple-response pipelined-client 1000))
+  (simple-response pipelined-client 1000)
+  (simple-response (fn [& args] (client-pool 1 #(apply client args)))))
  
 (defn dropped-connection [client-fn]
   (with-server simple-echo-server
@@ -104,30 +129,62 @@
 
 (deftest test-dropped-connection
   (dropped-connection client)
-  (dropped-connection pipelined-client))
+  (dropped-connection pipelined-client)
+  (dropped-connection (fn [& args] (client-pool 1 #(apply client args)))))
 
 (defn works-after-a-timed-out-request [client-fn initially-disconnected]
-  (with-server simple-echo-server
+  (with-server alternating-delay-echo-server
     (when initially-disconnected
       (stop-server))
-    (let [f (client-fn #(connect) {:description "dropped-and-restored"})]
+    (let [f (client-fn #(connect) {:probes (comment probes) :description "dropped-and-restored"})]
       (when-not initially-disconnected
         (stop-server))
       (try
-        (is (thrown? TimeoutException (wait-for-result (f "echo" 100))))
+        (is (thrown? TimeoutException @(f "echo" 10)))
         (start-server)
-	;; big timeout to ensure the persistent connection catches up
-        (is (= "echo2" (wait-for-result (f "echo2" 4000))))
+	(is (thrown? TimeoutException @(f "echo2" 10)))
+        (is (= "echo3" @(f "echo3" 2000)))
         (finally
 	  (close-connection f))))))
 
+(defn persistent-connection-stress-test [client-fn]
+  (with-server simple-echo-server
+    (let [continue (atom true)
+	  f (client-fn #(connect) {:probes (comment probes) :description "stress-test"})]
+      ; periodically drop
+      (.start
+	(Thread.
+	  #(loop []
+	     (Thread/sleep 200)
+	     (stop-server)
+	     ;;(Thread/sleep 100)
+	     (start-server)
+	     (when @continue
+	       (recur)))))
+      (try
+        (let [s (range 1e3)]
+	  (is (= s (map
+		     #(let [val (wait-for-result (f %) 5000)]
+			#_(when (zero? (rem val 1000))
+			  (println val))
+			val)
+		     s))))
+        (finally
+	  (reset! continue false)
+	  (close-connection f))))))
+    
 (deftest test-keeps-on-working-after-a-timed-out-request
   (testing "with the connection initially disconnected"
     (works-after-a-timed-out-request pipelined-client true)
     (works-after-a-timed-out-request client true))
   (testing "with the connection disconnected afterwards"
     (works-after-a-timed-out-request pipelined-client false)
-    (works-after-a-timed-out-request client false)))
+    (works-after-a-timed-out-request client false)
+    ))
+
+(deftest test-keeps-working-despite-constant-disconnects
+  (persistent-connection-stress-test client)
+  (persistent-connection-stress-test pipelined-client))
 
 (defn errors-propagate [client-fn]
   (with-server error-server
@@ -138,7 +195,8 @@
 
 (deftest test-error-propagation
   (errors-propagate client)
-  (errors-propagate pipelined-client))
+  (errors-propagate pipelined-client)
+  (errors-propagate (fn [& args] (client-pool 1 #(apply client args)))))
 
 ;;;;
 
@@ -159,7 +217,16 @@
   (with-handler (fn [_ _] (throw exception)) nil
     (enqueue ch 1 2)
     (is (= [exception exception] (channel-seq ch))))
+
+  (with-handler (fn [_ _] (run-pipeline nil :error-handler (fn [_]) (fn [_] (throw exception)))) nil
+    (enqueue ch 1 2)
+    (is (= [exception exception] (channel-seq ch))))
+
   (with-handler (fn [_ _] (throw exception)) {:include-request true}
+    (enqueue ch 1 2)
+    (is (= [{:request 1, :response exception} {:request 2, :response exception}] (channel-seq ch))))
+  
+  (with-handler (fn [_ _] (run-pipeline nil :error-handler (fn [_]) (fn [_] (throw exception)))) {:include-request true}
     (enqueue ch 1 2)
     (is (= [{:request 1, :response exception} {:request 2, :response exception}] (channel-seq ch)))))
 

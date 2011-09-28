@@ -12,7 +12,7 @@
     [lamina.core.expr walk utils tag]
     [lamina.core channel pipeline utils]
     [lamina executors]
-    [lamina.executors.core :only (current-executor *current-executor*)]))
+    [lamina.executors.core :only (current-executor)]))
 
 ;;;
 
@@ -75,7 +75,6 @@
 	 result#)
       `(let [~@(apply concat non-constant-args)]
 	 (run-pipeline []
-	   :executor *current-executor*
 	   ~@(map
 	       (fn [arg]
 		 `(read-merge
@@ -98,7 +97,6 @@
 
 (defn transform-if [[_ predicate true-clause false-clause]]
   `(run-pipeline ~predicate
-     :executor *current-executor*
      (fn [predicate#]
        (if predicate#
 	 ~true-clause
@@ -111,7 +109,6 @@
   (if (= (resolve class-name) clojure.lang.LazySeq)
     (transform-lazy-seq expr)
     `(run-pipeline []
-       :executor *current-executor*
        ~@(map
 	   (fn [arg] `(read-merge (constantly ~arg) conj))
 	   args)
@@ -127,11 +124,9 @@
 (defn transform-finally [transformed-body [_ & finally-exprs]]
   `(run-pipeline nil
      (pipeline
-       :executor *current-executor*
        :error-handler
        (fn [ex#]
 	 (run-pipeline nil
-	   :executor *current-executor*
 	   :error-handler (fn [ex##] (redirect (pipeline (fn [_#] (throw ex##))) nil))
 	   (fn [_#]
 	     ~@finally-exprs)
@@ -175,7 +170,8 @@
    'task (fn [x] `(with-thread-pool (current-executor) nil ~@(rest x)))})
 
 (defn async [body]
-  (let [body (->> body
+  (let [body `(do ~@body)
+	body (->> body
 	       (prewalk partial-macroexpand)
 	       (auto-force 'read-channel)
 	       tag-exprs)
@@ -189,5 +185,5 @@
 		   body)))]
     `(run-pipeline nil
        (fn [_#]
-	 ~@body))))
+	 ~body))))
 

@@ -16,19 +16,18 @@
 
 ;;
 
+(defn- has-completed? [result-ch]
+  (wait-for-message (poll-result result-ch 0)))
+
 (defn- incr-delay [delay]
   (if (zero? delay)
-    500
+    125
     (min 64000 (* 2 delay))))
 
 (defn- wait-for-close
   "Returns a result-channel representing the closing of the channel."
   [ch options]
-  (run-pipeline (closed-result ch)
-    (fn [_]
-      (trace [(:name options) :connection :lost]
-	(select-keys options [:name :description]))
-      true)))
+  (closed-result ch))
 
 (defn- connect-loop
   "Continually reconnects to server. Returns an atom which will always contain a result-channel
@@ -38,6 +37,12 @@
 	result (atom (result-channel))
 	latch (atom true)
 	probe-prefix (:name options)
+	timestamp (ref (System/nanoTime))
+	elapsed #(dosync
+		   (let [last-time (ensure timestamp)
+			 current-time (System/nanoTime)]
+		     (ref-set timestamp current-time)
+		     (/ (- current-time last-time) 1e6)))
 	desc (select-keys options [:name :description])]
     ;; handle signal to close persistent connection
     (receive halt-signal
@@ -51,19 +56,20 @@
     (run-pipeline nil
       :error-handler (fn [ex]
 		       (swap! delay incr-delay)
-		       (reset! result (result-channel))
+		       (when (has-completed? @result)
+			 (reset! result (result-channel)))
 		       (if @latch
 			 (restart)
 			 (complete nil)))
       (do-stage
       	(when (pos? @delay)
-	  (trace [probe-prefix :connection :failed] (merge desc {:delay @delay}))))
+	  (trace [probe-prefix :connection:failed] (merge desc {:event :connect-attempt-failed, :delay @delay}))))
       (wait-stage @delay)
       (fn [_]
-	(trace [probe-prefix :connection :attempted] desc)
+	(trace [probe-prefix :connection:attempting] (assoc desc :event :attempting-connection))
 	(connection-generator))
       (fn [ch]
-	(trace [probe-prefix :connection :opened] desc)
+	(trace [probe-prefix :connection:opened] (assoc desc :event :connection-opened, :elapsed (elapsed)))
 	(run-pipeline
 	  (when-let [new-connection-callback (:connection-callback options)]
 	    (new-connection-callback ch))
@@ -72,6 +78,7 @@
 	    (wait-for-close ch options))))
       ;; wait here for connection to drop
       (fn [_]
+	(trace [probe-prefix :connection:lost] (assoc desc :event :connection-lost, :elapsed (elapsed)))
 	(when @latch
 	  (reset! delay 0)
 	  (reset! result (result-channel))
@@ -103,14 +110,18 @@
 
 ;;;
 
-(defn- has-completed? [result-ch]
-  (wait-for-message (poll-result result-ch 0)))
-
-(defn setup-result-timeout [result timeout]
+(defn- setup-result-timeout [result timeout]
   (when-not (neg? timeout)
     (receive (poll-result result timeout)
       #(when-not %
 	 (error! result (TimeoutException. (str "Timed out after " timeout "ms.")))))))
+
+(defn- setup-connection-timeout [result ch]
+  (run-pipeline result
+    :error-handler
+    (fn [ex]
+      (when (instance? TimeoutException ex)
+	(close ch)))))
 
 (defn client
   ([connection-generator]
@@ -118,10 +129,14 @@
   ([connection-generator options]
      (let [options (merge
 		     {:name (str (gensym "client:"))
-		      :description "unknown"}
+		      :description "unknown"
+		      :reconnect-on-timeout? true}
 		     options)
+	   reconnect-on-timeout? (:reconnect-on-timeout? options)
 	   connection (persistent-connection connection-generator options)
-	   requests (channel)]
+	   requests (channel)
+	   pause? (atom false)
+	   closed? (atom false)]
 
        (siphon-probes (:name options) (:probes options))
        
@@ -134,23 +149,29 @@
 	       (close-connection connection)
 	       (success! result true))
 	     (do
-	       ;; set up timeout
-	       (setup-result-timeout result timeout)
-
 	       ;; make request
-	       (run-pipeline nil ;; don't wait anything initially
-		 :error-handler (fn [_]
-				  (when-not (has-completed? result)
-				    (restart)))
+	       (run-pipeline nil
+		 :error-handler (fn [ex]
+				  (reset! pause? true)
+				  (if-not (has-completed? result)
+				    (restart)
+				    (complete nil)))
+
+		 (fn [_]
+		   (when (compare-and-set! pause? true false)
+		     (run-pipeline nil
+		       (wait-stage 1))))
 		   
 		 (fn [_]
+
 		   (if (has-completed? result)
 		       
 		     ;; if timeout has already elapsed, exit
 		     (complete nil)
-
+		     
 		     ;; send the request
-		     (run-pipeline (connection)
+		     (run-pipeline
+		       (connection)
 		       (fn [ch]
 			 (if (= ::close ch)
 
@@ -159,11 +180,16 @@
 
 			   ;; send request, and wait for response
 			   (do
+			     (when reconnect-on-timeout?
+			       (setup-connection-timeout result ch))
 			     (enqueue ch request)
 			     ch))))))
 		 (fn [ch]
 		   (run-pipeline ch
+		     :error-handler (fn [_] )
+
 		     read-channel
+
 		     (fn [response]
 		       (if-not (and (nil? response) (drained? ch))
 			 (if (instance? Exception response)
@@ -179,6 +205,7 @@
 	   ([request timeout]
 	      (let [result (result-channel)]
 		(enqueue requests [request result timeout])
+		(setup-result-timeout result timeout)
 		result)))
 	 options))))
 
@@ -188,10 +215,13 @@
   ([connection-generator options]
      (let [options (merge
 		     {:name (str (gensym "client:"))
-		      :description "unknown"}
-		     options) 
+		      :description "unknown"
+		      :reconnect-on-timeout? true}
+		     options)
+	   reconnect-on-timeout? (:reconnect-on-timeout? options)
 	   connection (persistent-connection connection-generator options)
 	   requests (channel)
+	   pause? (atom false)
 	   responses (channel)]
 
        (siphon-probes (:name options) (:probes options))
@@ -203,27 +233,35 @@
 	     (do
 	       (close-connection connection)
 	       (success! result true))
-	     (do
-	       ;; setup timeout
-	       (setup-result-timeout result timeout)
+	     (when-not (has-completed? result)
 
 	       ;; send requests
 	       (run-pipeline nil 
-                 :error-handler (fn [_]
-                                  (if-not (has-completed? result)
+                 :error-handler (fn [ex]
+				  (reset! pause? true)
+				  (if-not (has-completed? result)
 				    (restart)
                                     (complete nil)))
-                 (fn [_] (connection))
+		 (fn [_]
+		   (when (compare-and-set! pause? true false)
+		     (run-pipeline nil
+		       (wait-stage 1))))
+                 (fn [_]
+		   (connection))
 		 (fn [ch]
-                   (when-not (has-completed? result)
-                     (enqueue ch request)
-                     (enqueue responses [request result ch]))))))))
+		   (when reconnect-on-timeout?
+		     (setup-connection-timeout result ch))
+                   (if (= ::close ch)
+		     (error! result (Exception. "Client has been deactivated."))
+		     (when-not (has-completed? result)
+		       (enqueue ch request)
+		       (enqueue responses [request result ch])))))))))
 
        ;; handle responses
        (receive-in-order responses
 	 (fn [[request result ch]]
 	   (run-pipeline ch
-	     :error-handler (fn [_]
+	     :error-handler (fn [ex]
 			      ;; re-send request
 			      (when-not (has-completed? result)
 				(enqueue requests [request result -1]))
@@ -243,6 +281,7 @@
 	      (this request -1))
 	   ([request timeout]
 	      (let [result (result-channel)]
+		(setup-result-timeout result timeout)
 		(enqueue requests [request result timeout])
 		result)))
 	 options))))
@@ -251,7 +290,7 @@
 (defn client-pool
   "Returns a client function that distributes requests across n-many clients."
   [n client-generator]
-  (let [clients (take num (repeatedly client-generator))
+  (let [clients (take n (repeatedly client-generator))
 	counter (atom 0)]
     (fn this
       ([request]
@@ -267,9 +306,14 @@
 
 (defn- wrap-constant-response [f channel-generator options]
   (fn [x]
-    (let [ch (channel-generator)]
-      (f ch x)
-      (read-channel ch))))
+    (let [result (result-channel)
+	  ch (channel-generator)]
+      (run-pipeline nil
+	:error-handler #(error! result %)
+	(fn [_] (f ch x)))
+      (siphon-result
+	(read-channel ch)
+	result))))
 
 (defn server
   ([ch handler]
@@ -324,14 +368,12 @@
 			   t
 			   (thread-pool t)))
 	   include-request? (:include-request options)
-	   response-channel-generator (or (:response-channel options) constant-channel)
 	   requests (channel)
 	   responses (channel)
 	   handler (executor thread-pool
-		     (fn [req]
-		       (let [ch (response-channel-generator)]
-			 (handler ch req)
-			 (read-channel ch)))
+		     (wrap-constant-response handler
+		       (or (:response-channel options) constant-channel)
+		       options)
 		     options)]
 
        (siphon-probes (:name options) (:probes options))
