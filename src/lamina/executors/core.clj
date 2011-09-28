@@ -240,6 +240,7 @@
      (if-not pool#
        (run-pipeline nil
 	 :error-handler (fn [_#])
+	 :timeout (:timeout options#)
 	 (fn [_#] (body-fn#)))
        (let [result# (result-channel)]
 	 (.execute ^Executor pool#

@@ -96,6 +96,11 @@
   ([^ResultChannel result-channel timeout]
      (poll {:success (.success result-channel) :error (.error result-channel)} timeout)))
 
+(defn has-result? [^ResultChannel result-channel]
+  (or
+    (not= ::none (dequeue (.error result-channel) ::none))
+    (not= ::none (dequeue (.success result-channel) ::none))))
+
 ;;;
 
 (defrecord Redirect [pipeline value])
@@ -277,14 +282,20 @@
       (throw (Exception. "Every stage in a pipeline must be a function.")))
     ^{:pipeline pipeline}
     (fn [x]
-      (if executor
-	(let [result (result-channel)
-	      bindings (get-thread-bindings)]
-	  (with-executor* executor
-	    (with-bindings bindings
-	      (siphon-result (pipeline-fn x) result)))
-	  result)
-	(pipeline-fn x)))))
+      (let [result (if executor
+		     (let [result (result-channel)
+			   bindings (get-thread-bindings)]
+		       (with-executor* executor
+			 (with-bindings bindings
+			   (siphon-result (pipeline-fn x) result)))
+		       result)
+		     (pipeline-fn x))]
+	(when-let [timeout (:timeout opts)]
+	  (receive (timed-channel timeout)
+	    (fn [_]
+	      (when-not (has-result? result)
+		(error! result (TimeoutException. (str "Timed out after " timeout "ms")))))))
+	result))))
 
 (defn complete
   "Skips to the end of the inner-most pipeline, causing it to emit 'result'."
