@@ -88,14 +88,12 @@
 (declare check-for-drained)
 
 (defmacro update-and-send [q & body]
-  `(if (drained? ~q)
-     false
-     (do
-       (send-to-callbacks ~q
-	 (dosync
-	   ~@body
-	   (gather-callbacks (ensure (.q ~q)) ~q true)))
-       true)))
+  `(do
+     (send-to-callbacks ~q
+       (dosync
+	 ~@body
+	 (gather-callbacks (ensure (.q ~q)) ~q true)))
+     true))
 
 (deftype EventQueue
   [source distributor q

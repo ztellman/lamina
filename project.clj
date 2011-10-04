@@ -1,4 +1,4 @@
-(defproject lamina "0.4.0-beta3-SNAPSHOT"
+(defproject lamina "0.4.0-beta2-SNAPSHOT"
   :description "event-driven data structures for clojure"
   :dependencies [[org.clojure/clojure "1.2.0"]
                  [org.clojure/clojure-contrib "1.2.0"]

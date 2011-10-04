@@ -36,14 +36,7 @@
       (o/message o [1 2 3 4])
       (receive q (f))
       (receive q (f) (f))
-      (receive q (f) (f) (f))))
-
-  (let [o (o/observable)
-	q (queue o)]
-
-    (is (= true (receive q (fn [_]))))
-    (o/close o)
-    (is (= false (receive q (fn [_]))))))
+      (receive q (f) (f) (f)))))
 
 (deftest test-listen
   (let [f (fn [id cnt]
