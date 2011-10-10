@@ -124,6 +124,9 @@
 	(close ch)))))
 
 (defn client
+  "Given a function that returns a bi-directional channel, returns a function that
+   accepts (f request timeout?) and returns a result-channel representing the eventual
+   response."
   ([connection-generator]
      (client connection-generator nil))
   ([connection-generator options]
@@ -210,6 +213,12 @@
 	 options))))
 
 (defn pipelined-client
+  "Given a function that returns a bi-directional channel, returns a function that
+   accepts (f request timeout?) and returns a result-channel representing the eventual
+   response.
+
+   Requests are sent immediately, under the assumption that responses will be sent in the same
+   order.  This is not true of all servers/protocols."
   ([connection-generator]
      (pipelined-client connection-generator nil))
   ([connection-generator options]
@@ -315,10 +324,15 @@
 	(read-channel ch)
 	result))))
 
-(defn server
-  ([ch handler]
-     (server ch handler {}))
-  ([ch handler options]
+(defn server-generator
+  "Given a handler function, returns a function that takes a bi-directional channel
+   and consumes requests one at a time, passing them to the handler function with
+   a response channel.  Requests will be handled one at a time.
+
+   The handler function should accept two parameters, with the pattern (handler ch request)."
+  ([handler]
+     (server-generator handler {}))
+  ([handler options]
      (let [options (merge
 		     {:name (str (gensym "server:"))}
 		     options)
@@ -335,31 +349,48 @@
 
        (siphon-probes (:name options) (:probes options))
 
-       (run-pipeline ch
-	 read-channel
-	 (fn [request]
-	   (when-not (and (nil? request) (drained? ch))
-	     (run-pipeline request
-	       	 :error-handler #(complete
-				   (enqueue ch
-				     (if include-request?
-				       {:request request, :response %}
-				       %)))
-	       #(handler [%])
-	       #(enqueue ch
-		  (if include-request?
-		    {:request request, :response %}
-		    %)))))
-	 (fn [_]
-	   (if-not (drained? ch)
-	     (restart)
-	     (close ch)))))
-     nil))
+       (fn [ch]
+         (run-pipeline ch
+           read-channel
+           (fn [request]
+             (when-not (and (nil? request) (drained? ch))
+               (run-pipeline request
+                 :error-handler #(complete
+                                   (enqueue ch
+                                     (if include-request?
+                                       {:request request, :response %}
+                                       %)))
+                 #(handler [%])
+                 #(enqueue ch
+                    (if include-request?
+                      {:request request, :response %}
+                      %)))))
+           (fn [_]
+             (if-not (drained? ch)
+               (restart)
+               (close ch))))))))
 
-(defn pipelined-server
+(defn server
+  "Given a handler function and a bi-directional channel, consumes requests one at a time,
+   passing them to the handler function a response channel.  Requests will be handled one
+   at a time.
+
+   The handler function should accept two parameters, with the pattern (handler ch request)."
   ([ch handler]
-     (pipelined-server ch handler {}))
+     (server ch handler {}))
   ([ch handler options]
+     ((server-generator handler options) ch)))
+
+(defn pipelined-server-generator
+  "Given a handler function, returns a function that takes a bi-directional channel
+   and consumes requests one at a time, passing them to the handler function with
+   a response channel.  Requests will be handled in parallel, but responses will be
+   sent in-order.
+
+   The handler function should accept two parameters, with the pattern (handler ch request)."
+  ([handler]
+     (pipelined-server-generator handler {}))
+  ([handler options]
      (let [options (merge
 		     {:name (str (gensym "server:"))}
 		     options)
@@ -378,28 +409,39 @@
 
        (siphon-probes (:name options) (:probes options))
        
-       (run-pipeline responses
-	 read-channel
-	 #(enqueue ch %)
-	 (fn [_] (restart)))
-       (run-pipeline ch
-	 read-channel
-	 (fn [request]
-	   (when-not (and (nil? request) (drained? ch))
-	     (run-pipeline request
-	       :error-handler #(complete
-				 (enqueue responses
-				   (if include-request?
-				     {:request request, :response %}
-				     %)))
-	       #(handler [%])
-	       (fn [c]
-		 (if include-request?
-		   {:request request, :response c}
-		   c))
-	       #(enqueue responses %))))
-	 (fn [_]
-	   (if-not (drained? ch)
-	     (restart)
-	     (close ch)))))
-     nil))
+       (fn [ch]
+         (run-pipeline responses
+           read-channel
+           #(enqueue ch %)
+           (fn [_] (restart)))
+         (run-pipeline ch
+           read-channel
+           (fn [request]
+             (when-not (and (nil? request) (drained? ch))
+               (run-pipeline request
+                 :error-handler #(complete
+                                   (enqueue responses
+                                     (if include-request?
+                                       {:request request, :response %}
+                                       %)))
+                 #(handler [%])
+                 (fn [c]
+                   (if include-request?
+                     {:request request, :response c}
+                     c))
+                 #(enqueue responses %))))
+           (fn [_]
+             (if-not (drained? ch)
+               (restart)
+               (close ch))))))))
+
+(defn pipelined-server
+  "Given a handler function and a bi-directional channel, consumes requests one at a time,
+   passing them to the handler function a response channel.  Requests will be handled in
+   parallel, but responses will be sent in-order.
+
+   The handler function should accept two parameters, with the pattern (handler ch request)."
+  ([ch handler]
+     (pipelined-server ch handler {}))
+  ([ch handler options]
+     ((pipelined-server-generator handler options) ch)))
