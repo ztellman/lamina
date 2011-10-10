@@ -48,9 +48,21 @@ namespace.
   <div style="margin-left: 1em;" class="toc-section">
     <a href="#toc0">Overview</a>
     <div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.connections/client">client</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.connections/client-pool">client-pool</a>
     </div><div style="margin-left: 1em;" class="toc-entry">
       <a href="#lamina.connections/close-connection">close-connection</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.connections/pipelined-client">pipelined-client</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.connections/pipelined-server">pipelined-server</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.connections/pipelined-server-generator">pipelined-server-generator</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.connections/server">server</a>
+    </div><div style="margin-left: 1em;" class="toc-entry">
+      <a href="#lamina.connections/server-generator">server-generator</a>
     </div>
     <br />
   </div>
@@ -70,6 +82,18 @@ by <span id="author">Zachary Tellman</span><br />
 <div id="var-entry">
   <br />
   <hr />
+  <h2 id="lamina.connections/client">client</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (client connection-generator)
+       (client connection-generator options)
+</pre>
+  <pre id="var-docstr">Given a function that returns a bi-directional channel, returns a function that
+accepts (f request timeout?) and returns a result-channel representing the eventual
+response.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
   <h2 id="lamina.connections/client-pool">client-pool</h2>
   <span id="var-type">function</span><br />
   <pre id="var-usage">Usage: (client-pool n client-generator)
@@ -84,6 +108,78 @@ by <span id="author">Zachary Tellman</span><br />
   <pre id="var-usage">Usage: (close-connection f)
 </pre>
   <pre id="var-docstr">Takes a client function, and closes the connection.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.connections/pipelined-client">pipelined-client</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (pipelined-client connection-generator)
+       (pipelined-client connection-generator options)
+</pre>
+  <pre id="var-docstr">Given a function that returns a bi-directional channel, returns a function that
+accepts (f request timeout?) and returns a result-channel representing the eventual
+response.
+
+Requests are sent immediately, under the assumption that responses will be sent in the same
+order.  This is not true of all servers/protocols.</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.connections/pipelined-server">pipelined-server</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (pipelined-server ch handler)
+       (pipelined-server ch handler options)
+</pre>
+  <pre id="var-docstr">Given a handler function and a bi-directional channel, consumes requests one at a time,
+passing them to the handler function a response channel.  Requests will be handled in
+parallel, but responses will be sent in-order.
+
+The handler function should accept two parameters, with the pattern (handler ch request).</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.connections/pipelined-server-generator">pipelined-server-generator</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (pipelined-server-generator handler)
+       (pipelined-server-generator handler options)
+</pre>
+  <pre id="var-docstr">Given a handler function, returns a function that takes a bi-directional channel
+and consumes requests one at a time, passing them to the handler function with
+a response channel.  Requests will be handled in parallel, but responses will be
+sent in-order.
+
+The handler function should accept two parameters, with the pattern (handler ch request).</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.connections/server">server</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (server ch handler)
+       (server ch handler options)
+</pre>
+  <pre id="var-docstr">Given a handler function and a bi-directional channel, consumes requests one at a time,
+passing them to the handler function a response channel.  Requests will be handled one
+at a time.
+
+The handler function should accept two parameters, with the pattern (handler ch request).</pre>
+  
+</div><div id="var-entry">
+  <br />
+  <hr />
+  <h2 id="lamina.connections/server-generator">server-generator</h2>
+  <span id="var-type">function</span><br />
+  <pre id="var-usage">Usage: (server-generator handler)
+       (server-generator handler options)
+</pre>
+  <pre id="var-docstr">Given a handler function, returns a function that takes a bi-directional channel
+and consumes requests one at a time, passing them to the handler function with
+a response channel.  Requests will be handled one at a time.
+
+The handler function should accept two parameters, with the pattern (handler ch request).</pre>
   
 </div>
 
