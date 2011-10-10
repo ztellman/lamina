@@ -399,8 +399,6 @@
 			   t
 			   (thread-pool t)))
 	   include-request? (:include-request options)
-	   requests (channel)
-	   responses (channel)
 	   handler (executor thread-pool
 		     (wrap-constant-response handler
 		       (or (:response-channel options) constant-channel)
@@ -410,30 +408,35 @@
        (siphon-probes (:name options) (:probes options))
        
        (fn [ch]
-         (run-pipeline responses
-           read-channel
-           #(enqueue ch %)
-           (fn [_] (restart)))
-         (run-pipeline ch
-           read-channel
-           (fn [request]
-             (when-not (and (nil? request) (drained? ch))
-               (run-pipeline request
-                 :error-handler #(complete
-                                   (enqueue responses
-                                     (if include-request?
-                                       {:request request, :response %}
-                                       %)))
-                 #(handler [%])
-                 (fn [c]
-                   (if include-request?
-                     {:request request, :response c}
-                     c))
-                 #(enqueue responses %))))
-           (fn [_]
-             (if-not (drained? ch)
-               (restart)
-               (close ch))))))))
+
+         (let [requests (channel)
+               responses (channel)]
+
+           (run-pipeline responses
+             read-channel
+             #(enqueue ch %)
+             (fn [_] (restart)))
+         
+           (run-pipeline ch
+             read-channel
+             (fn [request]
+               (when-not (and (nil? request) (drained? ch))
+                 (run-pipeline request
+                   :error-handler #(complete
+                                     (enqueue responses
+                                       (if include-request?
+                                         {:request request, :response %}
+                                         %)))
+                   #(handler [%])
+                   (fn [c]
+                     (if include-request?
+                       {:request request, :response c}
+                       c))
+                   #(enqueue responses %))))
+             (fn [_]
+               (if-not (drained? ch)
+                 (restart)
+                 (close ch)))))))))
 
 (defn pipelined-server
   "Given a handler function and a bi-directional channel, consumes requests one at a time,
