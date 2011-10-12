@@ -133,29 +133,28 @@
 (defn thread-pool? [x]
   (instance? Executor x))
 
-(defn thread-timeout [start args result probe options]
-  (when-let [timeout (:timeout options)]
-    (when-not (neg? timeout)
-      (let [thread (Thread/currentThread)
-	    begin (System/nanoTime)
-	    remaining-timeout (max 0 (- timeout (int (/ (- begin start) 1e6))))]
-	(receive (poll-result result remaining-timeout)
-	  (fn [x#]
-	    (when-not x#
-	      (let [start (/ (double start) 1e6)
-		    end (/ (double (System/nanoTime)) 1e6)]
-		(when-let [timeout-handler (:timeout-handler options)]
-		  (timeout-handler {:result-channel result, :thread thread, :timeout timeout}))
-		(trace probe
-		  {:start-time start
-		   :end-time end
-		   :args args
-		   :timeout timeout
-		   :duration (- end start)})
-		(error! result (TimeoutException. (str "Timed out after " (int (- end start)) "ms")))
-		(when-let [timeout-callback (:timeout-callback options)]
-		  (timeout-callback thread))
-		(.interrupt ^Thread thread)))))))))
+(defn thread-timeout [start args result probe timeout options]
+  (when-not (neg? timeout)
+    (let [thread (Thread/currentThread)
+          begin (System/nanoTime)
+          remaining-timeout (max 0 (- timeout (int (/ (- begin start) 1e6))))]
+      (receive (poll-result result remaining-timeout)
+        (fn [x#]
+          (when-not x#
+            (let [start (/ (double start) 1e6)
+                  end (/ (double (System/nanoTime)) 1e6)]
+              (when-let [timeout-handler (:timeout-handler options)]
+                (timeout-handler {:result-channel result, :thread thread, :timeout timeout}))
+              (trace probe
+                {:start-time start
+                 :end-time end
+                 :args args
+                 :timeout timeout
+                 :duration (- end start)})
+              (error! result (TimeoutException. (str "Timed out after " (int (- end start)) "ms")))
+              (when-let [timeout-callback (:timeout-callback options)]
+                (timeout-callback thread))
+              (.interrupt ^Thread thread))))))))
 
 (defn thread-pool-result
   [enqueued start args result probe options]
@@ -210,52 +209,56 @@
 		    ~options)
 	 body-fn# (fn []
 		    (let [start-time# (System/nanoTime)
-			  result# (run-pipeline nil
-				    :error-handler (fn [_#])
-				    (fn [_#]
-				      (try
-					~@body
-					(catch InterruptedException e#
-					  (throw (TimeoutException. (str "Timed out after " (-> (- (System/nanoTime) enqueued-time#) (/ 1e6) int) "ms")))))))]
-		      (run-pipeline result#
-			:error-handler (fn [ex#]
-					 (when pool#
-					   (thread-pool-error
-					     enqueued-time#
-					     start-time#
-					     (:args options#)
-					     ex#
-					     (errors-probe pool#)
-					     options#)))
-			(fn [r#]
-			  (when pool#
-			    (thread-pool-result
-			      enqueued-time#
-			      start-time#
-			      (:args options#)
-			      r#
-			      (results-probe pool#)
-			      options#))))
+			  initial-result# (try
+                                            ~@body
+                                            (catch InterruptedException e#
+                                              (error-result (TimeoutException. (str "Timed out after " (-> (- (System/nanoTime) enqueued-time#) (/ 1e6) int) "ms")))))
+                          result# (if-not (result-channel? initial-result#)
+                                    (success-result initial-result#)
+                                    initial-result#)]
+                      (when pool#
+                        (receive (poll-result result#)
+                          (fn [[outcome# r#]]
+                            (case outcome#
+                              :success (thread-pool-result
+                                         enqueued-time#
+                                         start-time#
+                                         (:args options#)
+                                         r#
+                                         (results-probe pool#)
+                                         options#)
+                              :error (thread-pool-error
+                                       enqueued-time#
+                                       start-time#
+                                       (:args options#)
+                                       r#
+                                       (errors-probe pool#)
+                                       options#)))))
 		      result#))]
-     (if-not pool#
-       (run-pipeline nil
-	 :error-handler (fn [_#])
-	 :timeout (:timeout options#)
-	 (fn [_#] (body-fn#)))
-       (let [result# (result-channel)]
-	 (.execute ^Executor pool#
-	   (fn []
-	     (lamina.executors.core/thread-timeout
-	       enqueued-time#
-	       (:args options#)
-	       result#
-	       (timeouts-probe pool#)
-	       options#)
-	     (binding [*thread-pool-options* options#]
-	       (siphon-result
-		 (run-pipeline nil
-		   :error-handler (fn [_#])
-		   (fn [_#]
-		     (body-fn#)))
-		 result#))))
-	 result#))))
+     (let [timeout# (:timeout options#)]
+       (if-not pool#
+         (if timeout#
+           (run-pipeline nil
+             :error-handler (fn [_#])
+             :timeout timeout#
+             (fn [_#] (body-fn#)))
+           (body-fn#))
+        (let [result# (result-channel)]
+          (.execute ^Executor pool#
+            (fn []
+              (when timeout#
+                (lamina.executors.core/thread-timeout
+                  enqueued-time#
+                  (:args options#)
+                  result#
+                  (timeouts-probe pool#)
+                  timeout#
+                 options#))
+              (binding [*thread-pool-options* options#]
+                (siphon-result
+                  (run-pipeline nil
+                    :error-handler (fn [_#])
+                    (fn [_#]
+                      (body-fn#)))
+                  result#))))
+          result#)))))
