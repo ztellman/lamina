@@ -6,6 +6,7 @@
                  [org.clojure/tools.logging "0.1.2"]
                  [potemkin "0.1.0"]]
   ;;:jvm-opts ["-agentlib:jdwp=transport=dt_socket,address=8030,server=y,suspend=n"]	
+  :repositories {"sonatype-oss-public" "https://oss.sonatype.org/content/groups/public/"}
   :license {:name "Eclipse Public License - v 1.0"
             :url "http://www.eclipse.org/legal/epl-v10.html"
             :distribution :repo})
