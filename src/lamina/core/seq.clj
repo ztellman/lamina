@@ -10,7 +10,7 @@
   lamina.core.seq
   (:use
     [lamina.core channel pipeline utils]
-    [clojure.contrib.generic.functor])
+    [clojure.algo.generic.functor])
   (:require
     [lamina.core.observable :as o]
     [lamina.core.queue :as q])

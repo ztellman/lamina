@@ -2,6 +2,7 @@
   :description "event-driven data structures for clojure"
   :dependencies [[org.clojure/clojure "1.2.0"]
                  [org.clojure/clojure-contrib "1.2.0"]
+                 [org.clojure/algo.generic "0.1.0-SNAPSHOT"]
                  [org.clojure/core.incubator "0.1.0"]
                  [org.clojure/tools.logging "0.1.2"]
                  [potemkin "0.1.0"]]
