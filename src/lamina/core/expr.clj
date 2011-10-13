@@ -16,7 +16,7 @@
 
 ;;;
 
-(def *debug* false)
+(def ^{:dynamic true} *debug* false)
 
 (defmacro debug-print [& args]
   (when *debug*

@@ -30,7 +30,7 @@
       (catch Exception e
 	(.printStackTrace e)))))
 
-(declare callback)
+(declare ^{:dynamic true} callback)
 
 (defmacro output-of [f & body]
   `(let [coll# (atom [])]
