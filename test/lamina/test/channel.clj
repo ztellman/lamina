@@ -14,7 +14,7 @@
     [clojure.test]
     [clojure.core.incubator]
     [clojure.walk]
-    [clojure.contrib.combinatorics]))
+    [clojure.math.combinatorics]))
 
 ;;
 
