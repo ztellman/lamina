@@ -14,7 +14,7 @@
     [clojure.string :as str]
     [lamina.core.queue :as q]
     [lamina.core.observable :as o]
-    [clojure.contrib.logging :as log]))
+    [clojure.tools.logging :as log]))
 
 ;;;
 
