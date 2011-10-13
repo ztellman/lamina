@@ -9,7 +9,7 @@
 (ns ^{:skip-wiki true}
   lamina.core.pipeline
   (:use
-    [clojure.contrib.def :only (defmacro- defvar)]
+    [clojure.core.incubator :only (defmacro-)]
     [lamina.core.channel]
     [clojure.pprint])
   (:require

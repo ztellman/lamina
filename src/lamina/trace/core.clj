@@ -9,7 +9,7 @@
 (ns lamina.trace.core
   (:use
     [lamina.core channel seq]
-    [clojure.contrib.core :only (dissoc-in)])
+    [clojure.core.incubator :only (dissoc-in)])
   (:require
     [clojure.string :as str]
     [lamina.core.queue :as q]

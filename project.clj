@@ -2,6 +2,7 @@
   :description "event-driven data structures for clojure"
   :dependencies [[org.clojure/clojure "1.2.0"]
                  [org.clojure/clojure-contrib "1.2.0"]
+                 [org.clojure/core.incubator "0.1.0"]
                  [org.clojure/tools.logging "0.1.2"]
                  [potemkin "0.1.0"]]
   ;;:jvm-opts ["-agentlib:jdwp=transport=dt_socket,address=8030,server=y,suspend=n"]	
