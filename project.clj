@@ -1,6 +1,6 @@
 (defproject lamina "0.4.0-beta3-SNAPSHOT"
   :description "event-driven data structures for clojure"
-  :dependencies [[org.clojure/clojure "1.2.0"]
+  :dependencies [[org.clojure/clojure "1.3.0"]
                  [org.clojure/algo.generic "0.1.0-SNAPSHOT"]
                  [org.clojure/core.incubator "0.1.0"]
                  [org.clojure/math.combinatorics "0.0.2-SNAPSHOT"]
