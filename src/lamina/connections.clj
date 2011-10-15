@@ -48,7 +48,7 @@
     (receive halt-signal
       (fn [_]
 	(let [connection @result]
-	  (reset! result ::close)
+          (reset! result (success-result ::close))
 	  (reset! latch false)
 	  (run-pipeline connection close))))
 
