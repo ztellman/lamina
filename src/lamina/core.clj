@@ -71,6 +71,11 @@
 	   (if (coll? dsts#) dsts# [dsts#])))
        ~ch-sym)))
 
+(defn sink [& callbacks]
+  (let [ch (channel)]
+    (apply receive-all ch callbacks)
+    ch))
+
 (import-fn #'seq/fork)
 (import-fn #'seq/map*)
 (import-fn #'seq/filter*)

@@ -56,8 +56,8 @@
     (run-pipeline nil
       :error-handler (fn [ex]
 		       (swap! delay incr-delay)
-		       (when (has-completed? @result)
-			 (reset! result (result-channel)))
+		       (when (and (result-channel? @result) (has-completed? @result))
+                         (reset! result (result-channel)))
 		       (if @latch
 			 (restart)
 			 (complete nil)))

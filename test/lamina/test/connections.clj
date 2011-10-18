@@ -155,9 +155,9 @@
       (.start
 	(Thread.
 	  #(loop []
-	     (Thread/sleep 200)
+	     (Thread/sleep 1000)
 	     (stop-server)
-	     ;;(Thread/sleep 100)
+	     (Thread/sleep 100)
 	     (start-server)
 	     (when @continue
 	       (recur)))))
@@ -165,7 +165,7 @@
         (let [s (range 1e3)]
 	  (is (= s (map
 		     #(let [val (wait-for-result (f %) 5000)]
-			#_(when (zero? (rem val 1000))
+			(when (zero? (rem val 1000))
 			  (println val))
 			val)
 		     s))))

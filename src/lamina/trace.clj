@@ -11,6 +11,7 @@
     [lamina.core channel seq pipeline]
     potemkin)
   (:require
+    [clojure.contrib.logging :as log]
     [lamina.trace.core :as trace]))
 
 ;;;
@@ -78,13 +79,14 @@
 			 transform-fn
 			 identity)]
     (fn [args start ex]
-      (trace probe
-	(let [end (System/nanoTime)]
-	  {:args (args-transform args)
-	   :exception ex
-	   :start-time (/ start 1e6)
-	   :end-time (/ end 1e6)
-	   :duration (/ (- end start) 1e6)})))))
+      (when-not (trace probe
+                  (let [end (System/nanoTime)]
+                    {:args (args-transform args)
+                     :exception ex
+                     :start-time (/ start 1e6)
+                     :end-time (/ end 1e6)
+                     :duration (/ (- end start) 1e6)}))
+        (log/error ex)))))
 
 (defn trace-wrap [f options]
   (when-not (:name options)
