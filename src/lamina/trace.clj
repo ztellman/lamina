@@ -86,7 +86,7 @@
                      :start-time (/ start 1e6)
                      :end-time (/ end 1e6)
                      :duration (/ (- end start) 1e6)}))
-        (log/error ex)))))
+        (log/error nil ex)))))
 
 (defn trace-wrap [f options]
   (when-not (:name options)
