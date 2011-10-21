@@ -11,7 +11,7 @@
   (:use
     [clojure.walk])
   (:require
-    [clojure.contrib.logging :as log])
+    [clojure.tools.logging :as log])
   (:import
     [java.util.concurrent
      ScheduledThreadPoolExecutor
