@@ -29,7 +29,7 @@
 
 (defn logger [level]
   #(if (instance? Throwable %)
-     (log/log level nil %)
+     (log/log level %)
      (log/log level (str %))))
 
 (defmacro def-log-channel [channel-name level]

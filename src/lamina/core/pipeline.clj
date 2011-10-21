@@ -277,7 +277,7 @@
 				 (when current-stack
 				   (.printStackTrace current-stack))
 				 (when (instance? Throwable ex)
-				   (log/warn "lamina.core.pipeline" ex))))))
+				   (log/warn ex))))))
 			val))]
     (when-not (every? ifn? stages)
       (throw (Exception. "Every stage in a pipeline must be a function.")))

@@ -165,7 +165,7 @@
         (let [s (range 1e3)]
 	  (is (= s (map
 		     #(let [val (wait-for-result (f %) 5000)]
-			(when (zero? (rem val 1000))
+			#_(when (zero? (rem val 1000))
 			  (println val))
 			val)
 		     s))))
