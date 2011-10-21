@@ -14,9 +14,9 @@
 
 (declare walk-exprs)
 
-(def *recur-point* nil)
-(def *final-walk* false)
-(def *special-walk-handlers* {})
+(def ^{:dynamic true} *recur-point* nil)
+(def ^{:dynamic true} *final-walk* false)
+(def ^{:dynamic true} *special-walk-handlers* {})
 
 (defn walk-bindings [f bindings]
   (vec

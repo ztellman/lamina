@@ -9,18 +9,18 @@
 (ns lamina.trace.core
   (:use
     [lamina.core channel seq]
-    [clojure.contrib.core :only (dissoc-in)])
+    [clojure.core.incubator :only (dissoc-in)])
   (:require
     [clojure.string :as str]
     [lamina.core.queue :as q]
     [lamina.core.observable :as o]
-    [clojure.contrib.logging :as log]))
+    [clojure.tools.logging :as log]))
 
 ;;;
 
 (def probe-channels (ref {}))
 (def probe-switches (atom {}))
-(def *probe-prefix* nil)
+(def ^{:dynamic true} *probe-prefix* nil)
 
 (def new-probe-publisher (channel))
 (receive-all new-probe-publisher (fn [_] ))
