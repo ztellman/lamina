@@ -5,7 +5,7 @@
                  [org.clojure/core.incubator "0.1.0"]
                  [org.clojure/math.combinatorics "0.0.2-SNAPSHOT"]
                  [org.clojure/tools.logging "0.2.3"]
-                 [potemkin "0.1.0"]]
+                 [potemkin "0.1.1-SNAPSHOT"]]
   ;;:jvm-opts ["-agentlib:jdwp=transport=dt_socket,address=8030,server=y,suspend=n"]	
   :repositories {"sonatype-oss-public" "https://oss.sonatype.org/content/groups/public/"}
   :exclusions [org.clojure/contrib
