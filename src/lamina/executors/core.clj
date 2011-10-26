@@ -13,7 +13,7 @@
     [lamina.core.seq :only (receive-all siphon fork channel-seq)]
     [lamina trace])
   (:require
-    [clojure.contrib.logging :as log])
+    [clojure.tools.logging :as log])
   (:import
     [java.util.concurrent
      ExecutorService
@@ -29,7 +29,7 @@
 (declare default-executor)
 (def ns-executors (atom {}))
 
-(def *thread-pool-options* nil)
+(def ^{:dynamic true} *thread-pool-options* nil)
 
 (defn set-default-executor
   "Sets the default executor used by task."

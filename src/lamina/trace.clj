@@ -11,7 +11,7 @@
     [lamina.core channel seq pipeline]
     potemkin)
   (:require
-    [clojure.contrib.logging :as log]
+    [clojure.tools.logging :as log]
     [lamina.trace.core :as trace]))
 
 ;;;
@@ -86,7 +86,7 @@
                      :start-time (/ start 1e6)
                      :end-time (/ end 1e6)
                      :duration (/ (- end start) 1e6)}))
-        (log/error nil ex)))))
+        (log/error ex)))))
 
 (defn trace-wrap [f options]
   (when-not (:name options)

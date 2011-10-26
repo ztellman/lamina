@@ -11,7 +11,7 @@
     [lamina.core]
     [clojure.test]))
 
-(def *sleep-interval* 10)
+(def ^{:dynamic true} *sleep-interval* 10)
 
 (defmacro task* [& body]
   `(task
