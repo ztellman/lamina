@@ -30,6 +30,8 @@
     (wait-for-result (pipeline 0) 100)
     (catch TimeoutException e
       (is false))
+    (catch clojure.lang.ArityException e
+      (is false))
     (catch Exception e
       (is true))))
 
@@ -86,8 +88,8 @@
   (assert-failure (pipeline :error-handler (fn [_]) inc fail))
   (assert-failure (pipeline :error-handler (fn [_]) inc fail inc))
   (assert-failure (pipeline :error-handler (fn [_]) slow-inc slow-fail))
-  (assert-failure (pipeline :error-handler (fn [_]) inc (pipeline :error-handler (fn [_ _]) inc fail) inc))
-  (assert-failure (pipeline :error-handler (fn [_]) inc #(redirect (pipeline :error-handler (fn [_ _]) inc fail) %))))
+  (assert-failure (pipeline :error-handler (fn [_]) inc (pipeline :error-handler (fn [_]) inc fail) inc))
+  (assert-failure (pipeline :error-handler (fn [_]) inc #(redirect (pipeline :error-handler (fn [_]) inc fail) %))))
 
 (deftest test-redirection-and-error-handlers
 
