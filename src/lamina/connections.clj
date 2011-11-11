@@ -22,7 +22,7 @@
 (defn- incr-delay [delay]
   (if (zero? delay)
     125
-    (min 2000 (* 2 delay))))
+    (min 4000 (* 2 delay))))
 
 (defn- wait-for-close
   "Returns a result-channel representing the closing of the channel."
