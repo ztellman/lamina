@@ -138,13 +138,15 @@ ontains the specified messages."
 (defn on-drained
   "Registers callbacks that will be triggered by the channel being drained."
   [ch & callbacks]
-  (-> ch queue (q/on-drained (map unwrap-fn callbacks))))
+  (-> ch queue (q/on-drained (map unwrap-fn callbacks)))
+  true)
 
 (defn on-closed
   "Registers callbacks that will be triggered by the channel closing."
   [ch & callbacks]
   (let [callbacks (map unwrap-fn callbacks)]
-    (-> ch consumer (o/subscribe (zipmap callbacks (map #(o/observer nil % nil) callbacks))))))
+    (-> ch consumer (o/subscribe (zipmap callbacks (map #(o/observer nil % nil) callbacks))))
+    true))
 
 (defn close
   "Closes the channel."
