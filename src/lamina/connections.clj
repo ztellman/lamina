@@ -22,11 +22,11 @@
 (defn- incr-delay [delay]
   (if (zero? delay)
     125
-    (min 64000 (* 2 delay))))
+    (min 4000 (* 2 delay))))
 
 (defn- wait-for-close
   "Returns a result-channel representing the closing of the channel."
-  [ch options]
+  [ch]
   (closed-result ch))
 
 (defn- connect-loop
@@ -75,8 +75,8 @@
 	  (when-let [new-connection-callback (:connection-callback options)]
 	    (new-connection-callback ch))
 	  (fn [_]
-	    (success! @result ch)
-	    (wait-for-close ch options))))
+	    (future (success! @result ch))
+            (wait-for-close ch))))
       ;; wait here for connection to drop
       (fn [_]
 	(trace [probe-prefix :connection:lost] (assoc desc :event :connection-lost, :elapsed (elapsed)))

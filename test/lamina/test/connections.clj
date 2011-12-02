@@ -123,7 +123,7 @@
 	  (Thread/sleep 100)
 	  (start-server)
 	  (Thread/sleep 1000)
-	  (is (= (range 10) (map #(wait-for-result % 100) results))))
+	  (is (= (range 10) (map #(wait-for-result % 10000) results))))
 	(finally
 	  (close-connection f))))))
 
@@ -143,7 +143,7 @@
         (is (thrown? TimeoutException @(f "echo" 10)))
         (start-server)
 	(is (thrown? TimeoutException @(f "echo2" 10)))
-        (is (= "echo3" @(f "echo3" 2000)))
+        (is (= "echo3" @(f "echo3" 10000)))
         (finally
 	  (close-connection f))))))
 
@@ -155,13 +155,16 @@
       (.start
 	(Thread.
 	  #(loop []
-	     (Thread/sleep 1000)
+	     (Thread/sleep 4000)
 	     (stop-server)
+             ;;(println "Disconnecting")
 	     (Thread/sleep 100)
 	     (start-server)
+             ;;(println "Reconnecting")
 	     (when @continue
 	       (recur)))))
       (try
+<<<<<<< HEAD
         (let [s (range 1e3)]
 	  (is (= s (map
 		     #(let [val (wait-for-result (f %) 5000)]
@@ -169,6 +172,22 @@
 			  (println val))
 			val)
 		     s))))
+=======
+        (let [s (range 1e4)]
+	  (is (= s
+                (->> s
+                  (map (fn [x]
+                         (run-pipeline
+                           (f x 1e5)
+                           :error-handler (fn [_])
+                           #(do 
+                              #_(when (zero? (rem % 100))
+                                (println %))
+                              %))))
+                  doall
+                  (map deref)
+                  ))))
+>>>>>>> master
         (finally
 	  (reset! continue false)
 	  (close-connection f))))))
