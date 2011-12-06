@@ -77,6 +77,7 @@
     ch))
 
 (import-fn #'seq/fork)
+(import-fn #'seq/mapcat*)
 (import-fn #'seq/map*)
 (import-fn #'seq/filter*)
 (import-fn #'seq/remove*)
