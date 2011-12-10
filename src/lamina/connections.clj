@@ -76,6 +76,7 @@
 	    (new-connection-callback ch))
 	  (fn [_]
 	    (future (success! @result ch))
+            (Thread/yield)
             (wait-for-close ch))))
       ;; wait here for connection to drop
       (fn [_]

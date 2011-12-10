@@ -151,28 +151,18 @@
   (with-server simple-echo-server
     (let [continue (atom true)
 	  f (client-fn #(connect) {:probes (comment probes) :description "stress-test"})]
-      ; periodically drop
-      (.start
-	(Thread.
-	  #(loop []
-	     (Thread/sleep 4000)
-	     (stop-server)
-             ;;(println "Disconnecting")
-	     (Thread/sleep 100)
-	     (start-server)
-             ;;(println "Reconnecting")
-	     (when @continue
-	       (recur)))))
+      ;; periodically drop
+      (future
+        (loop []
+          (Thread/sleep 4000)
+          (stop-server)
+          (println "Disconnecting")
+          (Thread/sleep 100)
+          (start-server)
+          (println "Reconnecting")
+          (when @continue
+            (recur))))
       (try
-<<<<<<< HEAD
-        (let [s (range 1e3)]
-	  (is (= s (map
-		     #(let [val (wait-for-result (f %) 5000)]
-			#_(when (zero? (rem val 1000))
-			  (println val))
-			val)
-		     s))))
-=======
         (let [s (range 1e4)]
 	  (is (= s
                 (->> s
@@ -181,13 +171,12 @@
                            (f x 1e5)
                            :error-handler (fn [_])
                            #(do 
-                              #_(when (zero? (rem % 100))
+                              (when (zero? (rem % 100))
                                 (println %))
                               %))))
                   doall
                   (map deref)
                   ))))
->>>>>>> master
         (finally
 	  (reset! continue false)
 	  (close-connection f))))))
