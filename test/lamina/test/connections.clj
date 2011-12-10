@@ -156,10 +156,10 @@
         (loop []
           (Thread/sleep 4000)
           (stop-server)
-          (println "Disconnecting")
+          ;;(println "Disconnecting")
           (Thread/sleep 100)
           (start-server)
-          (println "Reconnecting")
+          ;;(println "Reconnecting")
           (when @continue
             (recur))))
       (try
@@ -171,7 +171,7 @@
                            (f x 1e5)
                            :error-handler (fn [_])
                            #(do 
-                              (when (zero? (rem % 100))
+                              #_(when (zero? (rem % 100))
                                 (println %))
                               %))))
                   doall
