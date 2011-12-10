@@ -25,10 +25,10 @@
 
 ;;;
 
-(import-fn #'trace/register-probe)
-(import-fn #'trace/canonical-probe)
-(import-fn #'trace/on-new-probe)
-(import-fn #'trace/probe-channel)
+(import-fn trace/register-probe)
+(import-fn trace/canonical-probe)
+(import-fn trace/on-new-probe)
+(import-fn trace/probe-channel)
 
 (defn registered-probes []
   @trace/probe-switches)
