@@ -332,6 +332,23 @@
       (is (drained? ch*))
       (is (drained? ch)))))
 
+(deftest test-mapcat*
+  (let [s [1 2 3]
+	f range]
+
+    (let [ch (apply closed-channel s)
+	  ch* (mapcat* f ch)]
+      (is (= (mapcat f s) (channel-seq ch*)))
+      (is (drained? ch))
+      (is (drained? ch*)))
+
+    (let [ch (channel)
+	  ch* (mapcat* f ch)]
+      (async-enqueue ch s true)
+      (is (= (mapcat f s) (channel-seq ch* 2500)))
+      (is (drained? ch))
+      (is (drained? ch*)))))
+
 (deftest test-map*
   (let [s (range 10)
 	f #(* % 2)]
