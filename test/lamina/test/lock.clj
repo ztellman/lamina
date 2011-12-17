@@ -16,6 +16,6 @@
     (is (= 1 (->> 1
                (non-exclusive-lock l)
                (exclusive-lock l)
-               (exclusive-lock l)
-               (non-exclusive-lock l))))))
+               (non-exclusive-lock l)
+               (exclusive-lock l))))))
 
