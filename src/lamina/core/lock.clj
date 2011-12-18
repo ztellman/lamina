@@ -9,15 +9,20 @@
 (ns lamina.core.lock
   (:import [java.util.concurrent Semaphore]))
 
-(deftype AsymmetricLock [^ThreadLocal thread-local ^Semaphore semaphore])
+(deftype AsymmetricReentrantLock [^ThreadLocal thread-local ^Semaphore semaphore])
+
+(deftype AsymmetricLock [^Semaphore semaphore])
+
+(defn asymmetric-reentrant-lock []
+  (AsymmetricReentrantLock. (ThreadLocal.) (Semaphore. Integer/MAX_VALUE)))
 
 (defn asymmetric-lock []
-  (AsymmetricLock. (ThreadLocal.) (Semaphore. Integer/MAX_VALUE)))
+  (AsymmetricLock. (Semaphore. Integer/MAX_VALUE)))
 
-(defmacro non-exclusive-lock [lock & body]
+(defmacro non-exclusive-reentrant-lock [lock & body]
   `(let [lock# ~lock
-         semaphore# (.semaphore ^AsymmetricLock lock#)
-         thread-local# (.thread-local ^AsymmetricLock lock#)
+         semaphore# (.semaphore ^AsymmetricReentrantLock lock#)
+         thread-local# (.thread-local ^AsymmetricReentrantLock lock#)
          acquire?# (= 0 (or (.get ^ThreadLocal thread-local#) 0))]
      (try
        (when acquire?#
@@ -29,10 +34,10 @@
            (.release ^Semaphore semaphore#)
            (.set ^ThreadLocal thread-local# 0))))))
 
-(defmacro exclusive-lock [lock & body]
+(defmacro exclusive-reentrant-lock [lock & body]
   `(let [lock# ~lock
-         semaphore# (.semaphore ^AsymmetricLock lock#) 
-         thread-local# (.thread-local ^AsymmetricLock lock#)
+         semaphore# (.semaphore ^AsymmetricReentrantLock lock#) 
+         thread-local# (.thread-local ^AsymmetricReentrantLock lock#)
          acquired# ^int (or (.get ^ThreadLocal thread-local#) 0)
          to-acquire# (- Integer/MAX_VALUE acquired#)]
      (try
@@ -42,3 +47,38 @@
        (finally
          (.release ^Semaphore semaphore# to-acquire#)
          (.set ^ThreadLocal thread-local# acquired#)))))
+
+(defmacro non-exclusive-lock [lock & body]
+  `(let [lock# ~lock
+         semaphore# (.semaphore ^AsymmetricLock lock#)]
+     (try
+       (.acquire ^Semaphore semaphore#)
+       ~@body
+       (finally
+         (.release ^Semaphore semaphore#)))))
+
+(defmacro exclusive-lock [lock & body]
+  `(let [lock# ~lock
+         semaphore# (.semaphore ^AsymmetricLock lock#)]
+     (try
+       (.acquire ^Semaphore semaphore# Integer/MAX_VALUE)
+       ~@body
+       (finally
+         (.release ^Semaphore semaphore# Integer/MAX_VALUE)))))
+
+(defmacro exclusive-lock* [lock & body]
+  `(let [lock# ~lock
+         semaphore# (.semaphore ^AsymmetricLock lock#)]
+     (.acquire ^Semaphore semaphore# Integer/MAX_VALUE)
+     (let [result# (do ~@body)]
+       (.release ^Semaphore semaphore# Integer/MAX_VALUE)
+       result#)))
+
+(defmacro non-exclusive-lock* [lock & body]
+  `(let [lock# ~lock
+         semaphore# (.semaphore ^AsymmetricLock lock#)]
+     (.acquire ^Semaphore semaphore#)
+     (let [result# (do ~@body)]
+       (.release ^Semaphore semaphore#)
+       result#)))
+
