@@ -46,7 +46,8 @@
   (is= 6 (task* (+ 1 (task* (+ 2 3)))))
   (is= 6 (reduce #(task* (+ %1 %2)) [1 2 3]))
   (is= 6 (->> (range 3) (map inc) (reduce +)))
-  (is= 6 (->> (range 3) (map #(task* (+ 1 %))) (reduce #(task* (+ %1 %2))))))
+  (is= 6 (->> (range 3) (map #(task* (+ 1 %))) (reduce #(task* (+ %1 %2)))))
+  (is= 1 (let [a (task* {:status true})] (if (= true (:status a)) 1 2))))
 
 (deftest test-exceptions
   (is= 3

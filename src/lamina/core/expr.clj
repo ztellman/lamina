@@ -58,7 +58,6 @@
   (and
     (seq? expr)
     (< 1 (count expr))
-    (symbol? (first expr))
     (not (apply first= expr special-forms))))
 
 (defn transform-expr [expr]
