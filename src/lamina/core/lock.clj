@@ -11,55 +11,10 @@
 
 ;;;
 
-(deftype AsymmetricReentrantLock [^ThreadLocal thread-local ^Semaphore semaphore])
-
 (deftype AsymmetricLock [^Semaphore semaphore])
-
-(defn asymmetric-reentrant-lock [fair?]
-  (AsymmetricReentrantLock. (ThreadLocal.) (Semaphore. Integer/MAX_VALUE fair?)))
 
 (defn asymmetric-lock [fair?]
   (AsymmetricLock. (Semaphore. Integer/MAX_VALUE fair?)))
-
-;;;
-
-(defmacro with-non-exclusive-reentrant-lock [lock & body]
-  `(let [lock# ~lock
-         semaphore# (.semaphore ^AsymmetricReentrantLock lock#)
-         thread-local# (.thread-local ^AsymmetricReentrantLock lock#)
-         acquire?# (= 0 (or (.get ^ThreadLocal thread-local#) 0))]
-     (do
-       (when acquire?#
-         (.acquire ^Semaphore semaphore#)
-         (.set ^ThreadLocal thread-local# 1))
-       (try
-         ~@body
-         (finally
-           (when acquire?#
-             (.release ^Semaphore semaphore#)
-             (.set ^ThreadLocal thread-local# 0)))))))
-
-(defmacro with-exclusive-reentrant-lock [lock & body]
-  `(let [lock# ~lock
-         semaphore# (.semaphore ^AsymmetricReentrantLock lock#) 
-         thread-local# (.thread-local ^AsymmetricReentrantLock lock#)
-         acquired# ^int (or (.get ^ThreadLocal thread-local#) 0)
-         to-acquire# (- Integer/MAX_VALUE acquired#)
-         acquire?# (< 0 to-acquire#)]
-     (do
-       (when acquire?#
-         ;; if we don't first release all our existing permits, we can deadlock
-         ;; with another exclusive-reentrant-lock that already has its own permits
-         (when (> acquired# 0)
-           (.release ^Semaphore semaphore# acquired#))
-         (.acquire ^Semaphore semaphore# Integer/MAX_VALUE)
-         (.set ^ThreadLocal thread-local# Integer/MAX_VALUE))
-       (try
-         ~@body
-         (finally
-           (when acquire?#
-             (.release ^Semaphore semaphore# to-acquire#)
-             (.set ^ThreadLocal thread-local# acquired#)))))))
 
 ;;;
 
@@ -82,6 +37,14 @@
          ~@body
          (finally
            (.release ^Semaphore semaphore# Integer/MAX_VALUE))))))
+
+(defmacro acquire-non-exclusive-lock [lock]
+  `(let [lock# ~lock]
+     (.acquire ^Semaphore (.semaphore ^AsymmetricLock lock#))))
+
+(defmacro release-non-exclusive-lock [lock]
+  `(let [lock# ~lock]
+     (.release ^Semaphore (.semaphore ^AsymmetricLock lock#))))
 
 ;; These variants exists because apparently try/catch, loop/recur, et al
 ;; close over the body, so using set! inside the body causes the compiler
@@ -107,4 +70,3 @@
      (let [result# (do ~@body)]
        (.release ^Semaphore semaphore#)
        result#)))
-

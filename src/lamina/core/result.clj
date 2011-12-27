@@ -77,36 +77,41 @@
   (toString [_]
     (str "<< ERROR: " error " >>")))
 
+(deftype ResultState [type value])
+
 (deftype ResultChannel [^AsymmetricLock lock
                         ^CopyOnWriteArrayList callbacks
-                        ^:volatile-mutable value
-                        ^:volatile-mutable state]
+                        ^:volatile-mutable ^ResultState state]
   clojure.lang.IDeref
   (deref [this]
     (if-let [result (l/with-non-exclusive-lock lock
-                      (case state
-                        ::success value
-                        ::error (if (instance? Throwable value)
-                                  (throw value)
-                                  (throw (Exception. (str value))))
-                        nil))]
+                      (let [state state
+                            value (.value state)]
+                        (case (.type state)
+                          ::success value
+                          ::error (if (instance? Throwable value)
+                                    (throw value)
+                                    (throw (Exception. (str value))))
+                          nil)))]
       result
       (let [latch (CountDownLatch. 1)
             f (fn [_] (.countDown ^CountDownLatch latch))]
         (subscribe this (ResultCallback. f f))
         (.await ^CountDownLatch latch)
-        (case state
-          ::success value
-          ::error (if (instance? Throwable value)
-                    (throw value)
-                    (throw (Exception. (str value))))))))
+        (let [state state
+              value (.value state)]
+          (case (.type state)
+            ::success value
+            ::error (if (instance? Throwable value)
+                      (throw value)
+                      (throw (Exception. (str value))))
+            nil)))))
   Result
   (success [_ val]
     (io! "Cannot modify result-channels inside a transaction."
       (if-not (l/with-exclusive-lock* lock
-                (when (= ::none state)
-                  (set! state ::success)
-                  (set! value val)
+                (when (= ::none (.type state))
+                  (set! state (ResultState. ::success val))
                   true))
         false
         (let [result (case (.size callbacks)
@@ -121,9 +126,8 @@
   (error [_ err]
     (io! "Cannot modify result-channels inside a transaction."
       (if-not (l/with-exclusive-lock* lock
-                (when (= ::none state)
-                  (set! state ::error)
-                  (set! value err)
+                (when (= ::none (.type state))
+                  (set! state (ResultState. ::error err))
                   true))
         false
         (let [result (case (.size callbacks)
@@ -136,37 +140,34 @@
           (.clear callbacks)
           result))))
   (success? [this]
-    (l/with-non-exclusive-lock lock
-      (= ::success state)))
+    (= ::success (.type state)))
   (error? [_]
-    (l/with-non-exclusive-lock lock
-      (= ::error state)))
+    (= ::error (.type state)))
   (result [_]
-    (l/with-non-exclusive-lock lock
-      value))
+    (.value state))
   (subscribe [_ callback]
     (io! "Cannot modify result-channels inside a transaction."
       (when-let [f (l/with-non-exclusive-lock lock
-                     (case state
+                     (case (.type state)
                        ::error (.on-error ^ResultCallback callback)
                        ::success (.on-success ^ResultCallback callback)
                        ::none (do
                                 (.add callbacks callback)
                                 nil)))]
-        (f value))
+        (f (.value state)))
       true))
   (cancel-callback [_ callback]
     (io! "Cannot modify result-channels inside a transaction."
       (l/with-non-exclusive-lock lock
-        (case state
+        (case (.type state)
           ::error   false
           ::success false
           ::none    (.remove callbacks callback)))))
   (toString [_]
-    (l/with-non-exclusive-lock lock
-      (case state
-        ::error   (str "<< ERROR: " value " >>")
-        ::success (str "<< " value " >>")
+    (let [state state]
+      (case (.type state)
+        ::error   (str "<< ERROR: " (.value state) " >>")
+        ::success (str "<< " (.value state) " >>")
         ::none    "<< ... >>"))))
 
 ;;;
@@ -178,10 +179,19 @@
   (ErrorResult. error))
 
 (defn result-channel []
-  (ResultChannel. (l/asymmetric-lock false) (CopyOnWriteArrayList.) nil ::none))
+  (ResultChannel.
+    (l/asymmetric-lock false)
+    (CopyOnWriteArrayList.)
+    (ResultState. ::none nil)))
 
 (defn result-callback [on-success on-error]
   (ResultCallback. on-success on-error))
+
+(defn result-channel? [x]
+  (or
+    (instance? ResultChannel x)
+    (instance? SuccessResult x)
+    (instance? ErrorResult x)))
 
 ;;;
 

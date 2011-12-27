@@ -8,20 +8,38 @@
 
 (ns lamina.test.queue
   (:use
-    [lamina.core queue]
     [clojure test])
   (:require
+    [lamina.core.queue :as q]
     [lamina.core.result :as r]
     [criterium.core :as c]))
 
+(defn enqueue
+  ([q msg]
+     (q/enqueue q msg true nil))
+  ([q msg persist?]
+     (q/enqueue q msg persist? nil))
+  ([q msg persist? release-fn]
+     (q/enqueue q msg persist? release-fn)))
+
+(defn receive
+  ([q]
+     (q/receive q nil nil))
+  ([q predicate false-value]
+     (q/receive q predicate false-value)))
+
+(defn cancel-receive [q callback]
+  (q/cancel-receive q callback))
+
 (defn test-queue [q]
   ;; enqueue, then receive
+  (enqueue q 0 false)
   (enqueue q 1)
-  (is (= 1 @(receive q nil nil)))
+  (is (= 1 @(receive q)))
 
   ;; multi-receive, then enqueue
-  (let [a (receive q nil nil)
-        b (receive q nil nil)]
+  (let [a (receive q)
+        b (receive q)]
     (enqueue q 2)
     (is (= 2 @a))
     (is (= 2 @b)))
@@ -38,23 +56,30 @@
     (is (= ::nope @a))
     (is (= 4 @b)))
 
+  ;; enqueue, then receive with faulty predicate
+  (let [a (receive q (fn [_] (throw (Exception. "boom"))) nil)
+        b (receive q (constantly true) nil)]
+    (enqueue q 5)
+    (is (thrown? Exception @a))
+    (is (= 5 @b)))
+
   ;; receive, cancel, receive, and enqueue
-  (let [a (receive q nil nil)]
-    (is (= true (cancel-callback q a)))
-    (is (= false (cancel-callback q (r/result-channel))))
-    (let [b (receive q nil nil)]
-      (enqueue q 5)
-      (is (= 5 @b))))
+  (let [a (receive q)]
+    (is (= true (cancel-receive q a)))
+    (is (= false (cancel-receive q (r/result-channel))))
+    (let [b (receive q)]
+      (enqueue q 6)
+      (is (= 6 @b))))
 
   ;; multi-receive, cancel, and enqueue
-  (let [a (receive q nil nil)
-        b (receive q nil nil)]
-    (is (= true (cancel-callback q b)))
-    (enqueue q 6)
-    (is (= 6 @a))))
+  (let [a (receive q)
+        b (receive q)]
+    (is (= true (cancel-receive q b)))
+    (enqueue q 7)
+    (is (= 7 @a))))
 
 (deftest test-basic-queue
-  (test-queue (queue)))
+  (test-queue (q/queue)))
 
 ;;;
 
@@ -62,31 +87,33 @@
   `(do
      (println "\n-----\n lamina.core.queue -" ~name "\n-----\n")
      (c/bench
-       (do
+       (dotimes [_# (int 1e6)]
          ~@body)
        :reduce-with #(and %1 %2))))
 
 (defn benchmark-queue [name q]
   (bench (str name " - receive and enqueue")
-    (receive q nil nil)
+    (receive q)
     (enqueue q 1))
   (bench (str name " - receive, cancel, receive and enqueue")
     (let [r (receive q nil nil)]
-      (cancel-callback q r))
-    (receive q nil nil)
+      (cancel-receive q r))
+    (receive q)
     (enqueue q 1))
   (bench (str name " - multi-receive and enqueue")
-    (receive q nil nil)
-    (receive q nil nil)
+    (receive q)
+    (receive q)
     (enqueue q 1))
   (bench (str name " - multi-receive, cancel, and enqueue")
-    (receive q nil nil)
-    (let [r (receive q nil nil)]
-      (cancel-callback q r))
+    (receive q)
+    (let [r (receive q)]
+      (cancel-receive q r))
     (enqueue q 1))
   (bench (str name " - enqueue and receive")
     (enqueue q 1)
-    (receive q nil nil)))
+    (receive q))
+  (bench (str name "- enqueue without persistence")
+    (q/enqueue q 1 false nil)))
 
 (deftest ^:benchmark benchmark-basic-queue
-  (benchmark-queue "basic-queue" (queue)))
+  (benchmark-queue "basic-queue" (q/queue)))
