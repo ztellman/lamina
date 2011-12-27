@@ -105,6 +105,8 @@
       (when-let [consumption-s
                  (l/with-non-exclusive-lock lock
                    (let [q ^ConcurrentLinkedQueue (.getAndSet consumers (ConcurrentLinkedQueue.))]
+
+                     ;; check if there are any consumers
                      (if (.isEmpty q)
                        
                        ;; no consumers, just hold onto the message
@@ -138,24 +140,32 @@
         (if (instance? Consumption consumption-s)
           (dispatch-consumption consumption-s)
           (doseq [c consumption-s]
-            (dispatch-consumption c))))))
+            (dispatch-consumption c))))
+      nil))
 
   (receive [this predicate false-value]
     (io! "Cannot modify non-transactional queues inside a transaction."
       (l/with-exclusive-lock lock
         (let [msg (.peek messages)]
+
+          ;; check if there are any messages
           (if (= nil msg)
+
             ;; if there are no messages, add a consumer to the consumer queue
             (let [result-channel (r/result-channel)]
-              (.add ^ConcurrentLinkedQueue (.get consumers) (MessageConsumer. predicate false-value result-channel))
+              (.add ^ConcurrentLinkedQueue (.get consumers)
+                (MessageConsumer. predicate false-value result-channel))
               result-channel)
+
             ;; if there is a message, see if it satisfies the predicate
             (let [msg (if (= ::nil msg) nil msg)]
               (if (or (= nil predicate) (predicate msg))
+
                 ;; it does, so consume the message and return it
                 (do
                   (.poll messages)
                   (r/success-result msg))
+
                 ;; it doesn't, so return the value indicating predicate failure
                 (r/success-result false-value))))))))
 

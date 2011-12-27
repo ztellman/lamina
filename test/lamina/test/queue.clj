@@ -40,7 +40,8 @@
 
   ;; receive, cancel, receive, and enqueue
   (let [a (receive q nil nil)]
-    (cancel-callback q a)
+    (is (= true (cancel-callback q a)))
+    (is (= false (cancel-callback q (r/result-channel))))
     (let [b (receive q nil nil)]
       (enqueue q 5)
       (is (= 5 @b))))
@@ -48,7 +49,7 @@
   ;; multi-receive, cancel, and enqueue
   (let [a (receive q nil nil)
         b (receive q nil nil)]
-    (cancel-callback q b)
+    (is (= true (cancel-callback q b)))
     (enqueue q 6)
     (is (= 6 @a))))
 
