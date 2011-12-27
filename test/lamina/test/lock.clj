@@ -9,13 +9,49 @@
 (ns lamina.test.lock
   (:use
     [lamina.core lock]
-    [clojure test]))
+    [clojure test])
+  (:require
+    [criterium.core :as c]))
 
 (deftest test-lock-reentrancy
-  (let [l (asymmetric-lock)]
+  (let [l (asymmetric-reentrant-lock false)]
     (is (= 1 (->> 1
-               (non-exclusive-lock l)
-               (exclusive-lock l)
-               (non-exclusive-lock l)
-               (exclusive-lock l))))))
+               (with-non-exclusive-reentrant-lock l)
+               (with-exclusive-reentrant-lock l)
+               (with-non-exclusive-reentrant-lock l)
+               (with-exclusive-reentrant-lock l))))))
+
+;;;
+
+(defmacro bench [name & body]
+  `(do
+     (println "\n-----\n lamina.core.lock -" ~name "\n-----\n")
+     (c/bench
+       (do
+         ~@body)
+       :reduce-with #(and %1 %2))))
+
+(deftest ^:benchmark benchmark-locks
+  (let [lock (asymmetric-lock false)]
+    (bench "non-exclusive"
+      (with-non-exclusive-lock lock 1))
+    (bench "exclusive"
+      (with-exclusive-lock lock 1))
+    (bench "non-exclusive*"
+      (with-non-exclusive-lock* lock 1))
+    (bench "exclusive*"
+      (with-exclusive-lock* lock 1)))
+  (let [lock (asymmetric-reentrant-lock false)]
+    (bench "non-exclusive-reentrant"
+      (with-non-exclusive-reentrant-lock lock 1))
+    (bench "multi non-exclusive-reentrant"
+      (->> 1
+        (with-non-exclusive-reentrant-lock lock)
+        (with-non-exclusive-reentrant-lock lock)))
+    (bench "exclusive-reentrant"
+      (with-exclusive-reentrant-lock lock 1))
+    (bench "multi exclusive-reentrant"
+      (->> 1
+        (with-non-exclusive-reentrant-lock lock)
+        (with-non-exclusive-reentrant-lock lock)))))
 

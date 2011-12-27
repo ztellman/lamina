@@ -9,64 +9,90 @@
 (ns lamina.core.lock
   (:import [java.util.concurrent Semaphore]))
 
+;;;
+
 (deftype AsymmetricReentrantLock [^ThreadLocal thread-local ^Semaphore semaphore])
 
 (deftype AsymmetricLock [^Semaphore semaphore])
 
-(defn asymmetric-reentrant-lock []
-  (AsymmetricReentrantLock. (ThreadLocal.) (Semaphore. Integer/MAX_VALUE)))
+(defn asymmetric-reentrant-lock [fair?]
+  (AsymmetricReentrantLock. (ThreadLocal.) (Semaphore. Integer/MAX_VALUE fair?)))
 
-(defn asymmetric-lock []
-  (AsymmetricLock. (Semaphore. Integer/MAX_VALUE)))
+(defn asymmetric-lock [fair?]
+  (AsymmetricLock. (Semaphore. Integer/MAX_VALUE fair?)))
 
-(defmacro non-exclusive-reentrant-lock [lock & body]
+;;;
+
+(defmacro with-non-exclusive-reentrant-lock [lock & body]
   `(let [lock# ~lock
          semaphore# (.semaphore ^AsymmetricReentrantLock lock#)
          thread-local# (.thread-local ^AsymmetricReentrantLock lock#)
          acquire?# (= 0 (or (.get ^ThreadLocal thread-local#) 0))]
-     (try
+     (do
        (when acquire?#
          (.acquire ^Semaphore semaphore#)
          (.set ^ThreadLocal thread-local# 1))
-       ~@body
-       (finally
-         (when acquire?#
-           (.release ^Semaphore semaphore#)
-           (.set ^ThreadLocal thread-local# 0))))))
+       (try
+         ~@body
+         (finally
+           (when acquire?#
+             (.release ^Semaphore semaphore#)
+             (.set ^ThreadLocal thread-local# 0)))))))
 
-(defmacro exclusive-reentrant-lock [lock & body]
+(defmacro with-exclusive-reentrant-lock [lock & body]
   `(let [lock# ~lock
          semaphore# (.semaphore ^AsymmetricReentrantLock lock#) 
          thread-local# (.thread-local ^AsymmetricReentrantLock lock#)
          acquired# ^int (or (.get ^ThreadLocal thread-local#) 0)
-         to-acquire# (- Integer/MAX_VALUE acquired#)]
-     (try
-       (.acquire ^Semaphore semaphore# to-acquire#)
-       (.set ^ThreadLocal thread-local# Integer/MAX_VALUE)
-       ~@body
-       (finally
-         (.release ^Semaphore semaphore# to-acquire#)
-         (.set ^ThreadLocal thread-local# acquired#)))))
+         to-acquire# (- Integer/MAX_VALUE acquired#)
+         acquire?# (< 0 to-acquire#)]
+     (do
+       (when acquire?#
+         ;; if we don't first release all our existing permits, we can deadlock
+         ;; with another exclusive-reentrant-lock that already has its own permits
+         (when (> acquired# 0)
+           (.release ^Semaphore semaphore# acquired#))
+         (.acquire ^Semaphore semaphore# Integer/MAX_VALUE)
+         (.set ^ThreadLocal thread-local# Integer/MAX_VALUE))
+       (try
+         ~@body
+         (finally
+           (when acquire?#
+             (.release ^Semaphore semaphore# to-acquire#)
+             (.set ^ThreadLocal thread-local# acquired#)))))))
 
-(defmacro non-exclusive-lock [lock & body]
+;;;
+
+(defmacro with-non-exclusive-lock [lock & body]
   `(let [lock# ~lock
          semaphore# (.semaphore ^AsymmetricLock lock#)]
-     (try
+     (do
        (.acquire ^Semaphore semaphore#)
-       ~@body
-       (finally
-         (.release ^Semaphore semaphore#)))))
+       (try
+         ~@body
+         (finally
+           (.release ^Semaphore semaphore#))))))
 
-(defmacro exclusive-lock [lock & body]
+(defmacro with-exclusive-lock [lock & body]
   `(let [lock# ~lock
          semaphore# (.semaphore ^AsymmetricLock lock#)]
-     (try
+     (do
        (.acquire ^Semaphore semaphore# Integer/MAX_VALUE)
-       ~@body
-       (finally
-         (.release ^Semaphore semaphore# Integer/MAX_VALUE)))))
+       (try
+         ~@body
+         (finally
+           (.release ^Semaphore semaphore# Integer/MAX_VALUE))))))
 
-(defmacro exclusive-lock* [lock & body]
+;; These variants exists because apparently try/catch, loop/recur, et al
+;; close over the body, so using set! inside the body causes the compiler
+;; to get confused.
+;; 
+;; Per http://dev.clojure.org/jira/browse/CLJ-274, this isn't going to get fixed
+;; anytime soon, so should only be used where no exception can be thrown.  However,
+;; an exception can still be thrown by interrupting the thread, so the body should
+;; also always be uninterruptible.
+
+(defmacro with-exclusive-lock* [lock & body]
   `(let [lock# ~lock
          semaphore# (.semaphore ^AsymmetricLock lock#)]
      (.acquire ^Semaphore semaphore# Integer/MAX_VALUE)
@@ -74,7 +100,7 @@
        (.release ^Semaphore semaphore# Integer/MAX_VALUE)
        result#)))
 
-(defmacro non-exclusive-lock* [lock & body]
+(defmacro with-non-exclusive-lock* [lock & body]
   `(let [lock# ~lock
          semaphore# (.semaphore ^AsymmetricLock lock#)]
      (.acquire ^Semaphore semaphore#)

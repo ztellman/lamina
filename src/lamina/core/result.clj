@@ -11,7 +11,7 @@
     [lamina.core.lock :as l])
   (:import
     [lamina.core.lock AsymmetricLock]
-    [java.util.concurrent LinkedBlockingQueue]
+    [java.util.concurrent LinkedBlockingQueue CountDownLatch]
     [java.util ArrayList]
     [java.io Writer]))
 
@@ -29,6 +29,8 @@
 ;;;
 
 (deftype SuccessResult [value]
+  clojure.lang.IDeref
+  (deref [_] value)
   Result
   (success [_ _]
     false)
@@ -49,6 +51,11 @@
     (str "<< " value " >>")))
 
 (deftype ErrorResult [error]
+  clojure.lang.IDeref
+  (deref [_]
+    (if (instance? Throwable error)
+      (throw error)
+      (throw (Exception. (str error)))))
   Result
   (success [_ _]
     false)
@@ -73,7 +80,7 @@
    state-value
    result
    callback-slot]
-  `(let [x# (l/exclusive-lock* ~lock
+  `(let [x# (l/with-exclusive-lock* ~lock
               (case ~state
                 ::zero    (do
                             (set! ~state ~state-value)
@@ -98,7 +105,7 @@
         false
 
         (instance? ResultCallback x#)
-        ((~callback-slot x#) ~result)
+        ((~callback-slot ^ResultCallback x#) ~result)
 
         :else
         (do
@@ -107,81 +114,104 @@
           true))))
 
 (deftype ResultChannel [^AsymmetricLock lock
-                        ^:unsynchronized-mutable value
-                        ^:unsynchronized-mutable state
-                        ^:unsynchronized-mutable callback-s]
+                        ^:volatile-mutable value
+                        ^:volatile-mutable state
+                        ^:volatile-mutable callback-s]
+  clojure.lang.IDeref
+  (deref [this]
+    (if-let [result (l/with-non-exclusive-lock lock
+                      (case state
+                        ::success value
+                        ::error (if (instance? Throwable value)
+                                  (throw value)
+                                  (throw (Exception. (str value))))
+                        nil))]
+      result
+      (let [latch (CountDownLatch. 1)
+            f (fn [_] (.countDown ^CountDownLatch latch))]
+        (subscribe this (ResultCallback. f f))
+        (.await ^CountDownLatch latch)
+        (case state
+          ::success value
+          ::error (if (instance? Throwable value)
+                    (throw value)
+                    (throw (Exception. (str value))))))))
   Result
   (success [_ val]
-    (update-result-channel lock state value callback-s ::success val .on-success))
+    (io! "Cannot modify result-channels inside a transaction."
+      (update-result-channel lock state value callback-s ::success val .on-success)))
   (error [_ err]
-    (update-result-channel lock state value callback-s ::error err .on-error))
+    (io! "Cannot modify result-channels inside a transaction."
+      (update-result-channel lock state value callback-s ::error err .on-error)))
   (success? [this]
-    (l/non-exclusive-lock* lock
+    (l/with-non-exclusive-lock lock
       (= ::success state)))
   (error? [_]
-    (l/non-exclusive-lock* lock
+    (l/with-non-exclusive-lock lock
       (= ::error state)))
   (result [_]
-    (l/non-exclusive-lock* lock
+    (l/with-non-exclusive-lock lock
       value))
   (subscribe [_ callback]
-    (if-let [f (l/non-exclusive-lock* lock
-                 (case state
-                   ::error (.on-error ^ResultCallback callback)
-                   ::success (.on-success ^ResultCallback callback)
-                   (::zero ::one ::many) nil))]
-      (f value)
-      (when-let [f (l/exclusive-lock* lock
-                     (case state
-                       ::error   (.on-error ^ResultCallback callback)
-                       ::success (.on-success ^ResultCallback callback)
-                       ::zero    (do
-                                   (set! callback-s callback)
-                                   (set! state ::one)
-                                   nil)
-                       ::one     (do
-                                   (set! callback-s (list callback-s callback))
-                                   (set! state ::many)
-                                   nil)
-                       ::many    (do
-                                   (set! callback-s (cons callback callback-s))
-                                   nil)))]
-        (f value)))
+    (io! "Cannot modify result-channels inside a transaction."
+      (if-let [f (l/with-non-exclusive-lock lock
+                   (case state
+                     ::error (.on-error ^ResultCallback callback)
+                     ::success (.on-success ^ResultCallback callback)
+                     nil))]
+        (f value)
+        (when-let [f (l/with-exclusive-lock* lock
+                       (case state
+                         ::error   (.on-error ^ResultCallback callback)
+                         ::success (.on-success ^ResultCallback callback)
+                         ::zero    (do
+                                     (set! callback-s callback)
+                                     (set! state ::one)
+                                     nil)
+                         ::one     (do
+                                     (set! callback-s (list callback-s callback))
+                                     (set! state ::many)
+                                     nil)
+                         ::many    (do
+                                     (set! callback-s (cons callback callback-s))
+                                     nil)))]
+          (f value))))
     true)
   (cancel-callback [_ callback]
-    (l/exclusive-lock* lock
-      (case state
-        ::error   false
-        ::success false
-        ::zero    false
-        ::one     (if (= callback callback-s)
-                    (do
-                      (set! callback-s nil)
-                      (set! state ::zero)
-                      true)
-                    false)
-        ::many    (let [x (loop [acc () remaining callback-s]
-                            (if (empty? remaining)
-                              false
-                              (if (= callback (first remaining))
-                                (concat acc (rest remaining))
-                                (recur (cons (first remaining) acc) (rest remaining)))))]
-                    (cond
-                      (= false x)
-                      false
-
-                      (->> x rest empty?)
+    (io! "Cannot modify result-channels inside a transaction."
+      (l/with-exclusive-lock* lock
+        (case state
+          ::error   false
+          ::success false
+          ::zero    false
+          ::one     (if (= callback callback-s)
                       (do
-                        (set! state ::one)
-                        (set! callback-s (first x))
+                        (set! callback-s nil)
+                        (set! state ::zero)
                         true)
-
-                      :else
-                      (do
-                        (set! callback-s x)
-                        true))))))
+                      false)
+          ::many    (let [x (loop [acc () remaining callback-s]
+                              (if (empty? remaining)
+                                false
+                                (if (= callback (first remaining))
+                                  (concat acc (rest remaining))
+                                  (recur (cons (first remaining) acc) (rest remaining)))))]
+                      (cond
+                        (= false x)
+                        false
+                        
+                        (->> x rest empty?)
+                        (do
+                          (set! state ::one)
+                          (set! callback-s (first x))
+                          true)
+                        
+                        :else
+                        (do
+                          (set! callback-s x)
+                          true)))))))
   (toString [_]
-    (l/non-exclusive-lock lock
+    (l/with-non-exclusive-lock lock
       (case state
         ::error   (str "<< ERROR: " value " >>")
         ::success (str "<< " value " >>")
@@ -196,7 +226,7 @@
   (ErrorResult. error))
 
 (defn result-channel []
-  (ResultChannel. (l/asymmetric-lock) nil ::zero nil))
+  (ResultChannel. (l/asymmetric-lock false) nil ::zero nil))
 
 (defn result-callback [on-success on-error]
   (ResultCallback. on-success on-error))
