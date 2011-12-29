@@ -199,8 +199,9 @@
                         (.set consumers (ConcurrentLinkedQueue. (concat acc (rest remaining))))
                         true)
                       (recur (cons (first remaining) acc) (rest remaining)))))))]
-        (when removed?
-          (r/error result-channel (CancellationException.)))))))
+        (if removed?
+          (r/error result-channel (CancellationException.))
+          false)))))
 
 ;;;
 

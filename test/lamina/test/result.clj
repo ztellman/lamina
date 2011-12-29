@@ -42,11 +42,11 @@
        @p)))
 
 (deftest test-success-result
-  (let [r (success-result 1)]
+  (let [r (success-result 1)] 
     (is (= 1 @r))
-    (is (= true (success? r)))
-    (is (= false (error? r)))
-    (is (= 1 (result r)))
+    (is (= 1 (success-value r nil)))
+    (is (= ::none (error-value r ::none)))
+    (is (= :success (result r)))
     (is (= false (success r nil)))
     (is (= false (error r nil)))
     (is (= 1 (capture-success r)))
@@ -56,9 +56,9 @@
   (let [ex (IllegalStateException. "boom")
         r (error-result ex)]
     (is (thrown? IllegalStateException @r))
-    (is (= false (success? r)))
-    (is (= true (error? r)))
-    (is (= ex (result r)))
+    (is (= ::none (success-value r ::none)))
+    (is (= ex (error-value r nil)))
+    (is (= :error (result r)))
     (is (= false (success r nil)))
     (is (= false (error r nil)))
     (is (= ex (capture-error r)))
@@ -66,14 +66,16 @@
 
 (deftest test-result-channel
   (let [r (result-channel)]
-    (is (= false (success? r)))
-    (is (= false (error? r))))
+    (is (= ::none (success-value r ::none)))
+    (is (= ::none (error-value r ::none)))
+    (is (= nil (result r))))
 
   ;; success result
   (let [r (result-channel)]
     (is (= true (success r 1)))
-    (is (= true (success? r)))
-    (is (= false (error? r)))
+    (is (= 1 (success-value r nil)))
+    (is (= ::none (error-value r ::none)))
+    (is (= :success (result r)))
     (is (= 1 (capture-success r ::return)))
     (is (= 1 @r)))
 
@@ -81,8 +83,9 @@
   (let [r (result-channel)
         ex (IllegalStateException. "boom")]
     (is (= true (error r ex)))
-    (is (= false (success? r)))
-    (is (= true (error? r)))
+    (is (= ::none (success-value r ::none)))
+    (is (= ex (error-value r nil)))
+    (is (= :error (result r)))
     (is (= ex (capture-error r ::return)))
     (is (thrown? IllegalStateException @r)))
 
@@ -100,17 +103,16 @@
   (let [r (result-channel)
         callbacks (->> (range 5) (map (fn [_] (future (capture-success r)))) doall)]
     (is (= true (success r 1)))
-    (is (= true (success? r)))
-    (is (= false (error? r)))
+    (is (= 1 @r))
     (is (= (repeat 5 1) (map deref callbacks))))
 
   ;; multiple callbacks w/ error
   (let [r (result-channel)
-        callbacks (->> (range 5) (map (fn [_] (future (capture-error r)))) doall)]
-    (is (= true (error r 1)))
-    (is (= false (success? r)))
-    (is (= true (error? r)))
-    (is (= (repeat 5 1) (map deref callbacks))))
+        callbacks (->> (range 5) (map (fn [_] (future (capture-error r)))) doall)
+        ex (Exception.)]
+    (is (= true (error r ex)))
+    (is (thrown? Exception @r))
+    (is (= (repeat 5 ex) (map deref callbacks))))
 
   ;; callback return result propagation in ::one
   (let [callback (result-callback (constantly :foo) nil)

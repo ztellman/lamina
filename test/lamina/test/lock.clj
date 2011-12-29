@@ -22,13 +22,28 @@
        :reduce-with #(and %1 %2))))
 
 (deftest ^:benchmark benchmark-locks
-  (let [lock (asymmetric-lock false)]
+  (let [lock (asymmetric-reentrant-lock)]
+    (bench "reentrant acquire/release"
+      (acquire lock)
+      (release lock))
+    (bench "reentrant non-exclusive"
+      (with-reentrant-lock lock 1))
+    (bench "reentrant exclusive"
+      (with-exclusive-reentrant-lock lock 1))
+    (bench "reentrant non-exclusive*"
+      (with-reentrant-lock* lock 1))
+    (bench "reentrant exclusive*"
+      (with-exclusive-reentrant-lock* lock 1)))
+  #_(let [lock (asymmetric-lock)]
+    (bench "acquire/release"
+      (acquire lock)
+      (release lock))
     (bench "non-exclusive"
-      (with-non-exclusive-lock lock 1))
+      (with-lock lock 1))
     (bench "exclusive"
       (with-exclusive-lock lock 1))
     (bench "non-exclusive*"
-      (with-non-exclusive-lock* lock 1))
+      (with-lock* lock 1))
     (bench "exclusive*"
       (with-exclusive-lock* lock 1))))
 

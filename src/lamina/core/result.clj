@@ -10,20 +10,24 @@
   (:require
     [lamina.core.lock :as l])
   (:import
-    [lamina.core.lock AsymmetricLock]
+    [lamina.core.lock
+     AsymmetricReentrantLock
+     AsymmetricLockProtocol]
     [java.util.concurrent
      CopyOnWriteArrayList
      CountDownLatch]
     [java.util ArrayList]
     [java.io Writer]))
 
+(set! *warn-on-reflection* true)
+
 (deftype ResultCallback [on-success on-error])
 
 (defprotocol Result
   (success [_ val])
   (error [_ err])
-  (success? [_])
-  (error? [_])
+  (success-value [_ default-value])
+  (error-value [_ default-value])
   (result [_])
   (subscribe [_ callback])
   (cancel-callback [_ callback]))
@@ -31,6 +35,9 @@
 ;;;
 
 (deftype SuccessResult [value]
+  AsymmetricLockProtocol
+  (acquire [_])
+  (release [_])
   clojure.lang.IDeref
   (deref [_] value)
   Result
@@ -38,12 +45,12 @@
     false)
   (error [_ _]
     false)
-  (success? [_]
-    true)
-  (error? [_]
-    false)
-  (result [_]
+  (success-value [_ _]
     value)
+  (error-value [_ default-value]
+    default-value)
+  (result [_]
+    :success)
   (subscribe [_ callback]
     ((.on-success ^ResultCallback callback) value)
     true)
@@ -53,6 +60,9 @@
     (str "<< " value " >>")))
 
 (deftype ErrorResult [error]
+  AsymmetricLockProtocol
+  (acquire [_])
+  (release [_])
   clojure.lang.IDeref
   (deref [_]
     (if (instance? Throwable error)
@@ -63,12 +73,12 @@
     false)
   (error [_ _]
     false)
-  (success? [_]
-    false)
-  (error? [_]
-    true)
-  (result [_]
+  (success-value [_ default-value]
+    default-value)
+  (error-value [_ _]
     error)
+  (result [_]
+    :error)
   (subscribe [_ callback]
     ((.on-error ^ResultCallback callback) error)
     true)
@@ -79,20 +89,27 @@
 
 (deftype ResultState [type value])
 
-(deftype ResultChannel [^AsymmetricLock lock
-                        ^CopyOnWriteArrayList callbacks
-                        ^:volatile-mutable ^ResultState state]
+(deftype ResultChannel
+  [^AsymmetricReentrantLock lock
+   ^CopyOnWriteArrayList callbacks
+   ^:volatile-mutable ^ResultState state]
+
+  AsymmetricLockProtocol
+  (acquire [_]
+    (l/acquire lock))
+  (release [_]
+    (l/release lock))
+  
   clojure.lang.IDeref
   (deref [this]
-    (if-let [result (l/with-non-exclusive-lock lock
-                      (let [state state
-                            value (.value state)]
-                        (case (.type state)
-                          ::success value
-                          ::error (if (instance? Throwable value)
-                                    (throw value)
-                                    (throw (Exception. (str value))))
-                          nil)))]
+    (if-let [result (let [state state
+                          value (.value state)]
+                      (case (.type state)
+                        ::success value
+                        ::error (if (instance? Throwable value)
+                                  (throw value)
+                                  (throw (Exception. (str value))))
+                        nil))]
       result
       (let [latch (CountDownLatch. 1)
             f (fn [_] (.countDown ^CountDownLatch latch))]
@@ -106,10 +123,11 @@
                       (throw value)
                       (throw (Exception. (str value))))
             nil)))))
+  
   Result
   (success [_ val]
     (io! "Cannot modify result-channels inside a transaction."
-      (if-not (l/with-exclusive-lock* lock
+      (if-not (l/with-exclusive-reentrant-lock* lock
                 (when (= ::none (.type state))
                   (set! state (ResultState. ::success val))
                   true))
@@ -125,7 +143,7 @@
           result))))
   (error [_ err]
     (io! "Cannot modify result-channels inside a transaction."
-      (if-not (l/with-exclusive-lock* lock
+      (if-not (l/with-exclusive-reentrant-lock* lock
                 (when (= ::none (.type state))
                   (set! state (ResultState. ::error err))
                   true))
@@ -139,15 +157,24 @@
                          true))]
           (.clear callbacks)
           result))))
-  (success? [this]
-    (= ::success (.type state)))
-  (error? [_]
-    (= ::error (.type state)))
+  (success-value [_ default-value]
+    (let [state state]
+      (if (= ::success (.type state))
+        (.value state)
+        default-value)))
+  (error-value [_ default-value]
+    (let [state state]
+      (if (= ::error (.type state))
+        (.value state)
+        default-value)))
   (result [_]
-    (.value state))
+    (case (.type state)
+      ::success :success
+      ::error :error
+      nil))
   (subscribe [_ callback]
     (io! "Cannot modify result-channels inside a transaction."
-      (when-let [f (l/with-non-exclusive-lock lock
+      (when-let [f (l/with-reentrant-lock lock
                      (case (.type state)
                        ::error (.on-error ^ResultCallback callback)
                        ::success (.on-success ^ResultCallback callback)
@@ -158,7 +185,7 @@
       true))
   (cancel-callback [_ callback]
     (io! "Cannot modify result-channels inside a transaction."
-      (l/with-non-exclusive-lock lock
+      (l/with-reentrant-lock lock
         (case (.type state)
           ::error   false
           ::success false
@@ -180,7 +207,7 @@
 
 (defn result-channel []
   (ResultChannel.
-    (l/asymmetric-lock false)
+    (l/asymmetric-reentrant-lock)
     (CopyOnWriteArrayList.)
     (ResultState. ::none nil)))
 
