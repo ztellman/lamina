@@ -51,6 +51,20 @@
      (q/enqueue q# ~msg true #(l/release ~lock))
      (l/release ~lock)))
 
+(defmacro get-or-create-queue [state]
+  `(let [^NodeState s# ~state]
+     (if-let [q# (.queue s#)]
+       q#
+       (let [q# (q/queue)]
+         (set! ~state (NodeState.
+                        (.mode s#)
+                        q#
+                        true
+                        (.transactional? s#)
+                        (.error s#)
+                        (.next s#)))
+         q#))))
+
 (deftype Node
   [^AsymmetricLock lock
    operator
@@ -138,11 +152,15 @@
   NodeProtocol
 
   (predicate-receive [_ predicate false-value result-channel]
-    (l/with-lock lock
-      (q/receive (.queue state) predicate false-value result-channel)))
+    (let [proxy-result (when result-channel (r/result-channel))
+          result (l/with-exclusive-lock*
+                   (q/receive (get-or-create-queue state) predicate false-value proxy-result))]
+      (when proxy-result
+        (r/siphon-result proxy-result result-channel))
+      result))
 
   (receive [_ name callback]
-    (l/with-lock lock
+    (l/with-exclusive-lock*
       (if-let [v (.get cancellations name)]
 
         ;; there's already a pending receive op, just return the result-channel
@@ -151,16 +169,15 @@
           (throw (IllegalStateException. "Non-receive callback used for receive operation.")))
 
         ;; receive from queue and set up cancellation callbacks
-        (let [state state
-             result-channel (q/receive (.queue state) nil nil nil)]
-
-         ;; set up cancellation
-         (.put cancellations name result-channel)
-
-         (let [f (fn [_] (.remove cancellations name))]
-           (r/subscribe result-channel (r/result-callback f f)))
-
-         result-channel))))
+        (let [result-channel (q/receive (get-or-create-queue state) nil nil nil)]
+                       
+          ;; set up cancellation
+          (.put cancellations name result-channel)
+                       
+          (let [f (fn [_] (.remove cancellations name))]
+            (r/subscribe result-channel (r/result-callback f f)))
+                       
+          result-channel))))
 
   (close [_]
     (io! "Cannot modify node while in transaction."

@@ -152,10 +152,7 @@
       result
       (let [^CountDownLatch latch (CountDownLatch. 1)
             f (fn [_] (.countDown latch))]
-        (subscribe this (ResultCallback.
-                          nil
-                          (success-callback-modifier f)
-                          (error-callback-modifier f)))
+        (subscribe this (ResultCallback. nil f f))
         (.await latch)
         (let [state state
               value (.value state)]
@@ -274,6 +271,10 @@
     (instance? ResultChannel x)
     (instance? SuccessResult x)
     (instance? ErrorResult x)))
+
+(defn siphon-result [src dst]
+  (subscribe src (result-callback #(success dst %) #(error dst %)))
+  dst)
 
 ;;;
 
