@@ -23,23 +23,27 @@
 
 (defn capture-success
   ([result]
-     (capture-success result true))
+     (capture-success result :lamina/subscribed))
   ([result expected-return-value]
      (let [p (promise)]
-       (is (= true (subscribe result (result-callback
-                                       #(do (deliver p %) expected-return-value)
-                                       (fn [_] (throw (Exception. "ERROR")))))))
-       @p)))
+       (is (= expected-return-value
+             (subscribe result
+               (result-callback
+                 #(do (deliver p %) expected-return-value)
+                 (fn [_] (throw (Exception. "ERROR")))))))
+       p)))
 
 (defn capture-error
   ([result]
-     (capture-error result true))
+     (capture-error result :lamina/subscribed))
   ([result expected-return-value]
      (let [p (promise)]
-       (is (= true (subscribe result (result-callback
-                                       (fn [_] (throw (Exception. "SUCCESS")))
-                                       #(do (deliver p %) expected-return-value)))))
-       @p)))
+       (is (= expected-return-value
+             (subscribe result
+               (result-callback
+                 (fn [_] (throw (Exception. "SUCCESS")))
+                 #(do (deliver p %) expected-return-value)))))
+       p)))
 
 (deftest test-success-result
   (let [r (success-result 1)] 
@@ -47,9 +51,9 @@
     (is (= 1 (success-value r nil)))
     (is (= ::none (error-value r ::none)))
     (is (= :success (result r)))
-    (is (= false (success r nil)))
-    (is (= false (error r nil)))
-    (is (= 1 (capture-success r)))
+    (is (= :lamina/already-realized! (success r nil)))
+    (is (= :lamina/already-realized! (error r nil)))
+    (is (= 1 @(capture-success r :foo)))
     (is (= false (cancel-callback r nil)))))
 
 (deftest test-error-result
@@ -59,9 +63,9 @@
     (is (= ::none (success-value r ::none)))
     (is (= ex (error-value r nil)))
     (is (= :error (result r)))
-    (is (= false (success r nil)))
-    (is (= false (error r nil)))
-    (is (= ex (capture-error r)))
+    (is (= :lamina/already-realized! (success r nil)))
+    (is (= :lamina/already-realized! (error r nil)))
+    (is (= ex @(capture-error r :foo)))
     (is (= false (cancel-callback r nil)))))
 
 (deftest test-result-channel
@@ -72,21 +76,44 @@
 
   ;; success result
   (let [r (result-channel)]
-    (is (= true (success r 1)))
+    (is (= :lamina/realized (success r 1)))
     (is (= 1 (success-value r nil)))
     (is (= ::none (error-value r ::none)))
     (is (= :success (result r)))
-    (is (= 1 (capture-success r ::return)))
+    (is (= 1 @(capture-success r ::return)))
     (is (= 1 @r)))
 
+  ;; claim and success!
+  (let [r (result-channel)]
+    (is (= true (claim r)))
+    (is (= :lamina/already-claimed! (success r 1)))
+    (is (= :lamina/realized (success! r 1)))
+    (is (= 1 (success-value r nil)))
+    (is (= ::none (error-value r ::none)))
+    (is (= :success (result r)))
+    (is (= 1 @(capture-success r ::return)))
+    (is (= 1 @r)))
+  
   ;; error result
   (let [r (result-channel)
         ex (IllegalStateException. "boom")]
-    (is (= true (error r ex)))
+    (is (= :lamina/realized (error r ex)))
     (is (= ::none (success-value r ::none)))
     (is (= ex (error-value r nil)))
     (is (= :error (result r)))
-    (is (= ex (capture-error r ::return)))
+    (is (= ex @(capture-error r ::return)))
+    (is (thrown? IllegalStateException @r)))
+
+  ;; claim and error!
+  (let [r (result-channel)
+        ex (IllegalStateException. "boom")]
+    (is (= true (claim r)))
+    (is (= :lamina/already-claimed! (error r ex)))
+    (is (= :lamina/realized (error! r ex)))
+    (is (= ::none (success-value r ::none)))
+    (is (= ex (error-value r nil)))
+    (is (= :error (result r)))
+    (is (= ex @(capture-error r ::return)))
     (is (thrown? IllegalStateException @r)))
 
   ;; test deref with success result
@@ -101,41 +128,55 @@
 
   ;; multiple callbacks w/ success
   (let [r (result-channel)
-        callbacks (->> (range 5) (map (fn [_] (future (capture-success r)))) doall)]
-    (is (= true (success r 1)))
+        callback-values (->> (range 5)
+                          (map (fn [_] (future (capture-success r))))
+                          (map deref)
+                          doall)]
+    (is (= :lamina/split (success r 1)))
     (is (= 1 @r))
-    (is (= (repeat 5 1) (map deref callbacks))))
+    (is (= (repeat 5 1) (map deref callback-values))))
 
   ;; multiple callbacks w/ error
   (let [r (result-channel)
-        callbacks (->> (range 5) (map (fn [_] (future (capture-error r)))) doall)
+        callback-values (->> (range 5)
+                          (map (fn [_] (future (capture-error r))))
+                          (map deref)
+                          doall)
         ex (Exception.)]
-    (is (= true (error r ex)))
+    (is (= :lamina/split (error r ex)))
     (is (thrown? Exception @r))
-    (is (= (repeat 5 ex) (map deref callbacks))))
+    (is (= (repeat 5 ex) (map deref callback-values))))
 
   ;; callback return result propagation in ::one
   (let [callback (result-callback (constantly :foo) nil)
         r (result-channel)]
-    (is (= true (subscribe r callback)))
+    (is (= :lamina/subscribed (subscribe r callback)))
     (is (= :foo (success r nil))))
+
+  ;; callback return result with ::many
+  (let [callback (result-callback (constantly :foo) nil)
+        r (result-channel)]
+    (is (= :lamina/subscribed (subscribe r callback)))
+    (is (= :lamina/subscribed (subscribe r callback)))
+    (is (= :lamina/split (success r nil))))
 
   ;; cancel-callback ::one to ::zero
   (let [callback (result-callback (constantly :foo) nil)
         r (result-channel)]
     (is (= false (cancel-callback r callback)))
-    (is (= true (subscribe r callback)))
+    (is (= :lamina/subscribed (subscribe r callback)))
     (is (= true (cancel-callback r callback)))
-    (is (= true (success r :foo)))
-    (is (= :foo (capture-success r))))
+    (is (= :lamina/realized (success r :foo)))
+    (is (= :foo @(capture-success r)))
+    (is (= false (cancel-callback r callback))))
 
   ;; cancel-callback ::many to ::one
   (let [cnt (atom 0)
         r (result-channel)
         a (result-callback (fn [_] (swap! cnt inc)) nil)
         b (result-callback (fn [_] (swap! cnt inc)) nil)]
-    (is (= true (subscribe r a)))
-    (is (= true (subscribe r b)))
+    (is (= :lamina/subscribed (subscribe r a)))
+    (is (= :lamina/subscribed (subscribe r b)))
     (is (= true (cancel-callback r a)))
     (is (= 1 (success r nil)))
     (is (= 1 @cnt)))
@@ -146,11 +187,11 @@
         a (result-callback (fn [_] (swap! cnt inc)) nil)
         b (result-callback (fn [_] (swap! cnt inc)) nil)
         c (result-callback (fn [_] (swap! cnt inc)) nil)]
-    (is (= true (subscribe r a)))
-    (is (= true (subscribe r b)))
-    (is (= true (subscribe r c)))
+    (is (= :lamina/subscribed (subscribe r a)))
+    (is (= :lamina/subscribed (subscribe r b)))
+    (is (= :lamina/subscribed (subscribe r c)))
     (is (= true (cancel-callback r a)))
-    (is (= true (success r nil)))
+    (is (= :lamina/split (success r nil)))
     (is (= 2 @cnt))))
 
 ;;;
@@ -158,7 +199,7 @@
 (defmacro bench [name & body]
   `(do
      (println "\n-----\n lamina.core.result -" ~name "\n-----\n")
-     (c/bench
+     (c/quick-bench
        (do
          ;;~@body
          (dotimes [_# (int 1e6)]
@@ -171,6 +212,11 @@
     (let [r (result-channel)]
       (subscribe r (result-callback (fn [_]) nil))
       (success r 1)))
+  (bench "subscribe, claim, and success!"
+    (let [r (result-channel)]
+      (subscribe r (result-callback (fn [_]) nil))
+      (claim r)
+      (success! r 1)))
   (bench "subscribe, cancel, subscribe and success"
     (let [r (result-channel)]
       (let [callback (result-callback (fn [_]) nil)]
@@ -193,6 +239,11 @@
   (bench "success and subscribe"
     (let [r (result-channel)]
       (success r 1)
+      (subscribe r (result-callback (fn [_]) nil))))
+  (bench "claim, success!, and subscribe"
+    (let [r (result-channel)]
+      (claim r)
+      (success! r 1)
       (subscribe r (result-callback (fn [_]) nil))))
   (bench "success and deref"
     (let [r (result-channel)]

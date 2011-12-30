@@ -27,7 +27,7 @@
      should treat the message as pre-transformed."))
 
 (defprotocol NodeProtocol
-  (predicate-receive [_ predicate false-value]
+  (predicate-receive [_ predicate false-value result-channel]
     "Straight call to the queue which cannot be cancelled. Intended for (read-channel ...).")
   (receive [_ name callback]
     "Cancellable call to the queue. Intended for (receive ...).")
@@ -38,7 +38,18 @@
   (on-state-changed [_ name callback])
   (cancel [_ name]))
 
-(deftype NodeState [mode queue error next])
+(deftype NodeState
+  [mode
+   queue
+   ^boolean consumed?
+   ^boolean transactional?
+   error
+   next])
+
+(defmacro enqueue-and-release [lock state msg persist?]
+  `(if-let [q# (.queue ~state)]
+     (q/enqueue q# ~msg true #(l/release ~lock))
+     (l/release ~lock)))
 
 (deftype Node
   [^AsymmetricLock lock
@@ -57,36 +68,30 @@
                 (catch Exception e
                   (error this e)
                   ::error))]
-      (case
+      (case msg
 
         (::error ::false)
         false
         
         (do
           ;; acquire the lock before we look at the state
-          (l/acquire-non-exclusive-lock lock)
+          (l/acquire lock)
           (let [state state]
             (case (.mode state)
               
               ::zero
-              ;; send message to queue, and release lock
-              (if-let [q (.queue state)]
-                (q/enqueue q msg true #(l/release-non-exclusive-lock lock))
-                (l/release-non-exclusive-lock lock))
+              (enqueue-and-release lock state msg true)
               
               ::one
               (do
-                ;; send message to queue, and release lock
-                (if-let [q (.queue state)]
-                  (q/enqueue q msg false #(l/release-non-exclusive-lock lock))
-                  (l/release-non-exclusive-lock lock))
+                (enqueue-and-release lock state msg false)
 
                 ;; walk the chain of nodes until there's a split
                 (loop [node (.next state), msg msg]
                   
                   (if-not (instance? Node node)
 
-                    ;; if it's not a propagator node, propagate the message
+                    ;; if it's not a normal node, forward the message
                     (propagate node msg true)
 
                     (let [node ^Node node
@@ -105,29 +110,23 @@
                         false
                         
                         (do
-                          (l/acquire-non-exclusive-lock (.lock node))
+                          (l/acquire (.lock node))
                           (let [state ^NodeState (.state node)]
                             (if-not (= ::one (.mode state))
                               
-                              ;; if there's not just one downstream node, exit the loop
-                              (propagate node msg false)
-                              
+                              ;; if there's not just one downstream node, forward the message
                               (do
+                                (l/release (.lock node))
+                                (propagate node msg false))
 
-                                ;; send message to queue and release lock
-                                (if-let [q (.queue state)]
-                                  (q/enqueue q msg false #(l/release-non-exclusive-lock lock))
-                                  (l/release-non-exclusive-lock lock))
-
-                                ;; rinse and repeat
+                              ;; otherwise, rinse and repeat
+                              (do
+                                (enqueue-and-release (.lock node) state msg false)
                                 (recur (.next state) msg))))))))))
               
               ::many
               (do
-                ;; send message to queue, and release lock
-                (if-let [q (.queue state)]
-                  (q/enqueue q msg false #(l/release-non-exclusive-lock lock))
-                  (l/release-non-exclusive-lock lock))
+                (enqueue-and-release lock state msg false)
 
                 ;; send message to all nodes
                 (doseq [node (.next state)]
@@ -138,12 +137,12 @@
 
   NodeProtocol
 
-  (predicate-receive [_ predicate false-value]
-    (l/with-non-exclusive-lock lock
-      (q/receive (.queue state) predicate false-value)))
+  (predicate-receive [_ predicate false-value result-channel]
+    (l/with-lock lock
+      (q/receive (.queue state) predicate false-value result-channel)))
 
   (receive [_ name callback]
-    (l/with-non-exclusive-lock lock
+    (l/with-lock lock
       (if-let [v (.get cancellations name)]
 
         ;; there's already a pending receive op, just return the result-channel
@@ -153,7 +152,7 @@
 
         ;; receive from queue and set up cancellation callbacks
         (let [state state
-             result-channel (q/receive (.queue state) nil nil)]
+             result-channel (q/receive (.queue state) nil nil nil)]
 
          ;; set up cancellation
          (.put cancellations name result-channel)
@@ -171,7 +170,12 @@
                 
                 (::zero ::one ::many)
                 (do
-                  (set! state (NodeState. ::closed (q/closed-copy (.queue s)) nil nil))
+                  (set! state (NodeState. ::closed
+                                (when (.queue s) (q/closed-copy (.queue s)))
+                                (.consumed? s)
+                                (.transactional? s)
+                                nil
+                                nil))
                   true)
                 
                 false)))
@@ -192,7 +196,12 @@
                                
                                (::zero ::one ::many)
                                (let [q (.queue s)]
-                                 (set! state (NodeState. ::error (q/error-queue err) err nil))
+                                 (set! state (NodeState. ::error
+                                               (q/error-queue err)
+                                               (.consumed? s)
+                                               (.transactional? s)
+                                               err
+                                               nil))
                                  q)
                                
                                nil)))]
@@ -216,10 +225,19 @@
                         new-state
                         (case s
                           ::zero
-                          (NodeState. ::one (.queue s) nil node)
+                          (NodeState. ::one
+                            (when (.consumed? s) (.queue s))
+                            (.consumed? s)
+                            (.transactional? s)
+                            nil
+                            node)
                          
                           ::one
-                          (NodeState. ::many (.queue s) nil
+                          (NodeState. ::many
+                            (.queue s)
+                            (.consumed? s)
+                            (.transactional? s)
+                            nil
                             (CopyOnWriteArrayList. ^objects (to-array [(.next s) node])))
                          
                           ::many
@@ -263,13 +281,23 @@
                            
                            ::one
                            (when (= node (.next s))
-                             (NodeState. ::zero (.queue s) nil nil))
+                             (NodeState. ::zero
+                               (or (.queue s) (q/queue))
+                               (.consumed? s)
+                               (.transactional? s)
+                               nil
+                               nil))
                            
                            ::many
                            (let [l ^CopyOnWriteArrayList (.next s)]
                              (when (.remove l node)
                                (if (= 1 (.size l))
-                                 (NodeState. ::one (.queue s) nil (.get l 0))
+                                 (NodeState. ::one
+                                   (.queue s)
+                                   (.consumed? s)
+                                   (.transactional? s)
+                                   nil
+                                   (.get l 0))
                                  s)))
                            
                            nil)]
@@ -311,10 +339,10 @@
         false)))
   
   (cancel [_ name]
-    (if-let [x (l/with-non-exclusive-lock lock
+    (if-let [x (l/with-lock lock
                  (.remove cancellations name))]
       (if (r/result-channel? x)
-        (l/with-non-exclusive-lock lock
+        (l/with-lock lock
           (q/cancel-receive (.queue state) x))
         (do
           (x)
@@ -322,5 +350,27 @@
       false)))
 
 (deftype CallbackNode [callback]
-  )
+  PropagateProtocol
+  (propagate [_ msg _]
+    (callback msg)))
 
+;;;
+
+(defn node [operator]
+  (Node.
+    (l/asymmetric-lock)
+    operator
+    (NodeState. ::zero (q/queue) false false nil nil)
+    (ConcurrentHashMap.)
+    (CopyOnWriteArrayList.)))
+
+(defn upstream-node [operator downstream-node]
+  (Node.
+    (l/asymmetric-lock)
+    operator
+    (NodeState. ::one nil false false nil downstream-node)
+    (ConcurrentHashMap.)
+    (CopyOnWriteArrayList.)))
+
+(defn callback-node [callback]
+  (CallbackNode. callback))

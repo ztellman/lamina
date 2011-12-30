@@ -9,6 +9,8 @@
 (ns lamina.core.lock
   (:import [java.util.concurrent Semaphore]))
 
+(set! *warn-on-reflection* true)
+
 ;;;
 
 (defprotocol AsymmetricLockProtocol
@@ -27,10 +29,10 @@
       (when (<= Integer/MAX_VALUE p)
         (throw (IllegalStateException. "Cannot use 'acquire' while in exclusive-lock, use macros instead.")))
       (.acquire semaphore)
-      (.set permits (unchecked-add 1 (long p)))))
+      (.set permits (unchecked-inc (long p)))))
   (release [_]
     (.release semaphore)
-    (.set permits (unchecked-subtract (long (.get permits)) 1))))
+    (.set permits (unchecked-dec (long (.get permits))))))
 
 (defn asymmetric-reentrant-lock []
   (AsymmetricReentrantLock. (ThreadLocal.) (Semaphore. Integer/MAX_VALUE)))
@@ -38,29 +40,29 @@
 ;;;
 
 (defmacro with-reentrant-lock [lock & body]
-  `(let [lock# ~lock
-         semaphore# (.semaphore ^AsymmetricReentrantLock lock#)
-         permits# (.permits ^AsymmetricReentrantLock lock#)
+  `(let [^AsymmetricReentrantLock lock# ~lock
+         ^Semaphore semaphore# (.semaphore lock#)
+         ^ThreadLocal permits# (.permits lock#)
          acquire?# (= 0 (long (or (.get ^ThreadLocal permits#) 0)))]
      (do
        (when acquire?#
-         (.acquire ^Semaphore semaphore#)
-         (.set ^ThreadLocal permits# 1))
+         (.acquire semaphore#)
+         (.set permits# 1))
        (try
          ~@body
          (finally
            (when acquire?#
-             (.release ^Semaphore semaphore#)
+             (.release semaphore#)
              ;; we need to re-check the number of permits because (acquire ...) may have been called
-             (.set ^ThreadLocal permits#
-               (let [p# (.get ^ThreadLocal permits#)]
-                 (unchecked-subtract (long p#) 1)))))))))
+             (.set permits#
+               (let [p# (.get permits#)]
+                 (unchecked-dec (long p#))))))))))
 
 (defmacro with-exclusive-reentrant-lock [lock & body]
-  `(let [lock# ~lock
-         semaphore# (.semaphore ^AsymmetricReentrantLock lock#) 
-         permits# (.permits ^AsymmetricReentrantLock lock#)
-         acquired# (or (.get ^ThreadLocal permits#) 0)
+  `(let [^AsymmetricReentrantLock lock# ~lock
+         ^Semaphore semaphore# (.semaphore lock#) 
+         ^ThreadLocal permits# (.permits lock#)
+         acquired# (or (.get permits#) 0)
          to-acquire# (unchecked-subtract Integer/MAX_VALUE (long acquired#))
          acquire?# (< 0 to-acquire#)]
      (do
@@ -68,16 +70,16 @@
          ;; if we don't first release all our existing permits, we can deadlock
          ;; with another exclusive-reentrant-lock that already has its own permits
          (when (> acquired# 0)
-           (.release ^Semaphore semaphore# acquired#))
-         (.acquire ^Semaphore semaphore# Integer/MAX_VALUE)
-         (.set ^ThreadLocal permits# Integer/MAX_VALUE))
+           (.release semaphore# acquired#))
+         (.acquire semaphore# Integer/MAX_VALUE)
+         (.set permits# Integer/MAX_VALUE))
        (try
          ~@body
          (finally
            (when acquire?#
-             (.release ^Semaphore semaphore# to-acquire#)
+             (.release semaphore# to-acquire#)
              ;; we don't need to re-check because (acquire ...) would have thrown an exception
-             (.set ^ThreadLocal permits# acquired#)))))))
+             (.set permits# acquired#)))))))
 
 
 ;;;
@@ -93,24 +95,24 @@
 ;;;
 
 (defmacro with-lock [lock & body]
-  `(let [lock# ~lock
-         semaphore# (.semaphore ^AsymmetricLock lock#)]
+  `(let [^AsymmetricLock lock# ~lock
+         ^Semaphore semaphore# (.semaphore lock#)]
      (do
-       (.acquire ^Semaphore semaphore#)
+       (.acquire semaphore#)
        (try
          ~@body
          (finally
-           (.release ^Semaphore semaphore#))))))
+           (.release semaphore#))))))
 
 (defmacro with-exclusive-lock [lock & body]
-  `(let [lock# ~lock
-         semaphore# (.semaphore ^AsymmetricLock lock#)]
+  `(let [^AsymmetricLock lock# ~lock
+         ^Semaphore semaphore# (.semaphore lock#)]
      (do
-       (.acquire ^Semaphore semaphore# Integer/MAX_VALUE)
+       (.acquire semaphore# Integer/MAX_VALUE)
        (try
          ~@body
          (finally
-           (.release ^Semaphore semaphore# Integer/MAX_VALUE))))))
+           (.release semaphore# Integer/MAX_VALUE))))))
 
 ;; These variants exists because apparently try/catch, loop/recur, et al
 ;; close over the body, so using set! inside the body causes the compiler
@@ -122,53 +124,17 @@
 ;; also always be uninterruptible.
 
 (defmacro with-exclusive-lock* [lock & body]
-  `(let [lock# ~lock
-         semaphore# (.semaphore ^AsymmetricLock lock#)]
-     (.acquire ^Semaphore semaphore# Integer/MAX_VALUE)
+  `(let [^AsymmetricLock lock# ~lock
+         ^Semaphore semaphore# (.semaphore lock#)]
+     (.acquire semaphore# Integer/MAX_VALUE)
      (let [result# (do ~@body)]
-       (.release ^Semaphore semaphore# Integer/MAX_VALUE)
+       (.release semaphore# Integer/MAX_VALUE)
        result#)))
 
 (defmacro with-lock* [lock & body]
-  `(let [lock# ~lock
-         semaphore# (.semaphore ^AsymmetricLock lock#)]
-     (.acquire ^Semaphore semaphore#)
+  `(let [^AsymmetricLock lock# ~lock
+         ^Semaphore semaphore# (.semaphore lock#)]
+     (.acquire semaphore#)
      (let [result# (do ~@body)]
-       (.release ^Semaphore semaphore#)
+       (.release semaphore#)
        result#)))
-
-(defmacro with-reentrant-lock* [lock & body]
-  `(let [lock# ~lock
-         semaphore# (.semaphore ^AsymmetricReentrantLock lock#)
-         permits# (.permits ^AsymmetricReentrantLock lock#)
-         acquire?# (= 0 (long (or (.get ^ThreadLocal permits#) 0)))]
-     (do
-       (when acquire?#
-         (.acquire ^Semaphore semaphore#)
-         (.set ^ThreadLocal permits# 1))
-       (let [result# (do ~@body)]
-         (when acquire?#
-           (.release ^Semaphore semaphore#)
-           (.set ^ThreadLocal permits#
-             (let [p# (.get ^ThreadLocal permits#)]
-               (unchecked-subtract (long p#) 1))))
-         result#))))
-
-(defmacro with-exclusive-reentrant-lock* [lock & body]
-  `(let [lock# ~lock
-         semaphore# (.semaphore ^AsymmetricReentrantLock lock#) 
-         permits# (.permits ^AsymmetricReentrantLock lock#)
-         acquired# (or (.get ^ThreadLocal permits#) 0)
-         to-acquire# (unchecked-subtract Integer/MAX_VALUE (long acquired#))
-         acquire?# (< 0 to-acquire#)]
-     (do
-       (when acquire?#
-         (when (> acquired# 0)
-           (.release ^Semaphore semaphore# acquired#))
-         (.acquire ^Semaphore semaphore# Integer/MAX_VALUE)
-         (.set ^ThreadLocal permits# Integer/MAX_VALUE))
-       (let [result# (do ~@body)]
-         (when acquire?#
-           (.release ^Semaphore semaphore# to-acquire#)
-           (.set ^ThreadLocal permits# acquired#))
-         result#))))

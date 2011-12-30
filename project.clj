@@ -4,7 +4,7 @@
                  [org.clojure/tools.logging "0.2.3"]
                  [criterium "0.2.0"]
                  [potemkin "0.1.1-SNAPSHOT"]]
-  :jvm-opts ["-server" "-XX:+UseConcMarkSweepGC"]	
+  :jvm-opts ["-server" "-XX:+UseConcMarkSweepGC" "-XX:MaxInlineSize=100"]	
   :repositories {"sonatype-oss-public" "https://oss.sonatype.org/content/groups/public/"}
   :exclusions [org.clojure/contrib
                org.clojure/clojure-contrib]

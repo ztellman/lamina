@@ -11,8 +11,7 @@
     [lamina.core.lock :as l])
   (:import
     [lamina.core.lock
-     AsymmetricReentrantLock
-     AsymmetricLockProtocol]
+     AsymmetricLock]
     [java.util.concurrent
      CopyOnWriteArrayList
      CountDownLatch]
@@ -21,11 +20,26 @@
 
 (set! *warn-on-reflection* true)
 
-(deftype ResultCallback [on-success on-error])
+(deftype ResultCallback [original on-success on-error]
+  Object
+  (equals [this x]
+    (and
+      (instance? ResultCallback x)
+      (or
+        (identical? this x)
+        (identical? original x)
+        (identical? this (.original ^ResultCallback x)))))
+  (hashCode [this]
+    (if original
+      (hash original)
+      (System/identityHashCode this))))
 
 (defprotocol Result
   (success [_ val])
   (error [_ err])
+  (success! [_ val])
+  (error! [_ err])
+  (claim [_])
   (success-value [_ default-value])
   (error-value [_ default-value])
   (result [_])
@@ -34,16 +48,19 @@
 
 ;;;
 
-(deftype SuccessResult [value]
-  AsymmetricLockProtocol
-  (acquire [_])
-  (release [_])
+(deftype SuccessResult [value callback-modifier]
   clojure.lang.IDeref
   (deref [_] value)
   Result
   (success [_ _]
-    false)
+    :lamina/already-realized!)
+  (success! [_ _]
+    :lamina/already-realized!)
   (error [_ _]
+    :lamina/already-realized!)
+  (error! [_ _]
+    :lamina/already-realized!)
+  (claim [_]
     false)
   (success-value [_ _]
     value)
@@ -52,17 +69,13 @@
   (result [_]
     :success)
   (subscribe [_ callback]
-    ((.on-success ^ResultCallback callback) value)
-    true)
+    ((callback-modifier (.on-success ^ResultCallback callback)) value))
   (cancel-callback [_ callback]
     false)
   (toString [_]
     (str "<< " value " >>")))
 
-(deftype ErrorResult [error]
-  AsymmetricLockProtocol
-  (acquire [_])
-  (release [_])
+(deftype ErrorResult [error callback-modifier]
   clojure.lang.IDeref
   (deref [_]
     (if (instance? Throwable error)
@@ -70,8 +83,14 @@
       (throw (Exception. (str error)))))
   Result
   (success [_ _]
-    false)
+    :lamina/already-realized!)
+  (success! [_ _]
+    :lamina/already-realized!)
   (error [_ _]
+    :lamina/already-realized!)
+  (error! [_ _]
+    :lamina/already-realized!)
+  (claim [_]
     false)
   (success-value [_ default-value]
     default-value)
@@ -80,44 +99,67 @@
   (result [_]
     :error)
   (subscribe [_ callback]
-    ((.on-error ^ResultCallback callback) error)
-    true)
+    ((callback-modifier (.on-error ^ResultCallback callback)) error))
   (cancel-callback [_ callback]
     false)
   (toString [_]
     (str "<< ERROR: " error " >>")))
 
-(deftype ResultState [type value])
+;;;
+
+(deftype ResultState [mode value])
+
+(defmacro compare-and-trigger! [old-mode new-mode lock state callbacks f value]
+  `(io! "Cannot modify result-channels inside a transaction."
+     (let [callbacks# ~callbacks
+           value# ~value]
+       (let [result# (l/with-exclusive-lock* ~lock
+                       (case (.mode ~state)
+                         ~old-mode (do (set! ~state (ResultState. ~new-mode value#)) true)
+                         ~@(if (= ::none old-mode)
+                             `(::claimed :lamina/already-claimed!)
+                             `(::none :lamina/not-claimed!))
+                         :lamina/already-realized!))]
+         (if-not (= true result#)
+           result#
+           (let [result# (case (.size callbacks#)
+                           0 :lamina/realized
+                           1 ((~f ^ResultCallback (.get callbacks# 0)) value#)
+                           (do
+                             (doseq [^ResultCallback c# callbacks#]
+                               ((~f c#) value#))
+                             :lamina/split))]
+             (.clear callbacks#)
+             result#))))))
 
 (deftype ResultChannel
-  [^AsymmetricReentrantLock lock
+  [^AsymmetricLock lock
    ^CopyOnWriteArrayList callbacks
-   ^:volatile-mutable ^ResultState state]
+   ^:volatile-mutable ^ResultState state
+   success-callback-modifier
+   error-callback-modifier]
 
-  AsymmetricLockProtocol
-  (acquire [_]
-    (l/acquire lock))
-  (release [_]
-    (l/release lock))
-  
   clojure.lang.IDeref
   (deref [this]
     (if-let [result (let [state state
                           value (.value state)]
-                      (case (.type state)
+                      (case (.mode state)
                         ::success value
                         ::error (if (instance? Throwable value)
                                   (throw value)
                                   (throw (Exception. (str value))))
                         nil))]
       result
-      (let [latch (CountDownLatch. 1)
-            f (fn [_] (.countDown ^CountDownLatch latch))]
-        (subscribe this (ResultCallback. f f))
-        (.await ^CountDownLatch latch)
+      (let [^CountDownLatch latch (CountDownLatch. 1)
+            f (fn [_] (.countDown latch))]
+        (subscribe this (ResultCallback.
+                          nil
+                          (success-callback-modifier f)
+                          (error-callback-modifier f)))
+        (.await latch)
         (let [state state
               value (.value state)]
-          (case (.type state)
+          (case (.mode state)
             ::success value
             ::error (if (instance? Throwable value)
                       (throw value)
@@ -126,93 +168,106 @@
   
   Result
   (success [_ val]
-    (io! "Cannot modify result-channels inside a transaction."
-      (if-not (l/with-exclusive-reentrant-lock* lock
-                (when (= ::none (.type state))
-                  (set! state (ResultState. ::success val))
-                  true))
-        false
-        (let [result (case (.size callbacks)
-                       0 true
-                       1 ((.on-success ^ResultCallback (.get callbacks 0)) val)
-                       (do
-                         (doseq [^ResultCallback c callbacks]
-                           ((.on-success c) val))
-                         true))]
-          (.clear callbacks)
-          result))))
+    (compare-and-trigger! ::none ::success lock state callbacks .on-success val))
+
+  (success! [_ val]
+    (compare-and-trigger! ::claimed ::success lock state callbacks .on-success val))
+
   (error [_ err]
+    (compare-and-trigger! ::none ::error lock state callbacks .on-error err))
+  
+  (error! [_ err]
+    (compare-and-trigger! ::claimed ::error lock state callbacks .on-error err))
+
+  (claim [_]
     (io! "Cannot modify result-channels inside a transaction."
-      (if-not (l/with-exclusive-reentrant-lock* lock
-                (when (= ::none (.type state))
-                  (set! state (ResultState. ::error err))
-                  true))
-        false
-        (let [result (case (.size callbacks)
-                       0 true
-                       1 ((.on-error ^ResultCallback (.get callbacks 0)) err)
-                       (do
-                         (doseq [^ResultCallback c callbacks]
-                           ((.on-error c) err))
-                         true))]
-          (.clear callbacks)
-          result))))
+      (l/with-exclusive-lock* lock
+        (when (= ::none (.mode state))
+          (set! state (ResultState. ::claimed nil))
+          true))))
+
+  ;;;
+  
   (success-value [_ default-value]
     (let [state state]
-      (if (= ::success (.type state))
+      (if (= ::success (.mode state))
         (.value state)
         default-value)))
+  
   (error-value [_ default-value]
     (let [state state]
-      (if (= ::error (.type state))
+      (if (= ::error (.mode state))
         (.value state)
         default-value)))
+  
   (result [_]
-    (case (.type state)
+    (case (.mode state)
       ::success :success
       ::error :error
       nil))
+
+  ;;;
+
   (subscribe [_ callback]
     (io! "Cannot modify result-channels inside a transaction."
-      (when-let [f (l/with-reentrant-lock lock
-                     (case (.type state)
-                       ::error (.on-error ^ResultCallback callback)
-                       ::success (.on-success ^ResultCallback callback)
-                       ::none (do
-                                (.add callbacks callback)
-                                nil)))]
-        (f (.value state)))
-      true))
+      (let [^ResultCallback callback callback
+            x (l/with-lock lock
+                (case (.mode state)
+                  ::success (success-callback-modifier (.on-success callback))
+                  ::error (error-callback-modifier (.on-error callback))
+                  ::none (do
+                           (.add callbacks
+                             (ResultCallback.
+                               callback
+                               (success-callback-modifier (.on-success callback))
+                               (error-callback-modifier (.on-error callback))))
+                           :lamina/subscribed)))]
+        (if-not (= :lamina/subscribed x)
+          (x (.value state))
+          x))))
+  
   (cancel-callback [_ callback]
     (io! "Cannot modify result-channels inside a transaction."
-      (l/with-reentrant-lock lock
-        (case (.type state)
+      (l/with-lock lock
+        (case (.mode state)
           ::error   false
           ::success false
           ::none    (.remove callbacks callback)))))
+  
   (toString [_]
     (let [state state]
-      (case (.type state)
+      (case (.mode state)
         ::error   (str "<< ERROR: " (.value state) " >>")
         ::success (str "<< " (.value state) " >>")
         ::none    "<< ... >>"))))
 
 ;;;
 
-(defn success-result [value]
-  (SuccessResult. value))
+(defn success-result
+  ([value]
+     (success-result value identity))
+  ([value callback-modifier]
+     (SuccessResult. value callback-modifier)))
 
-(defn error-result [error]
-  (ErrorResult. error))
+(defn error-result
+  ([error]
+     (error-result error identity))
+  ([error callback-modifier]
+     (ErrorResult. error callback-modifier)))
 
-(defn result-channel []
-  (ResultChannel.
-    (l/asymmetric-reentrant-lock)
-    (CopyOnWriteArrayList.)
-    (ResultState. ::none nil)))
+(defn result-channel
+  ([]
+     (result-channel identity identity))
+  ([success-callback-modifier error-callback-modifier]
+     (ResultChannel.
+       (l/asymmetric-lock)
+       (CopyOnWriteArrayList.)
+       (ResultState. ::none nil)
+       success-callback-modifier
+       error-callback-modifier)))
 
 (defn result-callback [on-success on-error]
-  (ResultCallback. on-success on-error))
+  (ResultCallback. nil on-success on-error))
 
 (defn result-channel? [x]
   (or

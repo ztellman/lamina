@@ -16,7 +16,7 @@
 (defmacro bench [name & body]
   `(do
      (println "\n-----\n lamina.core.lock -" ~name "\n-----\n")
-     (c/bench
+     (c/quick-bench
        (dotimes [_# (int 1e6)]
          ~@body)
        :reduce-with #(and %1 %2))))
@@ -29,12 +29,8 @@
     (bench "reentrant non-exclusive"
       (with-reentrant-lock lock 1))
     (bench "reentrant exclusive"
-      (with-exclusive-reentrant-lock lock 1))
-    (bench "reentrant non-exclusive*"
-      (with-reentrant-lock* lock 1))
-    (bench "reentrant exclusive*"
-      (with-exclusive-reentrant-lock* lock 1)))
-  #_(let [lock (asymmetric-lock)]
+      (with-exclusive-reentrant-lock lock 1)))
+  (let [lock (asymmetric-lock)]
     (bench "acquire/release"
       (acquire lock)
       (release lock))
