@@ -3,6 +3,7 @@
   :dependencies [[org.clojure/clojure "1.3.0"]
                  [org.clojure/tools.logging "0.2.3"]
                  [criterium "0.2.0"]
+                 [useful "0.7.3"]
                  [potemkin "0.1.1-SNAPSHOT"]]
   :jvm-opts ["-server" "-XX:+UseConcMarkSweepGC" "-XX:MaxInlineSize=100"]	
   :repositories {"sonatype-oss-public" "https://oss.sonatype.org/content/groups/public/"}

@@ -161,7 +161,7 @@
     (if closed?
       false
       (io! "Cannot modify non-transactional queues inside a transaction."
-        (when-let [consumption-s
+        (when-let [x
                    (l/with-lock lock
                      (let [q ^ConcurrentLinkedQueue (.getAndSet consumers (ConcurrentLinkedQueue.))]
 
@@ -171,7 +171,7 @@
                          ;; no consumers, just hold onto the message
                          (when persist?
                            (.offer messages (if (= nil msg) ::nil msg))
-                           nil) 
+                           :lamina/enqueued) 
                          
                          ;; handle the first consumer specially, since most of the time there will
                          ;; only be one
@@ -198,11 +198,18 @@
                                    (recur (cons c cs) (or consumed? (= ::consumed (.type c))))))))))))]
           (when release-fn
             (release-fn))
-          (if (instance? Consumption consumption-s)
-            (dispatch-consumption consumption-s)
-            (doseq [c consumption-s]
-              (dispatch-consumption c))))
-        true)))
+          (cond
+            (= :lamina/enqueued x)
+            x
+
+            (instance? Consumption x)
+            (dispatch-consumption x)
+
+            :else
+            (do
+              (doseq [c x]
+                (dispatch-consumption c))
+              :lamina/queue-split))))))
 
   (receive [_ predicate false-value result-channel]
     (io! "Cannot modify non-transactional queues inside a transaction."

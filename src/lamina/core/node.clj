@@ -7,6 +7,8 @@
 ;;   You must not remove this notice, or any other, from this software.
 
 (ns lamina.core.node
+  (:use
+    [useful.datatypes :only (make-record assoc-record)])
   (:require
     [lamina.core.result :as r]
     [lamina.core.queue :as q]
@@ -38,7 +40,7 @@
   (on-state-changed [_ name callback])
   (cancel [_ name]))
 
-(deftype NodeState
+(defrecord NodeState
   [mode
    queue
    ^boolean consumed?
@@ -56,14 +58,13 @@
      (if-let [q# (.queue s#)]
        q#
        (let [q# (q/queue)]
-         (set! ~state (NodeState.
-                        (.mode s#)
-                        q#
-                        true
-                        (.transactional? s#)
-                        (.error s#)
-                        (.next s#)))
+         (set! ~state (assoc-record s# :queue q#, :consumed? true))
          q#))))
+
+(defmacro set-state! [state state-val & key-vals]
+  `(let [val# (assoc-record ~state-val ~@key-vals)]
+     (set! ~state val#)
+     val#))
 
 (deftype Node
   [^AsymmetricLock lock
@@ -84,14 +85,23 @@
                   ::error))]
       (case msg
 
-        (::error ::false)
-        false
+        ::error
+        :lamina/error!
+        
+        ::false
+        :lamina/filtered
         
         (do
           ;; acquire the lock before we look at the state
           (l/acquire lock)
           (let [state state]
             (case (.mode state)
+
+              ::closed
+              :lamina/closed!
+
+              ::error
+              :lamina/error!
               
               ::zero
               (enqueue-and-release lock state msg true)
@@ -120,8 +130,11 @@
 
                       (case msg
 
-                        (::error ::false)
-                        false
+                        ::error
+                        :lamina/error!
+
+                        ::false
+                        :lamina/filtered
                         
                         (do
                           (l/acquire (.lock node))
@@ -144,10 +157,9 @@
 
                 ;; send message to all nodes
                 (doseq [node (.next state)]
-                  (propagate node msg true)))
+                  (propagate node msg true))
 
-              ;; otherwise, just stop
-              false))))))
+                :lamina/split)))))))
 
   NodeProtocol
 
@@ -160,24 +172,27 @@
       result))
 
   (receive [_ name callback]
-    (l/with-exclusive-lock*
-      (if-let [v (.get cancellations name)]
+    (let [x (l/with-exclusive-lock*
+              (if-let [v (.get cancellations name)]
 
-        ;; there's already a pending receive op, just return the result-channel
-        (if (r/result-channel? v)
-          v
-          (throw (IllegalStateException. "Non-receive callback used for receive operation.")))
+                ;; there's already a pending receive op, just return the result-channel
+                (if (r/result-channel? v)
+                  v
+                  ::invalid-name)
 
-        ;; receive from queue and set up cancellation callbacks
-        (let [result-channel (q/receive (get-or-create-queue state) nil nil nil)]
+                ;; receive from queue and set up cancellation callbacks
+                (let [result-channel (q/receive (get-or-create-queue state) nil nil nil)]
                        
-          ;; set up cancellation
-          (.put cancellations name result-channel)
+                  ;; set up cancellation
+                  (.put cancellations name result-channel)
                        
-          (let [f (fn [_] (.remove cancellations name))]
-            (r/subscribe result-channel (r/result-callback f f)))
+                  (let [f (fn [_] (.remove cancellations name))]
+                    (r/subscribe result-channel (r/result-callback f f)))
                        
-          result-channel))))
+                  result-channel)))]
+      (if (= ::invalid-name x)
+        (throw (IllegalStateException. "Invalid callback identifier used for (receive ...)"))
+        x)))
 
   (close [_]
     (io! "Cannot modify node while in transaction."
@@ -187,12 +202,10 @@
                 
                 (::zero ::one ::many)
                 (do
-                  (set! state (NodeState. ::closed
-                                (when (.queue s) (q/closed-copy (.queue s)))
-                                (.consumed? s)
-                                (.transactional? s)
-                                nil
-                                nil))
+                  (set-state! state s
+                    :mode ::closed
+                    :queue (when (.queue s) (q/closed-copy (.queue s)))
+                    :next nil)
                   true)
                 
                 false)))
@@ -200,6 +213,7 @@
         (do
           (doseq [l state-callbacks]
             (l ::closed nil))
+          (.clear state-callbacks)
           true)
 
         ;; state has already been permanently changed
@@ -213,12 +227,10 @@
                                
                                (::zero ::one ::many)
                                (let [q (.queue s)]
-                                 (set! state (NodeState. ::error
-                                               (q/error-queue err)
-                                               (.consumed? s)
-                                               (.transactional? s)
-                                               err
-                                               nil))
+                                 (set-state! state s
+                                   :mode ::error
+                                   :queue (q/error-queue err)
+                                   :error err)
                                  q)
                                
                                nil)))]
@@ -227,6 +239,7 @@
           (error old-queue err)
           (doseq [l state-callbacks]
             (l ::error err))
+          (.clear state-callbacks)
           true)
         
         ;; state has already been permanently changed
@@ -234,48 +247,39 @@
 
   (link [this name node]
     (io! "Cannot modify node while in transaction."
-      (if-let [s
+      (if-let [^NodeState s
                (l/with-exclusive-lock* lock
                  (when-not (.containsKey cancellations name)
                    (let [s state
-                       
-                        new-state
-                        (case s
-                          ::zero
-                          (NodeState. ::one
-                            (when (.consumed? s) (.queue s))
-                            (.consumed? s)
-                            (.transactional? s)
-                            nil
-                            node)
+                         new-state
+                         (case (.mode s)
+
+                           ::zero
+                           (set-state! state s
+                             :mode ::one
+                             :queue (when (.consumed? s) (.queue s))
+                             :next node)
                          
-                          ::one
-                          (NodeState. ::many
-                            (.queue s)
-                            (.consumed? s)
-                            (.transactional? s)
-                            nil
-                            (CopyOnWriteArrayList. ^objects (to-array [(.next s) node])))
+                           ::one
+                           (set-state! state s
+                             :mode ::many
+                             :next (CopyOnWriteArrayList. ^objects (to-array [(.next s) node])))
                          
-                          ::many
-                          (do
-                            (.add ^CopyOnWriteArrayList (.next s) node)
-                            s)
+                           ::many
+                           (do
+                             (.add ^CopyOnWriteArrayList (.next s) node)
+                             s)
                          
-                          nil)]
-                    ;; set up cancellation
-                    (when new-state
-                      (.put cancellations name
-                        #(unlink this node)))
-                   
-                    ;; only peg this as a state change if they're not identical
-                    (when-not (identical? s new-state)
-                      (set! state new-state)
-                      new-state))))]
-        (let [s ^NodeState s]
-          ;; if this is our first downstream link, send all queued messages
-          (when (= ::one (.mode s))
-            (doseq [msg (q/ground (.queue s))]
+                           nil)]
+
+                     (when new-state
+                       (.put cancellations name #(unlink this node))
+                       new-state))))]
+
+        (do
+          ;; if we've gone from ::zero to ::one, send all queued messages
+          (when-let [q (and (= ::one (.mode s)) (.queue s))]
+            (doseq [msg (q/ground q)]
               (propagate (.next s) msg true)))
 
           ;; notify all state-changed listeners
@@ -289,46 +293,29 @@
   (unlink [_ node]
     (io! "Cannot modify node while in transaction."
       (if-let [s (l/with-exclusive-lock* lock
-                   (let [s state
-
-                         new-state
-                         (case s
-                           ::zero
-                           nil
+                   (let [s state]
+                     (case s
+                       ::zero
+                       nil
+                       
+                       ::one
+                       (when (= node (.next s))
+                         ;; ::one -> ::zero actually means ::one -> ::closed
+                         (set-state! state s
+                           :mode ::closed
+                           :queue (q/closed-copy (.queue s))
+                           :next nil))
+                       
+                       ::many
+                       (let [l ^CopyOnWriteArrayList (.next s)]
+                         (when (.remove l node)
+                           (if (= 1 (.size l))
+                             (set-state! state s
+                               :mode ::one
+                               :next (.get l 0))
+                             ::state-unchanged)))
                            
-                           ::one
-                           (when (= node (.next s))
-                             (NodeState. ::zero
-                               (or (.queue s) (q/queue))
-                               (.consumed? s)
-                               (.transactional? s)
-                               nil
-                               nil))
-                           
-                           ::many
-                           (let [l ^CopyOnWriteArrayList (.next s)]
-                             (when (.remove l node)
-                               (if (= 1 (.size l))
-                                 (NodeState. ::one
-                                   (.queue s)
-                                   (.consumed? s)
-                                   (.transactional? s)
-                                   nil
-                                   (.get l 0))
-                                 s)))
-                           
-                           nil)]
-                     (cond
-                       (= nil new-state)
-                       false
-
-                       (identical? new-state s)
-                       ::state-unchanged
-
-                       :else
-                       (do
-                         (set! state new-state)
-                         new-state))))]
+                           nil)))]
         (do
           (when-not (= s ::state-unchanged)
             (doseq [l state-callbacks]
@@ -338,14 +325,15 @@
 
   (on-state-changed [_ name callback]
     (let [s (l/with-exclusive-lock lock
-              (when-not (.containsKey cancellations name)
+              (when (or (nil? name) (not (.containsKey cancellations name)))
                 (let [s state]
                   (case (.mode s)
                     
                     (::zero ::one ::many)
                     (do
                       (.add state-callbacks callback)
-                      (.put cancellations name #(.remove state-callbacks callback)))
+                      (when name
+                        (.put cancellations name #(.remove state-callbacks callback))))
                     
                     nil)
                   s)))]
@@ -366,14 +354,55 @@
           true))
       false)))
 
+;;;
+
 (deftype CallbackNode [callback]
   PropagateProtocol
   (propagate [_ msg _]
     (callback msg)))
 
+(defn callback-node [callback]
+  (CallbackNode. callback))
+
+;;;
+
+(defn predicate-operator [predicate]
+  #(if (predicate %)
+     %
+     ::false))
+
+;;;
+
+(defn siphon-callback [src dst]
+  (fn [state _]
+    (case state
+      (::closed :error) (cancel src dst)
+      nil)))
+
+(defn join-callback [dst]
+  (fn [state err]
+    (case state
+      ::closed (close dst)
+      ::error (error dst err)
+      nil)))
+
+(defn siphon [src dst]
+  (let [success? (link src dst dst)]
+    (when success?
+      (on-state-changed dst nil (siphon-callback src dst)))
+    success?))
+
+(defn join [src dst]
+  (let [success? (siphon src dst)]
+    (when success?
+      (on-state-changed src nil (join-callback dst)))
+    success?))
+
 ;;;
 
 (defn node [operator]
+  (when-not (fn? operator)
+    (throw (Exception. (str (pr-str operator) " is not a valid function."))))
   (Node.
     (l/asymmetric-lock)
     operator
@@ -382,12 +411,16 @@
     (CopyOnWriteArrayList.)))
 
 (defn upstream-node [operator downstream-node]
-  (Node.
-    (l/asymmetric-lock)
-    operator
-    (NodeState. ::one nil false false nil downstream-node)
-    (ConcurrentHashMap.)
-    (CopyOnWriteArrayList.)))
+  (let [n (Node.
+            (l/asymmetric-lock)
+            operator
+            (NodeState. ::one nil false false nil downstream-node)
+            (ConcurrentHashMap.)
+            (CopyOnWriteArrayList. (to-array [(join-callback downstream-node)])))]
+    (on-state-changed downstream-node nil (siphon-callback n downstream-node))
+    n))
 
-(defn callback-node [callback]
-  (CallbackNode. callback))
+(defn node? [x]
+  (instance? Node x))
+
+;;;

@@ -90,7 +90,8 @@
 
   ;; enqueue, then receive with already claimed result-channel
   (enqueue q 9)
-  ())
+  (receive q nil nil (r/success-result 1))
+  (is (= 9 @(receive q))))
 
 (deftest test-basic-queue
   (test-queue (q/queue)))
@@ -132,7 +133,7 @@
   (bench (str name " - enqueue and receive with explicit result-channel")
     (enqueue q 1)
     (receive q nil nil (r/result-channel)))
-  (bench (str name "- enqueue without persistence")
+  (bench (str name " - enqueue without persistence")
     (q/enqueue q 1 false nil)))
 
 (deftest ^:benchmark benchmark-basic-queue

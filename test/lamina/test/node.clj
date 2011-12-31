@@ -8,7 +8,62 @@
 
 (ns lamina.test.node
   (:use
-    [clojure test]
-    [lamina.core node]))
+    [clojure test])
+  (:require
+    [lamina.core.node :as n]))
+
+(defn enqueue [n & msgs]
+  (if (= 1 (count msgs))
+    (n/propagate n (first msgs) true)
+    (doseq [m msgs]
+      (n/propagate n m true))))
+
+(defn link [src dst]
+  (n/link src dst dst))
+
+(defn pred [f]
+  (n/predicate-operator f))
+
+(defn construct-nodes
+  ([tree]
+     (construct-nodes link tree))
+  ([connect-fn [operator & downstream-operators]]
+     (if (empty? downstream-operators)
+       (n/callback-node operator)
+       (let [n (n/node operator)]
+         (doseq [d (map #(construct-nodes connect-fn %) downstream-operators)]
+           (connect-fn n d))
+         n))))
+
+(defn sink []
+  (let [a (atom ::none)]
+    [a
+     #(if (compare-and-set! a ::none %)
+        true
+        (throw (Exception. (str "Already have a value: " @a))))]))
+
+(defn multi-sink []
+  (let [a (atom [])]
+    [a
+     #(do
+        (swap! a conj %)
+        true)]))
+
+(deftest test-simple-propagation
+  (let [[v callback] (multi-sink)]
+    (enqueue
+      (construct-nodes [inc [(pred even?) [callback]]])
+      1 2 3)
+    (is (= @v [2 4])))
+  (let [[a callback-a] (multi-sink)
+        [b callback-b] (multi-sink)]
+    (enqueue
+      (construct-nodes
+        [identity
+         [inc [(pred even?) [callback-a]]]
+         [dec [(pred even?) [callback-b]]]])
+      1 2 3)
+    (is (= @a [2 4]))
+    (is (= @b [0 2]))))
 
 
