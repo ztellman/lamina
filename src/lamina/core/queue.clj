@@ -129,6 +129,21 @@
   (cancel-receive [_ _]
     false))
 
+(deftype DrainedQueue []
+  QueueProtocol
+  (error [_ _] false)
+  (drained? [_] true)
+  (ground [_] nil)
+  (enqueue [_ _ _ _] false)
+  (receive [_ _ _ result-channel]
+    (if result-channel
+      (do
+        (when (r/claim result-channel)
+          (r/error! result-channel :lamina/drained!))
+        result-channel)
+      (r/error-result :lamina/drained!)))
+  (cancel-receive [_ _] false))
+
 ;;;
 
 (deftype MessageQueue
@@ -155,7 +170,7 @@
       (l/with-exclusive-lock lock
         (let [msgs (seq (.toArray messages))]
           (.clear messages)
-          msgs))))
+          (map #(if (= ::nil %) nil %) msgs)))))
 
   (enqueue [_ msg persist? release-fn]
     (if closed?
@@ -268,10 +283,9 @@
                 (.get consumers)
                 (MessageConsumer. nil nil false result-channel)))]
         (if removed?
-          ;; NOTE: creating this exception is *very* expensive relative to everything else.  Is this okay?
           (do
             (when (r/claim result-channel)
-              (r/error! result-channel (CancellationException.)))
+              (r/error! result-channel :lamina/cancelled))
             true) 
           false)))))
 
@@ -286,13 +300,16 @@
 
 (defn closed-queue [& messages]
   (MessageQueue.
-    (l/asymmetric-lock false)
+    (l/asymmetric-lock)
     (ConcurrentLinkedQueue. (map #(if (= nil %) ::nil %) messages))
     (AtomicReference. (ConcurrentLinkedQueue.))
     true))
 
 (defn error-queue [error]
   (ErrorQueue. error))
+
+(defn drained-queue []
+  (DrainedQueue.))
 
 (defn closed-copy [q]
   (apply closed-queue (ground q)))

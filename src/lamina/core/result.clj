@@ -13,7 +13,7 @@
     [lamina.core.lock
      AsymmetricLock]
     [java.util.concurrent
-     CopyOnWriteArrayList
+     ConcurrentLinkedQueue
      CountDownLatch]
     [java.util ArrayList]
     [java.io Writer]))
@@ -111,7 +111,7 @@
 
 (defmacro compare-and-trigger! [old-mode new-mode lock state callbacks f value]
   `(io! "Cannot modify result-channels inside a transaction."
-     (let [callbacks# ~callbacks
+     (let [q# ~callbacks
            value# ~value]
        (let [result# (l/with-exclusive-lock* ~lock
                        (case (.mode ~state)
@@ -122,19 +122,21 @@
                          :lamina/already-realized!))]
          (if-not (= true result#)
            result#
-           (let [result# (case (.size callbacks#)
-                           0 :lamina/realized
-                           1 ((~f ^ResultCallback (.get callbacks# 0)) value#)
-                           (do
-                             (doseq [^ResultCallback c# callbacks#]
-                               ((~f c#) value#))
-                             :lamina/split))]
-             (.clear callbacks#)
-             result#))))))
+           (if-let [^ResultCallback c# (.poll q#)]
+             (let [result# ((~f c#) value#)]
+               (if (.isEmpty q#)
+                 result#
+                 (do
+                   (loop []
+                     (when-let [^ResultCallback c# (.poll q#)]
+                       ((~f c#) value#)
+                       (recur)))
+                   :lamina/split)))
+             :lamina/realized))))))
 
 (deftype ResultChannel
   [^AsymmetricLock lock
-   ^CopyOnWriteArrayList callbacks
+   ^ConcurrentLinkedQueue callbacks
    ^:volatile-mutable ^ResultState state
    success-callback-modifier
    error-callback-modifier]
@@ -212,13 +214,13 @@
                 (case (.mode state)
                   ::success (success-callback-modifier (.on-success callback))
                   ::error (error-callback-modifier (.on-error callback))
-                  ::none (do
-                           (.add callbacks
-                             (ResultCallback.
-                               callback
-                               (success-callback-modifier (.on-success callback))
-                               (error-callback-modifier (.on-error callback))))
-                           :lamina/subscribed)))]
+                  (do
+                    (.add callbacks
+                      (ResultCallback.
+                        callback
+                        (success-callback-modifier (.on-success callback))
+                        (error-callback-modifier (.on-error callback))))
+                    :lamina/subscribed)))]
         (if-not (= :lamina/subscribed x)
           (x (.value state))
           x))))
@@ -229,14 +231,14 @@
         (case (.mode state)
           ::error   false
           ::success false
-          ::none    (.remove callbacks callback)))))
+          (.remove callbacks callback)))))
   
   (toString [_]
     (let [state state]
       (case (.mode state)
         ::error   (str "<< ERROR: " (.value state) " >>")
         ::success (str "<< " (.value state) " >>")
-        ::none    "<< ... >>"))))
+        "<< ... >>"))))
 
 ;;;
 
@@ -258,7 +260,7 @@
   ([success-callback-modifier error-callback-modifier]
      (ResultChannel.
        (l/asymmetric-lock)
-       (CopyOnWriteArrayList.)
+       (ConcurrentLinkedQueue.)
        (ResultState. ::none nil)
        success-callback-modifier
        error-callback-modifier)))

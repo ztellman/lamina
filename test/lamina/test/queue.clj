@@ -34,6 +34,12 @@
   (q/cancel-receive q callback))
 
 (defn test-queue [q]
+
+  ;; test ground
+  (enqueue q nil)
+  (enqueue q :a)
+  (is (= [nil :a] (q/ground q)))
+  
   ;; enqueue, then receive
   (enqueue q 0 false)
   (enqueue q 1)

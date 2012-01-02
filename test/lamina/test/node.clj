@@ -36,13 +36,6 @@
          n))))
 
 (defn sink []
-  (let [a (atom ::none)]
-    [a
-     #(if (compare-and-set! a ::none %)
-        true
-        (throw (Exception. (str "Already have a value: " @a))))]))
-
-(defn multi-sink []
   (let [a (atom [])]
     [a
      #(do
@@ -50,13 +43,13 @@
         true)]))
 
 (deftest test-simple-propagation
-  (let [[v callback] (multi-sink)]
+  (let [[v callback] (sink)]
     (enqueue
       (construct-nodes [inc [(pred even?) [callback]]])
       1 2 3)
     (is (= @v [2 4])))
-  (let [[a callback-a] (multi-sink)
-        [b callback-b] (multi-sink)]
+  (let [[a callback-a] (sink)
+        [b callback-b] (sink)]
     (enqueue
       (construct-nodes
         [identity
@@ -65,5 +58,18 @@
       1 2 3)
     (is (= @a [2 4]))
     (is (= @b [0 2]))))
+
+(deftest test-queueing
+  (let [n (n/node identity)
+        [v f] (sink)]
+    (is (= :lamina/enqueued (enqueue n nil)))
+    (is (= :lamina/enqueued (enqueue n 1)))
+    (link n (n/callback-node f))
+    (is (= [nil 1] @v))))
+
+
+
+
+
 
 

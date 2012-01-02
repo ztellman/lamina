@@ -7,7 +7,8 @@
 ;;   You must not remove this notice, or any other, from this software.
 
 (ns lamina.core.lock
-  (:import [java.util.concurrent Semaphore]))
+  (:import
+    [java.util.concurrent Semaphore]))
 
 (set! *warn-on-reflection* true)
 
@@ -15,79 +16,22 @@
 
 (defprotocol AsymmetricLockProtocol
   (acquire [_])
-  (release [_]))
-
-;;;
-
-;; the functions aren't really reentrant, but the macros are.  The important
-;; thing is that we can have non-exclusive -> exclusive promotion, unlike
-;; ReentrantReadWriteLocks
-(deftype AsymmetricReentrantLock [^ThreadLocal permits ^Semaphore semaphore]
-  AsymmetricLockProtocol
-  (acquire [_]
-    (let [p (long (or (.get permits) 0))]
-      (when (<= Integer/MAX_VALUE p)
-        (throw (IllegalStateException. "Cannot use 'acquire' while in exclusive-lock, use macros instead.")))
-      (.acquire semaphore)
-      (.set permits (unchecked-inc (long p)))))
-  (release [_]
-    (.release semaphore)
-    (.set permits (unchecked-dec (long (.get permits))))))
-
-(defn asymmetric-reentrant-lock []
-  (AsymmetricReentrantLock. (ThreadLocal.) (Semaphore. Integer/MAX_VALUE)))
-
-;;;
-
-(defmacro with-reentrant-lock [lock & body]
-  `(let [^AsymmetricReentrantLock lock# ~lock
-         ^Semaphore semaphore# (.semaphore lock#)
-         ^ThreadLocal permits# (.permits lock#)
-         acquire?# (= 0 (long (or (.get ^ThreadLocal permits#) 0)))]
-     (do
-       (when acquire?#
-         (.acquire semaphore#)
-         (.set permits# 1))
-       (try
-         ~@body
-         (finally
-           (when acquire?#
-             (.release semaphore#)
-             ;; we need to re-check the number of permits because (acquire ...) may have been called
-             (.set permits#
-               (let [p# (.get permits#)]
-                 (unchecked-dec (long p#))))))))))
-
-(defmacro with-exclusive-reentrant-lock [lock & body]
-  `(let [^AsymmetricReentrantLock lock# ~lock
-         ^Semaphore semaphore# (.semaphore lock#) 
-         ^ThreadLocal permits# (.permits lock#)
-         acquired# (or (.get permits#) 0)
-         to-acquire# (unchecked-subtract Integer/MAX_VALUE (long acquired#))
-         acquire?# (< 0 to-acquire#)]
-     (do
-       (when acquire?#
-         ;; if we don't first release all our existing permits, we can deadlock
-         ;; with another exclusive-reentrant-lock that already has its own permits
-         (when (> acquired# 0)
-           (.release semaphore# acquired#))
-         (.acquire semaphore# Integer/MAX_VALUE)
-         (.set permits# Integer/MAX_VALUE))
-       (try
-         ~@body
-         (finally
-           (when acquire?#
-             (.release semaphore# to-acquire#)
-             ;; we don't need to re-check because (acquire ...) would have thrown an exception
-             (.set permits# acquired#)))))))
-
+  (acquire-exclusive [_])
+  (release [_])
+  (release-exclusive [_])
+  (try-acquire [_])
+  (try-acquire-exclusive [_]))
 
 ;;;
 
 (deftype AsymmetricLock [^Semaphore semaphore]
   AsymmetricLockProtocol
   (acquire [_] (.acquire semaphore))
-  (release [_] (.release semaphore)))
+  (release [_] (.release semaphore))
+  (acquire-exclusive [_] (.acquire semaphore Integer/MAX_VALUE))
+  (release-exclusive [_] (.release semaphore Integer/MAX_VALUE))
+  (try-acquire [_] (.tryAcquire semaphore))
+  (try-acquire-exclusive [_] (.tryAcquire semaphore Integer/MAX_VALUE)))
 
 (defn asymmetric-lock []
   (AsymmetricLock. (Semaphore. Integer/MAX_VALUE)))
@@ -138,3 +82,33 @@
      (let [result# (do ~@body)]
        (.release semaphore#)
        result#)))
+
+;;;
+
+(defn- rotations [s]
+  (let [len (count s)]
+    (map
+      #(let [n (mod % len)]
+         (concat (drop n s) (take n s)))
+      (iterate inc 0))))
+
+(defn- try-acquire-all [exclusive? locks]
+  (let [f (if exclusive? try-acquire-exclusive try-acquire)]
+    (loop [idx 0, s locks]
+      (when-not (empty? s)
+        (if-not (f (first s))
+          idx
+          (recur (inc idx) (rest s)))))))
+
+(defn acquire-all [exclusive? locks]
+  (let [a (if exclusive? acquire-exclusive acquire)
+        r (if exclusive? release-exclusive release)]
+    (when-not (empty? locks)
+      (loop [ss (rotations locks)]
+        (let [s (first ss)]
+          (a (first s))
+          (when-let [n (try-acquire-all exclusive? (rest s))]
+            (r (first s))
+            (doseq [l (take n (rest s))]
+              (r l))
+            (recur (drop (inc n) ss))))))))

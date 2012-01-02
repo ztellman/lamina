@@ -21,15 +21,26 @@
          ~@body)
        :reduce-with #(and %1 %2))))
 
+(deftest test-acquire-all
+  (let [locks (repeatedly 10 #(asymmetric-lock))
+        striped (->> locks (partition 2) (map first))]
+    (doseq [l striped]
+      (acquire l))
+    (let [results (->>
+                    #(future
+                       (acquire-all true locks)
+                       (Thread/sleep 10)
+                       (doseq [l locks]
+                         (release-exclusive l))
+                       true)
+                    (repeatedly 10)
+                    doall)]
+      (Thread/sleep 100)
+      (doseq [l striped]
+        (release l))
+      (is (= (repeat 10 true) (map deref results))))))
+
 (deftest ^:benchmark benchmark-locks
-  (let [lock (asymmetric-reentrant-lock)]
-    (bench "reentrant acquire/release"
-      (acquire lock)
-      (release lock))
-    (bench "reentrant non-exclusive"
-      (with-reentrant-lock lock 1))
-    (bench "reentrant exclusive"
-      (with-exclusive-reentrant-lock lock 1)))
   (let [lock (asymmetric-lock)]
     (bench "acquire/release"
       (acquire lock)
