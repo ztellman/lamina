@@ -20,9 +20,34 @@
       (future (Thread/sleep 10) (r/success r (f x)))
       r)))
 
+(defmacro repeated-pipeline [n f]
+  `(pipeline ~@(repeat n f)))
+
+;;;
+
 (deftest test-simple-pipelines
-  (is (= 3 @(run-pipeline 1 inc inc)))
-  (is (= 3 @(run-pipeline 1 (defer inc) (defer inc)))))
+  (dotimes [i 10]
+    (eval
+      `(do
+         (is (= ~i @((repeated-pipeline ~i inc) 0)))
+         (is (= ~i @((repeated-pipeline ~i (defer inc)) 0)))
+         (is (= ~i @((repeated-pipeline ~i (fn [i#] (-> i# inc r/success-result r/success-result))) 0)))))))
+
+(deftest test-restart
+  (is (= 10 @(run-pipeline 0
+               inc
+               #(if (< % 10) (restart %) %))))
+  (is (= 10 @(run-pipeline 0
+               inc inc inc inc inc
+               #(if (< % 10) (restart %) %)))))
+
+(declare pipe-b)
+(def pipe-a (pipeline inc #(if (< % 10) (redirect pipe-b %) %)))
+(def pipe-b (pipeline inc #(if (< % 10) (redirect pipe-a %) %)))
+
+(deftest test-redirect
+  (is (= 10 @(pipe-a 0)))
+  (is (= 10 @(pipe-b 0))))
 
 ;;;
 
@@ -31,15 +56,14 @@
      (println "\n-----\n lamina.core.pipeline -" ~name "\n-----\n")
      (c/quick-bench
        (do
-         ;;~@body
-         (dotimes [_# (int 1e3)]
+         (dotimes [_# (int 1e6)]
            ~@body))
        :reduce-with #(and %1 %2))))
 
-(defmacro repeated-pipeline [n f]
-  `(pipeline ~@(repeat n f)))
-
 (deftest ^:benchmark benchmark-pipelines
+  (let [f #(-> % inc inc inc inc inc)]
+    (bench "baseline raw-function"
+      (f 0)))
   (let [f (apply comp (repeat 5 inc))]
     (bench "baseline composition"
       (f 0)))
@@ -51,4 +75,15 @@
       (p 0)))
   (let [p (repeated-pipeline 5 #(r/success-result (r/success-result %)))]
     (bench "nested success-result"
+      (p 0)))
+  (let [r (r/result-channel)
+        _ (r/success r 1)
+        p (repeated-pipeline 5 (fn [_] r))]
+    (bench "simple result-channel"
+      (p 0)))
+  (let [p (pipeline inc #(if (< % 10) (restart %) %))]
+    (bench "simple loop"
+      (p 0)))
+  (let [p (pipeline inc inc inc inc inc #(if (< % 10) (restart %) %))]
+    (bench "flattened loop"
       (p 0))))

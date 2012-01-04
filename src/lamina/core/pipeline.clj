@@ -25,18 +25,30 @@
   (run [_ result initial-value value step])
   (error [_ result ex]))
 
+(defn redirect [pipeline value]
+  (Redirect. pipeline value))
+
+(defn restart
+  ([]
+     (Redirect. ::current ::initial))
+  ([value]
+     (Redirect. ::current value)))
+
 ;;;
 
 (defn start-pipeline [pipeline result initial-value value step]
-  (loop [pipeline pipeline, initial-value initial-value, result result, step step]
-    (let [result (run pipeline result initial-value value step)]
-      (if (= Redirect (class result))
-        (let [^Redirect result result
-              value (if (= ::initial (.value result))
+  (loop [pipeline pipeline, initial-value initial-value, value value, step step]
+    (let [val (run pipeline result initial-value value step)]
+      (if (instance? Redirect val)
+        (let [^Redirect redirect val
+              value (if (= ::initial (.value redirect))
                       initial-value
-                      (.value result))]
-          (recur (.pipeline result) value value 0))
-        result))))
+                      (.value redirect))
+              pipeline (if (= ::current (.pipeline redirect))
+                         pipeline
+                         (.pipeline redirect))]
+          (recur pipeline value value 0))
+        val))))
 
 ;;;
 
