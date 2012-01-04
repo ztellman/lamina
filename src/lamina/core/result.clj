@@ -80,7 +80,7 @@
   (deref [_]
     (if (instance? Throwable error)
       (throw error)
-      (throw (Exception. (str error)))))
+      (throw (Exception. (pr-str error)))))
   Result
   (success [_ _]
     :lamina/already-realized!)
@@ -107,7 +107,9 @@
 
 ;;;
 
-(deftype ResultState [mode value])
+(deftype ResultState
+  [mode ;; ::none, ::claimed, ::success, or ::error
+   value])
 
 (defmacro compare-and-trigger! [old-mode new-mode lock state callbacks f value]
   `(io! "Cannot modify result-channels inside a transaction."

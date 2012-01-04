@@ -8,7 +8,8 @@
 
 (ns lamina.core.node
   (:use
-    [useful.datatypes :only (make-record assoc-record)])
+    [useful.datatypes :only (make-record assoc-record)]
+    [lamina.core.threads :only (enqueue-cleanup)])
   (:require
     [lamina.core.result :as r]
     [lamina.core.queue :as q]
@@ -339,7 +340,8 @@
                                :queue (q/drained-queue))
                              ;; make sure we return the original queue
                              (assoc-record s
-                               :mode ::drained))
+                               :mode ::drained
+                               :next node))
                          
                            nil)]
 
@@ -371,7 +373,7 @@
     (io! "Cannot modify node while in transaction."
       (if-let [s (l/with-exclusive-lock* lock
                    (let [s state]
-                     (case s
+                     (case (.mode s)
                        ::zero
                        nil
                        
@@ -465,14 +467,14 @@
 (defn siphon-callback [src dst]
   (fn [state _]
     (case state
-      (::closed :error) (cancel src dst)
+      (::closed ::drained ::error) (enqueue-cleanup #(cancel src dst))
       nil)))
 
 (defn join-callback [dst]
   (fn [state err]
     (case state
-      ::closed (close dst)
-      ::error (error dst err)
+      (::closed ::drained) (enqueue-cleanup #(close dst))
+      ::error (enqueue-cleanup #(error dst err))
       nil)))
 
 (defn siphon [src dst]

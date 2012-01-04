@@ -312,4 +312,6 @@
   (DrainedQueue.))
 
 (defn closed-copy [q]
-  (apply closed-queue (ground q)))
+  (if q
+    (apply closed-queue (ground q))
+    (drained-queue)))

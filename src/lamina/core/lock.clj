@@ -100,13 +100,16 @@
           idx
           (recur (inc idx) (rest s)))))))
 
-(defn acquire-all [exclusive? locks]
+(defn acquire-all
+  "Acquires all locks, without chance of deadlock."
+  [exclusive? locks]
   (let [a (if exclusive? acquire-exclusive acquire)
         r (if exclusive? release-exclusive release)]
     (when-not (empty? locks)
       (loop [ss (rotations locks)]
         (let [s (first ss)]
-          (a (first s))
+          ;; it's okay if we're interrupted here, we're not holding onto anything
+          (a (first s)) 
           (when-let [n (try-acquire-all exclusive? (rest s))]
             (r (first s))
             (doseq [l (take n (rest s))]
