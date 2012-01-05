@@ -510,17 +510,20 @@
 
 ;;;
 
-(defn node [operator]
-  (when-not (fn? operator)
-    (throw (Exception. (str (pr-str operator) " is not a valid function."))))
-  (Node.
-    (l/asymmetric-lock)
-    operator
-    (make-record NodeState
-      :mode ::zero
-      :queue (q/queue))
-    (ConcurrentHashMap.)
-    (CopyOnWriteArrayList.)))
+(defn node
+  ([operator]
+     (node operator nil))
+  ([operator messages]
+     (when-not (fn? operator)
+       (throw (Exception. (str (pr-str operator) " is not a valid function."))))
+     (Node.
+       (l/asymmetric-lock)
+       operator
+       (make-record NodeState
+         :mode ::zero
+         :queue (q/queue messages))
+       (ConcurrentHashMap.)
+       (CopyOnWriteArrayList.))))
 
 (defn upstream-node [operator downstream-node]
   (let [n (Node.

@@ -11,6 +11,7 @@
     [lamina.core pipeline]
     [clojure test])
   (:require
+    [lamina.core.node :as n]
     [lamina.core.result :as r]
     [criterium.core :as c]))
 
@@ -51,39 +52,46 @@
 
 ;;;
 
-(defmacro bench [name & body]
+(defmacro bench [n name & body]
   `(do
      (println "\n-----\n lamina.core.pipeline -" ~name "\n-----\n")
      (c/quick-bench
        (do
-         (dotimes [_# (int 1e6)]
+         (dotimes [_# (int ~n)]
            ~@body))
        :reduce-with #(and %1 %2))))
 
 (deftest ^:benchmark benchmark-pipelines
   (let [f #(-> % inc inc inc inc inc)]
-    (bench "baseline raw-function"
+    (bench 1e6 "baseline raw-function"
       (f 0)))
   (let [f (apply comp (repeat 5 inc))]
-    (bench "baseline composition"
+    (bench 1e6 "baseline composition"
       (f 0)))
   (let [p (repeated-pipeline 5 inc)]
-    (bench "simple inc"
+    (bench 1e6 "simple inc"
       (p 0)))
   (let [p (repeated-pipeline 5 r/success-result)]
-    (bench "simple success-result"
+    (bench 1e6 "simple success-result"
       (p 0)))
   (let [p (repeated-pipeline 5 #(-> % inc r/success-result r/success-result))]
-    (bench "nested success-result"
+    (bench 1e6 "nested success-result"
       (p 0)))
   (let [r (r/result-channel)
         _ (r/success r 1)
         p (repeated-pipeline 5 (fn [_] r))]
-    (bench "simple result-channel"
+    (bench 1e6 "simple result-channel"
       (p 0)))
   (let [p (pipeline inc #(if (< % 10) (restart %) %))]
-    (bench "simple loop"
+    (bench 1e6 "simple loop"
       (p 0)))
   (let [p (pipeline inc inc inc inc inc #(if (< % 10) (restart %) %))]
-    (bench "flattened loop"
+    (bench 1e6 "flattened loop"
       (p 0))))
+
+(deftest ^:benchmark benchmark-nodes-and-pipelines
+  (let [p (pipeline #(n/predicate-receive % nil nil nil) (fn [_] (restart)))
+        n (n/node identity)]
+    (p n)
+    (bench 1e6 "receive loop"
+      (n/propagate n 1 true))))

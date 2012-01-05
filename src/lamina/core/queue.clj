@@ -298,14 +298,14 @@
 
 ;;;
 
-(defn queue [& messages]
+(defn queue [messages]
   (MessageQueue.
     (l/asymmetric-lock)
     (ConcurrentLinkedQueue. (map #(if (= nil %) ::nil %) messages))
     (AtomicReference. (ConcurrentLinkedQueue.))
     false))
 
-(defn closed-queue [& messages]
+(defn closed-queue [messages]
   (MessageQueue.
     (l/asymmetric-lock)
     (ConcurrentLinkedQueue. (map #(if (= nil %) ::nil %) messages))
