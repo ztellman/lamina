@@ -15,7 +15,11 @@
     [lamina.core.queue :as q]
     [lamina.core.lock :as l])
   (:import
-    [lamina.core.lock AsymmetricLock]
+    [lamina.core.lock
+     AsymmetricLock]
+    [lamina.core.result
+     SuccessResult
+     ResultChannel]
     [java.util
      Collection]
     [java.util.concurrent
@@ -52,7 +56,9 @@
     "Cancels a callback registered by link, on-state-changed, or receive.  Returns true
      if a callback with that identifier is currently registered.")
   (closed? [_])
-  (drained? [_]))
+  (drained? [_])
+  (queue [_])
+  (ground [_]))
 
 (defrecord NodeState
   [mode
@@ -62,6 +68,8 @@
    permanent?
    error
    next])
+
+;;;
 
 (defmacro enqueue-and-release [lock state msg persist?]
   `(if-let [q# (.queue ~state)]
@@ -86,23 +94,16 @@
            (error node# e#)
            ::error)))))
 
-(defmacro when-not-drained [[state state-callbacks cancellations] result & body]
-  `(let [result# ~result]
-     (if (= :lamina/drained! (r/error-value result# nil))
-       (do
-         ;; we can do this outside of a lock because this is the only remaining
-         ;; possible state transition; it doesn't matter if we're competing with
-         ;; another thread
-         (set-state! ~state ~state
-           :mode ::drained
-           :queue (q/drained-queue))
-         (doseq [l# ~state-callbacks]
-           (l# ::drained nil))
-         (.clear ~state-callbacks)
-         (.clear ~cancellations)
-         result#)
-       (do
-         ~@body))))
+(defmacro check-for-drained [state state-callbacks cancellations]
+  `(let [^NodeState state# ~state]
+     (when (q/drained? (.queue state#))
+       (set-state! ~state state#
+         :mode ::drained
+         :queue (q/drained-queue))
+       (doseq [l# ~state-callbacks]
+         (l# ::drained nil))
+       (.clear ~state-callbacks)
+       (.clear ~cancellations))))
 
 (defmacro ensure-queue [state]
   `(let [^NodeState s# ~state]
@@ -221,15 +222,25 @@
 
   NodeProtocol
 
+  (ground [_]
+    (let [msgs (l/with-exclusive-lock* lock
+                 (q/ground (.queue state)))]
+      (check-for-drained state state-callbacks cancellations)
+      msgs))
+
+  (queue [_]
+    (.queue state))
+
   (predicate-receive [_ predicate false-value result-channel]
-    (let [s (l/with-exclusive-lock*
+    (let [s (l/with-exclusive-lock* lock
               (ensure-queue state))
           result (q/receive (.queue s) predicate false-value result-channel)]
-      (when-not-drained [state state-callbacks cancellations] result
-        result)))
+      (when (instance? SuccessResult result)
+        (check-for-drained state state-callbacks cancellations))
+      result))
 
   (receive [_ name callback]
-    (let [x (l/with-exclusive-lock*
+    (let [x (l/with-exclusive-lock* lock
               (if-let [v (.get cancellations name)]
                 
                 ;; there's already a pending receive op, just return the result-channel
@@ -248,12 +259,20 @@
 
         :else
         (let [s x
-              result (q/receive (.q s) nil nil nil)]
-          (when-not-drained [state state-callbacks cancellations] result
-            (.put cancellations result #(q/cancel-receive (.q s) result))
-            (let [f (fn [_] (.remove cancellations name))]
-              (r/subscribe result (r/result-callback f f)))
-            result)))))
+              result (q/receive (.queue s) nil nil nil)]
+
+          (cond
+
+            (instance? SuccessResult result)
+            (check-for-drained state state-callbacks cancellations)
+
+            (instance? ResultChannel result)
+            (do
+              (.put cancellations result #(q/cancel-receive (.q s) result))
+              (let [f (fn [_] (.remove cancellations name))]
+                (r/subscribe result (r/result-callback f f)))))
+
+          (r/subscribe result (r/result-callback callback (fn [_])))))))
 
   (close [_]
     (io! "Cannot modify node while in transaction."

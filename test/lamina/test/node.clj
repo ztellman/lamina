@@ -8,55 +8,66 @@
 
 (ns lamina.test.node
   (:use
-    [clojure test])
+    [clojure test]
+    [lamina.core node])
   (:require
-    [lamina.core.node :as n]
+    [lamina.core.queue :as q]
     [criterium.core :as c]))
 
 ;;;
 
 (defn enqueue [n & msgs]
   (if (= 1 (count msgs))
-    (n/propagate n (first msgs) true)
+    (propagate n (first msgs) true)
     (doseq [m msgs]
-      (n/propagate n m true))))
+      (propagate n m true))))
 
-(defn link [src dst]
-  (n/link src dst dst))
+(defn link* [src dst]
+  (link src dst dst))
 
 (defn pred [f]
-  (n/predicate-operator f))
+  (predicate-operator f))
 
 (defn construct-nodes
   ([tree]
-     (construct-nodes link tree))
+     (construct-nodes link* tree))
   ([connect-fn [operator & downstream-operators]]
      (if (empty? downstream-operators)
-       (n/callback-node operator)
-       (let [n (n/node operator)]
+       (callback-node operator)
+       (let [n (node operator)]
          (doseq [d (map #(construct-nodes connect-fn %) downstream-operators)]
            (connect-fn n d))
          n))))
 
 (defn node-chain [n final-callback]
-  (let [s (repeatedly n #(n/node identity))]
+  (let [s (repeatedly n #(node identity))]
     (doseq [[a b] (partition-all 2 1 s)]
       (if b
-        (n/siphon a b)
+        (siphon a b)
         (when final-callback
-          (link a (n/callback-node final-callback)))))
+          (link* a (callback-node final-callback)))))
     (first s)))
 
 (defn node-tree [depth branches leaf-callback]
   (if (zero? depth)
-    (n/callback-node leaf-callback)
-    (let [root (n/node identity)]
+    (callback-node leaf-callback)
+    (let [root (node identity)]
       (doseq [c (repeatedly branches
                   #(node-tree (dec depth) branches leaf-callback))]
-        (if (n/node? c)
-          (n/siphon root c)
-          (link root c)))
+        (if (node? c)
+          (siphon root c)
+          (link* root c)))
       root)))
+
+(defn wait-for-closed [n]
+  (let [latch (promise)]
+    (on-closed n #(deliver latch true))
+    (is (= true @latch))))
+
+(defn wait-for-drained [n]
+  (let [latch (promise)]
+    (on-drained n #(deliver latch true))
+    (is (= true @latch))))
 
 ;;;
 
@@ -94,32 +105,54 @@
 
 (deftest test-queueing
   ;; simple test
-  (let [n (n/node identity)
+  (let [n (node identity)
         [v f] (sink)]
     (is (= :lamina/enqueued (enqueue n nil)))
     (is (= :lamina/enqueued (enqueue n 1)))
-    (link n (n/callback-node f))
+    (link* n (callback-node f))
     (is (= [nil 1] @v)))
   
   ;; test with closed node
-  (let [n (n/node identity)
+  (let [n (node identity)
         [v f] (sink)]
     (is (= :lamina/enqueued (enqueue n nil)))
     (is (= :lamina/enqueued (enqueue n 1)))
-    (n/close n)
-    (is (n/closed? n))
-    (is (not (n/drained? n)))
-    (link n (n/callback-node f))
-    (is (n/drained? n))
+    (close n)
+    (is (closed? n))
+    (is (not (drained? n)))
+    (link* n (callback-node f))
+    (is (drained? n))
     (is (= [nil 1] @v))))
 
 (deftest test-long-chain-propagation
   (let [n (node-chain 1e4 identity)]
     (is (= ::msg (enqueue n ::msg)))
-    (-> n n/node-seq butlast last n/close)
-    (let [latch (promise)]
-      (n/on-closed n #(deliver latch true))
-      (is (= true @latch)))))
+    (-> n node-seq butlast last close)
+    (wait-for-closed n)))
+
+(deftest test-closing-backpropagation
+  (let [a (node identity)
+        b (node identity)
+        c (node identity)]
+    (siphon a b)
+    (siphon a c)
+    (enqueue a :msg)
+
+    (close b)
+    (close c)
+    (wait-for-drained a)
+    
+    (is (= true (closed? b)))
+    (is (= false (drained? b)))
+    (is (= :msg @(predicate-receive b nil nil nil)))
+    (is (= true (drained? b)))
+
+    (is (= true (closed? c)))
+    (is (= false (drained? c)))
+    (let [[v callback] (sink)]
+      (receive c callback callback)
+      (is (= [:msg] @v)))
+    (is (= true (drained? c)))))
 
 ;;;
 

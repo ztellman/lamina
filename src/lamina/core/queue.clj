@@ -100,6 +100,8 @@
     "Returns true if the queue is closed and empty.")
   (ground [_]
     "Clears and returns all messages currently in the queue.")
+  (messages [_]
+    "Returns all messages currently in the queue.")
   (enqueue [_ msg persist? release-fn]
     "Enqueues a message into the queue. If 'persist?' is false, the message will only
      be sent to pending receivers, and not remain in the queue. The 'release-fn' callback,
@@ -118,6 +120,7 @@
   (error [_ _] false)
   (drained? [_] false)
   (ground [_] nil)
+  (messages [_] nil)
   (enqueue [_ _ _ _] false)
   (receive [_ _ _ result-channel]
     (if result-channel
@@ -134,6 +137,7 @@
   (error [_ _] false)
   (drained? [_] true)
   (ground [_] nil)
+  (messages [_] nil)
   (enqueue [_ _ _ _] false)
   (receive [_ _ _ result-channel]
     (if result-channel
@@ -171,6 +175,9 @@
         (let [msgs (seq (.toArray messages))]
           (.clear messages)
           (map #(if (= ::nil %) nil %) msgs)))))
+
+  (messages [_]
+    (seq (.toArray messages)))
 
   (enqueue [_ msg persist? release-fn]
     (if closed?

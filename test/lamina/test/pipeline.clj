@@ -73,7 +73,7 @@
   (let [p (repeated-pipeline 5 r/success-result)]
     (bench "simple success-result"
       (p 0)))
-  (let [p (repeated-pipeline 5 #(r/success-result (r/success-result %)))]
+  (let [p (repeated-pipeline 5 #(-> % inc r/success-result r/success-result))]
     (bench "nested success-result"
       (p 0)))
   (let [r (r/result-channel)
