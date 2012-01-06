@@ -2,10 +2,10 @@
   :description "event-driven data structures for clojure"
   :dependencies [[org.clojure/clojure "1.3.0"]
                  [org.clojure/tools.logging "0.2.3"]
-                 [criterium "0.2.0"]
+                 [criterium "0.2.1-SNAPSHOT"]
                  [useful "0.7.3"]
                  [potemkin "0.1.1-SNAPSHOT"]]
-  :jvm-opts ["-server" "-XX:+UseConcMarkSweepGC" "-XX:MaxInlineSize=100" "-Xmx500m"]	
+  :jvm-opts ["-server" "-XX:+UseConcMarkSweepGC" "-Xmx500m"]
   :repositories {"sonatype-oss-public" "https://oss.sonatype.org/content/groups/public/"}
   :exclusions [org.clojure/contrib
                org.clojure/clojure-contrib]

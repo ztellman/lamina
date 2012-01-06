@@ -102,6 +102,9 @@
     "Clears and returns all messages currently in the queue.")
   (messages [_]
     "Returns all messages currently in the queue.")
+  (append [_ msgs]
+    "Batch appending of messages to the queue. Should only be invoked where there's guaranteed
+     to be no consumers.")
   (enqueue [_ msg persist? release-fn]
     "Enqueues a message into the queue. If 'persist?' is false, the message will only
      be sent to pending receivers, and not remain in the queue. The 'release-fn' callback,
@@ -179,16 +182,19 @@
   (messages [_]
     (seq (.toArray messages)))
 
+  (append [_ msgs]
+    (.addAll messages (map #(if (= nil %) ::nil %) msgs)))
+
   (enqueue [_ msg persist? release-fn]
     (if closed?
       false
       (io! "Cannot modify non-transactional queues inside a transaction."
         (when-let [x
                    (l/with-lock lock
-                     (let [q ^ConcurrentLinkedQueue (.getAndSet consumers (ConcurrentLinkedQueue.))]
+                     (let [q ^ConcurrentLinkedQueue (.getAndSet consumers nil)]
 
                        ;; check if there are any consumers
-                       (if (.isEmpty q)
+                       (if (or (= nil q) (.isEmpty q))
                          
                          ;; no consumers, just hold onto the message
                          (when persist?
@@ -243,9 +249,12 @@
                 (if (= nil msg)
               
                   ;; if there are no messages, add a consumer to the consumer queue
-                  (let [rc (or result-channel (r/result-channel))]
-                    (.add ^ConcurrentLinkedQueue (.get consumers)
-                      (MessageConsumer. predicate false-value (boolean result-channel) rc))
+                  (let [rc (or result-channel (r/result-channel))
+                        q (.get consumers)
+                        ^ConcurrentLinkedQueue q* (or q (ConcurrentLinkedQueue.))]
+                    (.add q* (MessageConsumer. predicate false-value (boolean result-channel) rc))
+                    (when-not q
+                      (.set consumers q*))
                     (no-consumption rc))
               
                   (let [msg (if (= ::nil msg) nil msg)]
@@ -286,9 +295,8 @@
     (io! "Cannot modify non-transactional queues inside a transaction."
       (let [removed?
             (l/with-exclusive-lock lock
-              (.remove ^ConcurrentLinkedQueue
-                (.get consumers)
-                (MessageConsumer. nil nil false result-channel)))]
+              (let [^ConcurrentLinkedQueue q (.get consumers)]
+                (and q (.remove q (MessageConsumer. nil nil false result-channel)))))]
         (if removed?
           (do
             (when (r/claim result-channel)
@@ -298,19 +306,29 @@
 
 ;;;
 
-(defn queue [messages]
-  (MessageQueue.
-    (l/asymmetric-lock)
-    (ConcurrentLinkedQueue. (map #(if (= nil %) ::nil %) messages))
-    (AtomicReference. (ConcurrentLinkedQueue.))
-    false))
+(defn queue
+  ([]
+     (queue nil))
+  ([messages]
+     (MessageQueue.
+       (l/asymmetric-lock)
+       (if messages
+         (ConcurrentLinkedQueue. (map #(if (= nil %) ::nil %) messages))
+         (ConcurrentLinkedQueue.))
+       (AtomicReference. nil)
+       false)))
 
-(defn closed-queue [messages]
-  (MessageQueue.
-    (l/asymmetric-lock)
-    (ConcurrentLinkedQueue. (map #(if (= nil %) ::nil %) messages))
-    (AtomicReference. (ConcurrentLinkedQueue.))
-    true))
+(defn closed-queue
+  ([]
+     (closed-queue nil))
+  ([messages]
+     (MessageQueue.
+       (l/asymmetric-lock)
+       (if messages
+         (ConcurrentLinkedQueue. (map #(if (= nil %) ::nil %) messages))
+         (ConcurrentLinkedQueue.))
+       (AtomicReference. nil)
+       true)))
 
 (defn error-queue [error]
   (ErrorQueue. error))
@@ -320,5 +338,5 @@
 
 (defn closed-copy [q]
   (if q
-    (apply closed-queue (ground q))
+    (closed-queue (ground q))
     (drained-queue)))

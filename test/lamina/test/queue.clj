@@ -100,7 +100,7 @@
   (is (= 9 @(receive q))))
 
 (deftest test-basic-queue
-  (test-queue (q/queue)))
+  (test-queue (q/queue nil)))
 
 ;;;
 
@@ -108,8 +108,7 @@
   `(do
      (println "\n-----\n lamina.core.queue -" ~name "\n-----\n")
      (c/quick-bench
-       (dotimes [_# (int 1e6)]
-         ~@body)
+       (do ~@body)
        :reduce-with #(and %1 %2))))
 
 (defn benchmark-queue [name q]
@@ -143,4 +142,6 @@
     (q/enqueue q 1 false nil)))
 
 (deftest ^:benchmark benchmark-basic-queue
-  (benchmark-queue "basic-queue" (q/queue)))
+  (bench "create basic queue"
+    (q/queue nil))
+  (benchmark-queue "basic-queue" (q/queue nil)))

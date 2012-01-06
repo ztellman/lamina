@@ -17,8 +17,7 @@
   `(do
      (println "\n-----\n lamina.core.lock -" ~name "\n-----\n")
      (c/quick-bench
-       (dotimes [_# (int 1e6)]
-         ~@body)
+       (do ~@body)
        :reduce-with #(and %1 %2))))
 
 (deftest test-acquire-all
@@ -43,6 +42,8 @@
       (is (= (repeat num-threads true) (map deref results))))))
 
 (deftest ^:benchmark benchmark-locks
+  (bench "create lock"
+    (asymmetric-lock))
   (let [lock (asymmetric-lock)]
     (bench "acquire/release"
       (acquire lock)

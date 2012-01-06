@@ -21,7 +21,10 @@
      SuccessResult
      ResultChannel]
     [java.util
-     Collection]
+     Collection
+     Collections
+     HashMap
+     Map]
     [java.util.concurrent
      CopyOnWriteArrayList
      ConcurrentHashMap]))
@@ -44,7 +47,7 @@
     "Closes the node. This is a permanent state change.")
   (error [_ error]
     "Puts the node into an error mode. This is a permanent state change.")
-  (link [_ name node]
+  (link [_ name node execute-within-lock]
     "Adds a downstream node. The link should be cancelled using (cancel this name).")
   (unlink [_ node]
     "Removes a downstream node. Returns true if there was any such downstream node, false
@@ -126,7 +129,7 @@
   [^AsymmetricLock lock
    operator
    ^:volatile-mutable ^NodeState state
-   ^ConcurrentHashMap cancellations
+   ^Map cancellations
    ^CopyOnWriteArrayList state-callbacks]
 
   l/AsymmetricLockProtocol
@@ -323,7 +326,7 @@
         ;; state has already been permanently changed
         false)))
 
-  (link [this name node]
+  (link [this name node execute-within-lock]
     (io! "Cannot modify node while in transaction."
       (if-let [^NodeState s
                (l/with-exclusive-lock* lock
@@ -365,6 +368,8 @@
                            nil)]
 
                      (when new-state
+                       (when execute-within-lock
+                         (execute-within-lock))
                        (.put cancellations name #(unlink this node))
                        new-state))))]
 
@@ -497,7 +502,7 @@
       nil)))
 
 (defn siphon [src dst]
-  (let [success? (link src dst dst)]
+  (let [success? (link src dst dst nil)]
     (when success?
       (on-state-changed dst nil (siphon-callback src dst)))
     success?))
@@ -522,7 +527,7 @@
        (make-record NodeState
          :mode ::zero
          :queue (q/queue messages))
-       (ConcurrentHashMap.)
+       (Collections/synchronizedMap (HashMap.))
        (CopyOnWriteArrayList.))))
 
 (defn upstream-node [operator downstream-node]
@@ -532,7 +537,7 @@
             (make-record NodeState
               :mode ::one
               :next downstream-node)
-            (ConcurrentHashMap.)
+            (Collections/synchronizedMap (HashMap.))
             (CopyOnWriteArrayList. (to-array [(join-callback downstream-node)])))]
     (on-state-changed downstream-node nil (siphon-callback n downstream-node))
     n))
@@ -580,5 +585,16 @@
           ::drained
           (when (compare-and-set! latch false true)
             (callback))
+
+          nil)))))
+
+(defn on-error [node callback]
+  (let [latch (atom false)]
+    (on-state-changed node callback
+      (fn [state err]
+        (case state
+          ::error
+          (when (compare-and-set! latch false true)
+            (callback err))
 
           nil)))))

@@ -23,7 +23,7 @@
       (propagate n m true))))
 
 (defn link* [src dst]
-  (link src dst dst))
+  (link src dst dst nil))
 
 (defn pred [f]
   (predicate-operator f))
@@ -156,20 +156,24 @@
 
 ;;;
 
-(defmacro bench [n name & body]
+(defmacro bench [name & body]
   `(do
      (println "\n-----\n lamina.core.node -" ~name "\n-----\n")
      (c/quick-bench
-       (dotimes [_# (int ~n)]
-         ~@body)
+       (do ~@body)
        :reduce-with #(and %1 %2))))
 
 (deftest ^:benchmark benchmark-node
-  (bench 1e3 "create chain"
+  (bench "create node"
+    (node identity))
+  (bench "create chain"
     (node-chain 1e3 identity))
+  (let [n (node-chain 2 identity)]
+    (bench "short propagation"
+      (enqueue n true)))
   (let [n (node-chain 1e3 identity)]
-    (bench 1e3 "linear propagation"
+    (bench "linear propagation"
       (enqueue n true)))
   (let [n (node-tree 9 2 identity)]
-    (bench 1e3 "tree propagation"
+    (bench "tree propagation"
       (enqueue n true))))

@@ -52,46 +52,37 @@
 
 ;;;
 
-(defmacro bench [n name & body]
+(defmacro bench [name & body]
   `(do
      (println "\n-----\n lamina.core.pipeline -" ~name "\n-----\n")
      (c/quick-bench
-       (do
-         (dotimes [_# (int ~n)]
-           ~@body))
+       (do ~@body)
        :reduce-with #(and %1 %2))))
 
 (deftest ^:benchmark benchmark-pipelines
   (let [f #(-> % inc inc inc inc inc)]
-    (bench 1e6 "baseline raw-function"
+    (bench "baseline raw-function"
       (f 0)))
   (let [f (apply comp (repeat 5 inc))]
-    (bench 1e6 "baseline composition"
+    (bench "baseline composition"
       (f 0)))
   (let [p (repeated-pipeline 5 inc)]
-    (bench 1e6 "simple inc"
+    (bench "simple inc"
       (p 0)))
   (let [p (repeated-pipeline 5 r/success-result)]
-    (bench 1e6 "simple success-result"
+    (bench "simple success-result"
       (p 0)))
   (let [p (repeated-pipeline 5 #(-> % inc r/success-result r/success-result))]
-    (bench 1e6 "nested success-result"
+    (bench "nested success-result"
       (p 0)))
   (let [r (r/result-channel)
         _ (r/success r 1)
         p (repeated-pipeline 5 (fn [_] r))]
-    (bench 1e6 "simple result-channel"
+    (bench "simple result-channel"
       (p 0)))
   (let [p (pipeline inc #(if (< % 10) (restart %) %))]
-    (bench 1e6 "simple loop"
+    (bench "simple loop"
       (p 0)))
   (let [p (pipeline inc inc inc inc inc #(if (< % 10) (restart %) %))]
-    (bench 1e6 "flattened loop"
+    (bench "flattened loop"
       (p 0))))
-
-(deftest ^:benchmark benchmark-nodes-and-pipelines
-  (let [p (pipeline #(n/predicate-receive % nil nil nil) (fn [_] (restart)))
-        n (n/node identity)]
-    (p n)
-    (bench 1e6 "receive loop"
-      (n/propagate n 1 true))))

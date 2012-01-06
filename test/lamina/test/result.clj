@@ -200,14 +200,12 @@
   `(do
      (println "\n-----\n lamina.core.result -" ~name "\n-----\n")
      (c/quick-bench
-       (do
-         ;;~@body
-         (dotimes [_# (int 1e6)]
-           ~@body)
-         )
+       (do ~@body)
        :reduce-with #(and %1 %2))))
 
 (deftest ^:benchmark benchmark-result-channel
+  (bench "create result-channel"
+    (result-channel))
   (bench "subscribe and success"
     (let [r (result-channel)]
       (subscribe r (result-callback (fn [_]) nil))
