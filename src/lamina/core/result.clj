@@ -7,11 +7,13 @@
 ;;   You must not remove this notice, or any other, from this software.
 
 (ns lamina.core.result
+  (:use
+    [useful.datatypes :only (assoc-record)])
   (:require
     [lamina.core.lock :as l])
   (:import
     [lamina.core.lock
-     AsymmetricLock]
+     Lock]
     [java.util.concurrent
      ConcurrentLinkedQueue
      CountDownLatch]
@@ -20,19 +22,7 @@
 
 (set! *warn-on-reflection* true)
 
-(deftype ResultCallback [original on-success on-error]
-  Object
-  (equals [this x]
-    (and
-      (instance? ResultCallback x)
-      (or
-        (identical? this x)
-        (identical? original x)
-        (identical? this (.original ^ResultCallback x)))))
-  (hashCode [this]
-    (if original
-      (hash original)
-      (System/identityHashCode this))))
+(deftype ResultCallback [on-success on-error])
 
 (defprotocol Result
   (success [_ val])
@@ -108,42 +98,54 @@
 ;;;
 
 (deftype ResultState
-  [mode ;; ::none, ::claimed, ::success, or ::error
+  [mode ;; ::claimed, ::success, ::error
+   subscriber-mode ;; ::zero, ::one, ::many
+   subscribers
    value])
 
-(defmacro compare-and-trigger! [old-mode new-mode lock state callbacks f value]
+(defmacro compare-and-trigger! [old-mode new-mode lock state f value]
   `(io! "Cannot modify result-channels inside a transaction."
-     (let [q# ~callbacks
-           value# ~value]
-       (let [result# (l/with-exclusive-lock* ~lock
-                       (case (.mode ~state)
-                         ~old-mode (do (set! ~state (ResultState. ~new-mode value#)) true)
-                         ~@(if (= ::none old-mode)
-                             `(::claimed :lamina/already-claimed!)
-                             `(::none :lamina/not-claimed!))
-                         :lamina/already-realized!))]
-         (if-not (= true result#)
-           result#
-           (if-let [^ResultCallback c# (.poll q#)]
-             (let [result# ((~f c#) value#)]
-               (if (.isEmpty q#)
-                 result#
-                 (do
-                   (loop []
-                     (when-let [^ResultCallback c# (.poll q#)]
-                       ((~f c#) value#)
-                       (recur)))
-                   :lamina/split)))
-             :lamina/realized))))))
+     (let [value# ~value
+           s# ~state
+           result# (l/with-exclusive-lock* ~lock
+                     (case (.mode s#)
+                       ~old-mode (do (set! ~state (ResultState. ~new-mode nil nil value#)) nil)
+                       ~@(if (identical? ::none old-mode)
+                           `(::claimed :lamina/already-claimed!)
+                           `(::none :lamina/not-claimed!))
+                       :lamina/already-realized!))]
+
+       (if-not (identical? nil result#)
+         result#
+         (let [subscribers# (.subscribers s#)]
+           (case (.subscriber-mode s#)
+           
+            ::zero
+            :lamina/realized
+           
+            ::one
+            ((~f ^ResultCallback subscribers#) value#)
+
+            ::many
+            (let [^ConcurrentLinkedQueue q# subscribers#]
+              (loop []
+                (when-let [^ResultCallback c# (.poll q#)]
+                  ((~f c#) value#)
+                  (recur)))
+              :lamina/branch)))))))
+
+(defmacro set-state! [state state-val & key-vals]
+  `(let [val# (assoc-record ~state-val ~@key-vals)]
+     (set! ~state val#)
+     val#))
 
 (deftype ResultChannel
-  [^AsymmetricLock lock
-   ^ConcurrentLinkedQueue callbacks
-   ^:volatile-mutable ^ResultState state
-   success-callback-modifier
-   error-callback-modifier]
+  [^Lock lock
+   ^{:volatile-mutable true :tag ResultState} state]
 
   clojure.lang.IDeref
+
+  ;;
   (deref [this]
     (if-let [result (let [state state
                           value (.value state)]
@@ -156,7 +158,7 @@
       result
       (let [^CountDownLatch latch (CountDownLatch. 1)
             f (fn [_] (.countDown latch))]
-        (subscribe this (ResultCallback. nil f f))
+        (subscribe this (ResultCallback. f f))
         (.await latch)
         (let [state state
               value (.value state)]
@@ -168,39 +170,52 @@
             nil)))))
   
   Result
+
+  ;;
   (success [_ val]
-    (compare-and-trigger! ::none ::success lock state callbacks .on-success val))
+    (compare-and-trigger! ::none ::success lock state .on-success val))
 
+  ;;
   (success! [_ val]
-    (compare-and-trigger! ::claimed ::success lock state callbacks .on-success val))
+    (compare-and-trigger! ::claimed ::success lock state .on-success val))
 
+  ;;
   (error [_ err]
-    (compare-and-trigger! ::none ::error lock state callbacks .on-error err))
-  
-  (error! [_ err]
-    (compare-and-trigger! ::claimed ::error lock state callbacks .on-error err))
+    (compare-and-trigger! ::none ::error lock state .on-error err))
 
+  ;;
+  (error! [_ err]
+    (compare-and-trigger! ::claimed ::error lock state .on-error err))
+
+  ;;
   (claim [_]
     (io! "Cannot modify result-channels inside a transaction."
       (l/with-exclusive-lock* lock
-        (when (= ::none (.mode state))
-          (set! state (ResultState. ::claimed nil))
-          true))))
+        (let [s state]
+          (if (identical? ::none (.mode s))
+            (do
+              (set-state! state s
+                :mode ::claimed)
+              true)
+            false)))))
 
   ;;;
-  
+
+  ;;
   (success-value [_ default-value]
     (let [state state]
-      (if (= ::success (.mode state))
+      (if (identical? ::success (.mode state))
         (.value state)
         default-value)))
-  
+
+  ;;
   (error-value [_ default-value]
     (let [state state]
-      (if (= ::error (.mode state))
+      (if (identical? ::error (.mode state))
         (.value state)
         default-value)))
-  
+
+  ;;
   (result [_]
     (case (.mode state)
       ::success :success
@@ -209,32 +224,69 @@
 
   ;;;
 
+  ;;
   (subscribe [_ callback]
     (io! "Cannot modify result-channels inside a transaction."
       (let [^ResultCallback callback callback
-            x (l/with-lock lock
-                (case (.mode state)
-                  ::success (success-callback-modifier (.on-success callback))
-                  ::error (error-callback-modifier (.on-error callback))
-                  (do
-                    (.add callbacks
-                      (ResultCallback.
-                        callback
-                        (success-callback-modifier (.on-success callback))
-                        (error-callback-modifier (.on-error callback))))
-                    :lamina/subscribed)))]
-        (if-not (= :lamina/subscribed x)
+            x (l/with-exclusive-lock* lock
+                (let [s state]
+                  (case (.mode s)
+                    ::success (.on-success callback)
+                    ::error (.on-error callback)
+                    (do
+                      (case (.subscriber-mode s)
+                        
+                        ::zero
+                        (set-state! state s
+                          :subscriber-mode ::one
+                          :subscribers callback)
+                        
+                        ::one
+                        (set-state! state s
+                          :subscriber-mode ::many
+                          :subscribers (ConcurrentLinkedQueue. [(.subscribers s) callback]))
+                        
+                        ::many
+                        (.add ^ConcurrentLinkedQueue (.subscribers s) callback))
+                      :lamina/subscribed))))]
+        (if-not (identical? :lamina/subscribed x)
           (x (.value state))
           x))))
-  
+
+  ;;
   (cancel-callback [_ callback]
     (io! "Cannot modify result-channels inside a transaction."
-      (l/with-lock lock
-        (case (.mode state)
-          ::error   false
-          ::success false
-          (.remove callbacks callback)))))
-  
+      (l/with-exclusive-lock* lock
+        (let [s state]
+          (case (.mode s)
+            ::error   false
+            ::success false
+            (case (.subscriber-mode s)
+              
+              ::zero
+             false
+            
+             ::one
+             (if-not (identical? callback (.subscribers s))
+               false
+               (do
+                 (set-state! state s
+                   :subscriber-mode ::zero
+                   :subscribers nil)
+                 true))
+            
+             ::many
+             (let [^ConcurrentLinkedQueue q (.subscribers s)]
+               (if-not (.remove ^ConcurrentLinkedQueue q callback)
+                 false
+                 (do
+                   (when (identical? 1 (.size q))
+                     (set-state! state s
+                       ::subscriber-mode ::one
+                       :subscribers (.poll q)))
+                   true)))))))))
+
+  ;;
   (toString [_]
     (let [state state]
       (case (.mode state)
@@ -257,18 +309,13 @@
      (ErrorResult. error callback-modifier)))
 
 (defn result-channel
-  ([]
-     (result-channel identity identity))
-  ([success-callback-modifier error-callback-modifier]
-     (ResultChannel.
-       (l/asymmetric-lock)
-       (ConcurrentLinkedQueue.)
-       (ResultState. ::none nil)
-       success-callback-modifier
-       error-callback-modifier)))
+  []
+  (ResultChannel.
+    (l/lock)
+    (ResultState. ::none ::zero nil nil)))
 
 (defn result-callback [on-success on-error]
-  (ResultCallback. nil on-success on-error))
+  (ResultCallback. on-success on-error))
 
 (defn result-channel? [x]
   (or

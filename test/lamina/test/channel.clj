@@ -17,13 +17,15 @@
 (defmacro bench [name & body]
   `(do
      (println "\n-----\n lamina.core.channel -" ~name "\n-----\n")
-     (c/bench
+     (c/quick-bench
        (do ~@body)
        :reduce-with #(and %1 %2))))
 
 (deftest ^:benchmark benchmark-channels
   (bench "create channel"
     (channel))
+  (bench "create and map*"
+    (->> (channel) (map* inc)))
   (let [ch (channel)]
     (receive-all ch (fn [_]))
     (bench "simple-enqueue"
@@ -31,11 +33,35 @@
   (bench "create and enqueue"
     (let [ch (channel)]
       (enqueue ch :msg)))
+  (bench "create, multi-receive, and multi-enqueue"
+    (let [ch (channel)]
+      (receive ch (fn [_]))
+      (receive ch (fn [_]))
+      (enqueue ch :msg)
+      (enqueue ch :msg)))
+  (bench "create, multi-enqueue, and multi-receive"
+    (let [ch (channel)]
+      (enqueue ch :msg)
+      (enqueue ch :msg)
+      (receive ch (fn [_]))
+      (receive ch (fn [_]))))
   (bench "create, receive, and enqueue"
+    (let [ch (channel)]
+      (receive ch (fn [_]))
+      (enqueue ch :msg)))
+  (bench "create, receive-all, and enqueue"
     (let [ch (channel)]
       (receive-all ch (fn [_]))
       (enqueue ch :msg)))
-  (let [p (p/pipeline #(read-channel % nil nil nil) (fn [_] (p/restart)))
+  (bench "create, enqueue, and receive"
+    (let [ch (channel)]
+      (enqueue ch :msg)
+      (receive ch (fn [_]))))
+  (bench "create, enqueue, and receive-all"
+    (let [ch (channel)]
+      (enqueue ch :msg)
+      (receive-all ch (fn [_]))))
+  (let [p (p/pipeline read-channel (constantly (p/restart)))
         ch (channel)]
     (p ch)
     (bench "read-channel pipeline loop"

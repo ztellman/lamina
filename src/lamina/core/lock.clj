@@ -8,13 +8,14 @@
 
 (ns lamina.core.lock
   (:import
-    [java.util.concurrent Semaphore]))
+    [java.util.concurrent Semaphore]
+    [java.util.concurrent.locks ReentrantLock ReentrantReadWriteLock]))
 
 (set! *warn-on-reflection* true)
 
 ;;;
 
-(defprotocol AsymmetricLockProtocol
+(defprotocol LockProtocol
   (acquire [_])
   (acquire-exclusive [_])
   (release [_])
@@ -24,39 +25,46 @@
 
 ;;;
 
-(deftype AsymmetricLock [^Semaphore semaphore]
-  AsymmetricLockProtocol
-  (acquire [_] (.acquire semaphore))
-  (release [_] (.release semaphore))
-  (acquire-exclusive [_] (.acquire semaphore Integer/MAX_VALUE))
-  (release-exclusive [_] (.release semaphore Integer/MAX_VALUE))
-  (try-acquire [_] (.tryAcquire semaphore))
-  (try-acquire-exclusive [_] (.tryAcquire semaphore Integer/MAX_VALUE)))
+(deftype AsymmetricLock [^ReentrantReadWriteLock lock]
+  LockProtocol
+  (acquire [_] (-> lock .readLock .lock))
+  (release [_] (-> lock .readLock .unlock))
+  (acquire-exclusive [_] (-> lock .writeLock .lock))
+  (release-exclusive [_] (-> lock .writeLock .unlock))
+  (try-acquire [_] (-> lock .readLock .tryLock))
+  (try-acquire-exclusive [_] (-> lock .writeLock .tryLock)))
 
 (defn asymmetric-lock []
-  (AsymmetricLock. (Semaphore. Integer/MAX_VALUE)))
+  (AsymmetricLock. (ReentrantReadWriteLock. false)))
+
+(deftype Lock [^ReentrantLock lock]
+  LockProtocol
+  (acquire-exclusive [_] (.lock lock))
+  (release-exclusive [_] (.unlock lock))
+  (try-acquire-exclusive [_] (.tryLock lock)))
+
+(defn lock []
+  (Lock. (ReentrantLock. false)))
 
 ;;;
 
 (defmacro with-lock [lock & body]
-  `(let [^AsymmetricLock lock# ~lock
-         ^Semaphore semaphore# (.semaphore lock#)]
+  `(let [lock# ~lock]
      (do
-       (.acquire semaphore#)
+       (acquire lock#)
        (try
          ~@body
          (finally
-           (.release semaphore#))))))
+           (release lock#))))))
 
 (defmacro with-exclusive-lock [lock & body]
-  `(let [^AsymmetricLock lock# ~lock
-         ^Semaphore semaphore# (.semaphore lock#)]
+  `(let [lock# ~lock]
      (do
-       (.acquire semaphore# Integer/MAX_VALUE)
+       (acquire-exclusive lock#)
        (try
          ~@body
          (finally
-           (.release semaphore# Integer/MAX_VALUE))))))
+           (release-exclusive lock#))))))
 
 ;; These variants exists because apparently try/catch, loop/recur, et al
 ;; close over the body, so using set! inside the body causes the compiler
@@ -68,19 +76,17 @@
 ;; also always be uninterruptible.
 
 (defmacro with-exclusive-lock* [lock & body]
-  `(let [^AsymmetricLock lock# ~lock
-         ^Semaphore semaphore# (.semaphore lock#)]
-     (.acquire semaphore# Integer/MAX_VALUE)
+  `(let [lock# ~lock]
+     (acquire-exclusive lock#)
      (let [result# (do ~@body)]
-       (.release semaphore# Integer/MAX_VALUE)
+       (release-exclusive lock#)
        result#)))
 
 (defmacro with-lock* [lock & body]
-  `(let [^AsymmetricLock lock# ~lock
-         ^Semaphore semaphore# (.semaphore lock#)]
-     (.acquire semaphore#)
+  `(let [lock# ~lock]
+     (acquire lock#)
      (let [result# (do ~@body)]
-       (.release semaphore#)
+       (release lock#)
        result#)))
 
 ;;;

@@ -42,10 +42,10 @@
     (let [val (run pipeline result initial-value value step)]
       (if (instance? Redirect val)
         (let [^Redirect redirect val
-              value (if (= ::initial (.value redirect))
+              value (if (identical? ::initial (.value redirect))
                       initial-value
                       (.value redirect))
-              pipeline (if (= ::current (.pipeline redirect))
+              pipeline (if (identical? ::current (.pipeline redirect))
                          pipeline
                          (.pipeline redirect))]
           (recur pipeline value value 0))
@@ -86,15 +86,15 @@
        
      (r/result-channel? ~val)
      (let [val# (r/success-value ~val ::unrealized)]
-       (if (= ::unrealized val#)
+       (if (identical? ::unrealized val#)
          ~(subscribe this result initial-val val idx)
          (recur val# ~idx)))
        
 
      (instance? Redirect ~val)
      (let [^Redirect redirect# ~val]
-       (if (= ::current (.pipeline redirect#))
-         (let [value# (if (= ::initial (.value redirect#))
+       (if (identical? ::current (.pipeline redirect#))
+         (let [value# (if (identical? ::initial (.value redirect#))
                         ~initial-val
                         (.value redirect#))]
            (recur value# 0))
@@ -102,7 +102,7 @@
 
      :else
      ~(if (empty? stages)
-        `(if (= nil ~result)
+        `(if (identical? nil ~result)
            (r/success-result ~val)
            (r/success ~result ~val))
         (let [val-sym (gensym "val")]
@@ -137,7 +137,7 @@
         step (gensym "step")]
     `(reify PipelineProtocol
        (run [~this ~result ~initial-val ~val ~step]
-         (when (or (= nil ~result) (= nil (r/result ~result)))
+         (when (or (identical? nil ~result) (identical? nil (r/result ~result)))
            (try
              (loop [~val ~val, ~step ~step]
                (case ~step

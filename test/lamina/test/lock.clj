@@ -22,7 +22,7 @@
 
 (deftest test-acquire-all
   (let [num-locks 10
-        num-threads 10
+        num-threads 10 
         locks (repeatedly num-locks #(asymmetric-lock))
         striped (->> locks (partition 2) (map first))]
     (doseq [l striped]
@@ -43,17 +43,18 @@
 
 (deftest ^:benchmark benchmark-locks
   (bench "create lock"
+    (lock))
+  (let [lock (lock)]
+    (bench "acquire/release"
+      (acquire-exclusive lock)
+      (release-exclusive lock)))
+  (bench "create asymmetric lock"
     (asymmetric-lock))
   (let [lock (asymmetric-lock)]
-    (bench "acquire/release"
+    (bench "asymmetric acquire/release"
       (acquire lock)
       (release lock))
-    (bench "non-exclusive"
-      (with-lock lock 1))
-    (bench "exclusive"
-      (with-exclusive-lock lock 1))
-    (bench "non-exclusive*"
-      (with-lock* lock 1))
-    (bench "exclusive*"
-      (with-exclusive-lock* lock 1))))
+    (bench "asymmetric exclusive acquire/release"
+      (acquire-exclusive lock)
+      (release-exclusive lock))))
 

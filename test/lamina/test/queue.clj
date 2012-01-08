@@ -33,49 +33,57 @@
 (defn cancel-receive [q callback]
   (q/cancel-receive q callback))
 
-(defn test-queue [q]
+(defn test-queue [q-fn]
 
   ;; test ground
-  (enqueue q nil)
-  (enqueue q :a)
-  (is (= [nil :a] (q/ground q)))
+  (let [q (q-fn)]
+    (enqueue q nil)
+    (enqueue q :a)
+    (is (= [nil :a] (q/ground q))))
   
   ;; enqueue, then receive
-  (enqueue q 0 false)
-  (enqueue q 1)
-  (is (= 1 @(receive q)))
+  (let [q (q-fn)]
+    (enqueue q 0 false)
+    (enqueue q nil)
+    (is (= nil @(receive q))))
 
   ;; multi-receive, then enqueue
-  (let [a (receive q)
+  (let [q (q-fn)
+        a (receive q)
         b (receive q)]
-    (enqueue q 2)
-    (is (= 2 @a))
-    (is (= 2 @b)))
+    (enqueue q :a)
+    (enqueue q :b)
+    (is (= :a @a))
+    (is (= :b @b)))
 
   ;; enqueue, then receive with predicate
-  (enqueue q 3)
-  (is (= ::nope @(receive q even? ::nope)))
-  (is (= 1 @(receive q even? ::nope (r/success-result 1))))
-  (is (= 3 @(receive q odd? nil)))
+  (let [q (q-fn)]
+    (enqueue q 3)
+    (is (= ::nope @(receive q even? ::nope)))
+    (is (= 1 @(receive q even? ::nope (r/success-result 1))))
+    (is (= 3 @(receive q odd? nil))))
 
   ;; multi-receive with predicate, then enqueue
-  (let [a (receive q odd? ::nope)
+  (let [q (q-fn)
+        a (receive q odd? ::nope)
         b (receive q even? nil (r/success-result 1))
         c (receive q even? nil)]
-    (enqueue q 4)
+    (enqueue q 2)
     (is (= ::nope @a))
     (is (= 1 @b))
-    (is (= 4 @c)))
+    (is (= 2 @c)))
 
   ;; enqueue, then receive with faulty predicate
-  (let [a (receive q (fn [_] (throw (Exception. "boom"))) nil)
+  (let [q (q-fn)
+        a (receive q (fn [_] (throw (Exception. "boom"))) nil)
         b (receive q (constantly true) nil)]
-    (enqueue q 5)
+    (enqueue q :msg)
     (is (thrown? Exception @a))
-    (is (= 5 @b)))
+    (is (= :msg @b)))
 
   ;; receive, cancel, receive, and enqueue
-  (let [a (receive q)]
+  (let [q (q-fn)
+        a (receive q)]
     (is (= true (cancel-receive q a)))
     (is (= false (cancel-receive q (r/result-channel))))
     (let [b (receive q)]
@@ -83,24 +91,27 @@
       (is (= 6 @b))))
 
   ;; multi-receive, cancel, and enqueue
-  (let [a (receive q)
+  (let [q (q-fn)
+        a (receive q)
         b (receive q)]
-    (is (= true (cancel-receive q b)))
-    (enqueue q 7)
-    (is (= 7 @a)))
+    (is (= true (cancel-receive q a)))
+    (enqueue q :msg)
+    (is (= :msg @b)))
 
   ;; receive with already claimed result-channel, then enqueue
-  (receive q nil nil (r/success-result 1))
-  (enqueue q 8)
-  (is (= 8 @(receive q)))
+  (let [q (q-fn)]
+    (receive q nil nil (r/success-result 1))
+    (enqueue q 8)
+    (is (= 8 @(receive q))))
 
   ;; enqueue, then receive with already claimed result-channel
-  (enqueue q 9)
-  (receive q nil nil (r/success-result 1))
-  (is (= 9 @(receive q))))
+  (let [q (q-fn)]
+    (enqueue q 9)
+    (receive q nil nil (r/success-result 1))
+    (is (= 9 @(receive q)))))
 
 (deftest test-basic-queue
-  (test-queue (q/queue nil)))
+  (test-queue #(q/queue)))
 
 ;;;
 
@@ -113,7 +124,7 @@
 
 (defn benchmark-queue [name q]
   (bench (str name " - receive and enqueue")
-    (receive q)
+    (q/receive q)
     (enqueue q 1))
   (bench (str name " - receive with explicit result-channel and enqueue")
     (receive q nil nil (r/result-channel))
@@ -121,15 +132,16 @@
   (bench (str name " - receive, cancel, receive and enqueue")
     (let [r (receive q nil nil)]
       (cancel-receive q r))
-    (receive q)
+    (q/receive q)
     (enqueue q 1))
-  (bench (str name " - multi-receive and enqueue")
-    (receive q)
-    (receive q)
-    (enqueue q 1))
+  (bench (str name " - multi-receive and multi-enqueue")
+    (q/receive q)
+    (q/receive q)
+    (enqueue q 1)
+    (enqueue q 2))
   (bench (str name " - multi-receive, cancel, and enqueue")
-    (receive q)
-    (let [r (receive q)]
+    (q/receive q)
+    (let [r (q/receive q)]
       (cancel-receive q r))
     (enqueue q 1))
   (bench (str name " - enqueue and receive")

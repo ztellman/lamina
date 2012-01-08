@@ -80,21 +80,21 @@
 
 (deftest test-simple-propagation
   ;; simple linear
-  (let [[v callback] (sink)]
-    (enqueue
-      (construct-nodes [inc [(pred even?) [callback]]])
-      1 2 3)
+  (let [[v callback] (sink)
+        n (construct-nodes [inc [(pred even?) [callback]]])]
+    (is (= true (enqueue n 1)))
+    (enqueue n 2 3)
     (is (= @v [2 4])))
 
   ;; simple branched
   (let [[a callback-a] (sink)
-        [b callback-b] (sink)]
-    (enqueue
-      (construct-nodes
-        [identity
-         [inc [(pred even?) [callback-a]]]
-         [dec [(pred even?) [callback-b]]]])
-      1 2 3)
+        [b callback-b] (sink)
+        n (construct-nodes
+            [identity
+             [inc [(pred even?) [callback-a]]]
+             [dec [(pred even?) [callback-b]]]])]
+    (is (= :lamina/branch (enqueue n 1)))
+    (enqueue n 2 3)
     (is (= @a [2 4]))
     (is (= @b [0 2])))
 
@@ -144,7 +144,7 @@
     
     (is (= true (closed? b)))
     (is (= false (drained? b)))
-    (is (= :msg @(predicate-receive b nil nil nil)))
+    (is (= :msg @(read-node b nil nil nil)))
     (is (= true (drained? b)))
 
     (is (= true (closed? c)))
@@ -166,6 +166,14 @@
 (deftest ^:benchmark benchmark-node
   (bench "create node"
     (node identity))
+  (bench "create and siphon"
+    (let [a (node identity)
+          b (node identity)]
+      (siphon a b)))
+  (bench "create and join"
+    (let [a (node identity)
+          b (node identity)]
+      (join a b)))
   (bench "create chain"
     (node-chain 1e3 identity))
   (let [n (node-chain 2 identity)]

@@ -29,7 +29,19 @@
      CopyOnWriteArrayList
      ConcurrentHashMap]))
 
+(set! *warn-on-reflection* true)
+
 ;;;
+
+(deftype NodeState
+  [mode ;; ::zero, ::one, ::many, ::split-one, ::split-many, ::closed, ::error
+   queue
+   consumed?
+   transactional?
+   permanent?
+   error
+   next
+   split-next])
 
 (defprotocol PropagateProtocol
   (downstream-nodes [_]
@@ -39,7 +51,7 @@
      should treat the message as pre-transformed."))
 
 (defprotocol NodeProtocol
-  (predicate-receive [_ predicate false-value result-channel]
+  (read-node [_] [_ predicate false-value result-channel]
     "Straight call to the queue which cannot be cancelled. Intended for (read-channel ...).")
   (receive [_ name callback]
     "Cancellable call to the queue. Intended for (receive ...).")
@@ -52,25 +64,17 @@
   (unlink [_ node]
     "Removes a downstream node. Returns true if there was any such downstream node, false
      otherwise.")
+  (^NodeState state [_]
+    "Returns the NodeState for this node.")
   (on-state-changed [_ name callback]
     "Adds a callback which takes two paramters: [state error].  Possible states are
      ::zero, ::one, ::many, ::closed, ::drained, and ::error.")
   (cancel [_ name]
     "Cancels a callback registered by link, on-state-changed, or receive.  Returns true
      if a callback with that identifier is currently registered.")
-  (closed? [_])
-  (drained? [_])
-  (queue [_])
-  (ground [_]))
-
-(defrecord NodeState
-  [mode
-   queue
-   consumed?
-   transactional?
-   permanent?
-   error
-   next])
+  (ground [_]
+    "Consumes and returns all messages currently in the queue.")
+  (split [_]))
 
 ;;;
 
@@ -108,8 +112,8 @@
        (.clear ~state-callbacks)
        (.clear ~cancellations))))
 
-(defmacro ensure-queue [state]
-  `(let [^NodeState s# ~state]
+(defmacro ensure-queue [s state]
+  `(let [^NodeState s# ~s]
      (if (.queue s#)
        s#
        (set-state! ~state s#
@@ -125,14 +129,34 @@
        :queue (if drained?# (q/drained-queue) q#)
        :next nil)))
 
+(defmacro read-from-queue [[lock state state-callbacks cancellations] forward queue-receive]
+  (let [state-sym (gensym "state")]
+    `(let [x# (l/with-exclusive-lock* ~lock
+                (let [s# ~state]
+                  (case (.mode s#)
+                    (::split-one ::split-many)
+                    ::split
+                    
+                    (ensure-queue s# state))))]
+
+      (case x#
+        ::split
+        ~forward
+
+        (let [~state-sym ^NodeState x#
+              result# ~queue-receive]
+          (when (instance? SuccessResult result#)
+            (check-for-drained ~state ~state-callbacks ~cancellations))
+          result#)))))
+
 (deftype Node
   [^AsymmetricLock lock
    operator
-   ^:volatile-mutable ^NodeState state
+   ^{:volatile-mutable true :tag NodeState} state
    ^Map cancellations
    ^CopyOnWriteArrayList state-callbacks]
 
-  l/AsymmetricLockProtocol
+  l/LockProtocol
 
   (acquire [_] (l/acquire lock))
   (acquire-exclusive [_] (l/acquire-exclusive lock))
@@ -143,13 +167,19 @@
 
   PropagateProtocol
 
+  ;;
   (downstream-nodes [_]
     (let [state state]
       (case (.mode state)
-        ::one [(.next state)]
-        ::many (seq (.next state))
+        (::one ::split-one)
+        [(.next state)]
+
+        (::many ::split-many)
+        (seq (.next state))
+
         nil)))
 
+  ;;
   (propagate [this msg transform?]
     (let [msg (transform-message this msg transform?)]
       (case msg
@@ -166,7 +196,7 @@
           (let [state state]
             (case (.mode state)
 
-              ::closed
+              (::drained ::closed)
               :lamina/closed!
 
               ::error
@@ -175,7 +205,7 @@
               ::zero
               (enqueue-and-release lock state msg true)
               
-              ::one
+              (::one ::split-one)
               (do
                 (enqueue-and-release lock state msg false)
 
@@ -201,19 +231,18 @@
                         (do
                           (l/acquire (.lock node))
                           (let [^NodeState state (.state node)]
-                            (if-not (= ::one (.mode state))
-                              
-                              ;; if there's not just one downstream node, forward the message
+                            (case (.mode state)
+                              (::many ::split-many)
                               (do
                                 (l/release (.lock node))
                                 (propagate node msg false))
 
-                              ;; otherwise, rinse and repeat
+                              (::one ::split-one)
                               (do
                                 (enqueue-and-release (.lock node) state msg false)
                                 (recur (.next state) msg))))))))))
               
-              ::many
+              (::many ::split-many)
               (do
                 (enqueue-and-release lock state msg false)
 
@@ -221,47 +250,62 @@
                 (doseq [node (.next state)]
                   (propagate node msg true))
 
-                :lamina/split)))))))
+                :lamina/branch)))))))
 
   NodeProtocol
 
+  ;;
+  (state [_]
+    state)
+
+  ;;
   (ground [_]
     (let [msgs (l/with-exclusive-lock* lock
                  (q/ground (.queue state)))]
       (check-for-drained state state-callbacks cancellations)
       msgs))
 
-  (queue [_]
-    (.queue state))
+  ;;
+  (read-node [_]
+    (read-from-queue [lock state state-callbacks cancellations]
+      (read-node (.split-next state))
+      (q/receive (.queue state))))
 
-  (predicate-receive [_ predicate false-value result-channel]
-    (let [s (l/with-exclusive-lock* lock
-              (ensure-queue state))
-          result (q/receive (.queue s) predicate false-value result-channel)]
-      (when (instance? SuccessResult result)
-        (check-for-drained state state-callbacks cancellations))
-      result))
+  ;;
+  (read-node [_ predicate false-value result-channel]
+    (read-from-queue [lock state state-callbacks cancellations]
+      (read-node (.split-next state) predicate false-value result-channel)
+      (q/receive (.queue state) predicate false-value result-channel)))
 
+  ;;
   (receive [_ name callback]
     (let [x (l/with-exclusive-lock* lock
-              (if-let [v (.get cancellations name)]
-                
-                ;; there's already a pending receive op, just return the result-channel
-                (if (r/result-channel? v)
-                  v
-                  ::invalid-name)
-
-                ;; return the current state
-                (ensure-queue state)))]
-      (cond
-        (= ::invalid-name x)
+              (let [s state]
+                (case (.mode s)
+                  
+                  (::split-one ::split-many)
+                  ::split
+                  
+                  (if-let [v (.get cancellations name)]
+                    
+                    (if (r/result-channel? v)
+                      ::already-registered
+                      ::invalid-name)
+                    
+                    ;; return the current state
+                    (ensure-queue s state)))))]
+      (case x
+        ::split
+        (receive (.split-next state) name callback)
+        
+        ::invalid-name
         (throw (IllegalStateException. "Invalid callback identifier used for (receive ...)"))
 
-        (r/result-channel? x)
-        x
+        
+        ::already-registered
+        true
 
-        :else
-        (let [s x
+        (let [^NodeState s x
               result (q/receive (.queue s) nil nil nil)]
 
           (cond
@@ -271,23 +315,26 @@
 
             (instance? ResultChannel result)
             (do
-              (.put cancellations result #(q/cancel-receive (.q s) result))
+              (.put cancellations result
+                #(when-let [q (.queue ^NodeState (.state ^Node %))]
+                   (q/cancel-receive q result)))
               (let [f (fn [_] (.remove cancellations name))]
                 (r/subscribe result (r/result-callback f f)))))
 
           (r/subscribe result (r/result-callback callback (fn [_])))))))
 
+  ;;
   (close [_]
     (io! "Cannot modify node while in transaction."
       (if-let [^NodeState s
                (l/with-exclusive-lock* lock
                  (let [s state]
                    (case (.mode s)
+
+                     (::closed ::drained ::error)
+                     nil
                      
-                     (::zero ::one ::many)
-                     (close-node! state s)
-                     
-                     nil)))]
+                     (close-node! state s))))]
         ;; signal state change
         (do
           (doseq [l state-callbacks]
@@ -298,25 +345,27 @@
         ;; state has already been permanently changed
         false)))
 
+  ;;
   (error [_ err]
     (io! "Cannot modify node while in transaction."
       (if-let [old-queue (l/with-exclusive-lock* lock
                            (let [s state]
                              (case (.mode s)
+
+                               (::drained ::error)
+                               nil
                                
-                               (::zero ::one ::many ::closed)
                                (let [q (.queue s)]
                                  (set-state! state s
                                    :mode ::error
                                    :queue (q/error-queue err)
                                    :error err
                                    :next nil)
-                                 q)
-                               
-                               nil)))]
+                                 (or q ::nil-queue)))))]
         ;; signal state change
         (do
-          (error old-queue err)
+          (when-not (identical? ::nil-queue old-queue)
+            (q/error old-queue err))
           (doseq [l state-callbacks]
             (l ::error err))
           (.clear state-callbacks)
@@ -326,6 +375,38 @@
         ;; state has already been permanently changed
         false)))
 
+  ;;
+  (split [this]
+    (l/with-exclusive-lock* lock
+      (let [s state]
+
+        (case (.mode s)
+
+          (::split-one ::split-many)
+          nil
+
+          (::closed ::drained ::error)
+          this
+
+          (::zero ::one ::many)
+          (let [n (Node.
+                    (l/asymmetric-lock)
+                    identity
+                    s
+                    (Collections/synchronizedMap (HashMap. cancellations))
+                    (CopyOnWriteArrayList. state-callbacks))]
+            (.clear cancellations)
+            (.clear state-callbacks)
+            (set-state! state s
+              :mode ::split-one
+              :permanent? false
+              :consumed? false
+              :queue nil
+              :next n
+              :split-next n)
+            n)))))
+  
+  ;;
   (link [this name node execute-within-lock]
     (io! "Cannot modify node while in transaction."
       (if-let [^NodeState s
@@ -345,12 +426,14 @@
                                :mode ::one
                                :next node))
                          
-                           ::one
+                           (::one ::split-one)
                            (set-state! state s
-                             :mode ::many
+                             :mode (if (identical? ::one (.mode s))
+                                     ::many
+                                     ::split-many)
                              :next (CopyOnWriteArrayList. ^objects (to-array [(.next s) node])))
                          
-                           ::many
+                           (::split-many ::many)
                            (do
                              (.add ^CopyOnWriteArrayList (.next s) node)
                              s)
@@ -365,12 +448,13 @@
                                :mode ::drained
                                :next node))
                          
+                           (::error ::drained)
                            nil)]
 
                      (when new-state
                        (when execute-within-lock
                          (execute-within-lock))
-                       (.put cancellations name #(unlink this node))
+                       (.put cancellations name #(unlink % node))
                        new-state))))]
 
         (do
@@ -390,9 +474,10 @@
 
           true)
 
-        ;; we're already in ::closed or ::error mode
+        ;; already ::closed, ::drained, or ::error
         false)))
-  
+
+  ;;
   (unlink [_ node]
     (io! "Cannot modify node while in transaction."
       (if-let [s (l/with-exclusive-lock* lock
@@ -401,71 +486,106 @@
                        ::zero
                        nil
                        
-                       ::one
-                       (when (= node (.next s))
+                       (::one ::split-one)
+                       (when (identical? node (.next s))
                          (if-not (.permanent? s)
                            (close-node! state s)
                            (set-state! state s
                              :mode ::zero
                              :queue (when (.consumed? s) (q/queue)))))
                        
-                       ::many
+                       (::many ::split-many)
                        (let [l ^CopyOnWriteArrayList (.next s)]
                          (when (.remove l node)
-                           (if (= 1 (.size l))
+                           (if (identical? 1 (.size l))
                              (set-state! state s
-                               :mode ::one
+                               :mode (if (identical? ::many (.mode s))
+                                       ::one
+                                       ::split-one)
                                :next (.get l 0))
                              ::state-unchanged)))
                            
-                           nil)))]
+                       (::closed ::drained :error)
+                       nil)))]
         (do
-          (when-not (= s ::state-unchanged)
+          (when-not (identical? s ::state-unchanged)
             (doseq [l state-callbacks]
               (l (.mode ^NodeState s) nil)))
           true)
         false)))
 
+  ;;
   (on-state-changed [_ name callback]
     (let [s (l/with-exclusive-lock lock
               (when (or (nil? name) (not (.containsKey cancellations name)))
                 (let [s state]
                   (case (.mode s)
+
+                    (::drained ::error)
+                    nil
                     
-                    (::zero ::one ::many)
                     (do
                       (.add state-callbacks callback)
                       (when name
-                        (.put cancellations name #(.remove state-callbacks callback))))
-                    
-                    nil)
+                        (.put cancellations name
+                          #(.remove ^CopyOnWriteArrayList (.state-callbacks ^Node %) callback)))))
                   s)))]
       (if s
         (do
           (callback (.mode ^NodeState s) (.error ^NodeState s))
           true)
         false)))
-  
-  (cancel [_ name]
+
+  ;;
+  (cancel [this name]
     (if-let [x (l/with-lock lock
-                 (.remove cancellations name))]
-      (if (r/result-channel? x)
+                 (case (.mode state)
+                   (::split-one ::split-many)
+                   ::split
+
+                   (.remove cancellations name)))]
+      ;; there was a matching cancellation
+      (cond
+        (identical? ::split x)
+        (cancel (.split-next state) name)
+
+        (r/result-channel? x)
         (l/with-lock lock
           (q/cancel-receive (.queue state) x))
+
+        :else
         (do
-          (x)
+          (x this)
           true))
-      false))
 
-  (closed? [_]
-    (case (.mode state)
-      (::closed ::drained) true
-      false))
-
-  (drained? [_]
-    (case (.mode state)
-      ::drained true
+      ;; no such thing
       false)))
+
+;;;
+
+(defn closed? [node]
+  (case (.mode (state node))
+    (::closed ::drained) true
+    false))
+
+(defn drained? [node]
+  (case (.mode (state node))
+    ::drained true
+    false))
+
+(defn split? [node]
+  (case (.mode (state node))
+    (::split-one :split-many) true
+    false))
+
+(defn error-value [node default-value]
+  (let [s (state node)]
+    (case (.mode s)
+      ::error (.error s)
+      default-value)))
+
+(defn queue [node]
+  (.queue (state node)))
 
 ;;;
 
@@ -501,17 +621,33 @@
       ::error (enqueue-cleanup #(error dst err))
       nil)))
 
-(defn siphon [src dst]
-  (let [success? (link src dst dst nil)]
-    (when success?
-      (on-state-changed dst nil (siphon-callback src dst)))
-    success?))
+(defn siphon
+  ([src dst]
+     (siphon src dst nil))
+  ([src dst execute-in-lock]
+     (if (link src dst dst execute-in-lock)
+       (do
+         (on-state-changed dst nil (siphon-callback src dst))
+         true)
+       false)))
 
-(defn join [src dst]
-  (let [success? (siphon src dst)]
-    (when success?
-      (on-state-changed src nil (join-callback dst)))
-    success?))
+(defn join
+  ([src dst]
+     (join src dst nil))
+  ([src dst execute-in-lock]
+     (if (siphon src dst execute-in-lock)
+       (do
+         (on-state-changed src nil (join-callback dst))
+         true)
+       (cond
+         (closed? src)
+         (close dst)
+
+         (not (identical? ::none (error-value src ::none)))
+         (error dst (error-value src nil))
+
+         :else
+         false))))
 
 ;;;
 
@@ -519,7 +655,7 @@
   ([operator]
      (node operator nil))
   ([operator messages]
-     (when-not (fn? operator)
+     (when-not (ifn? operator)
        (throw (Exception. (str (pr-str operator) " is not a valid function."))))
      (Node.
        (l/asymmetric-lock)
