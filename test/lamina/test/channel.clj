@@ -33,36 +33,30 @@
   (bench "create and enqueue"
     (let [ch (channel)]
       (enqueue ch :msg)))
-  (bench "create, multi-receive, and multi-enqueue"
+  (bench "create, read, and enqueue"
     (let [ch (channel)]
-      (receive ch (fn [_]))
-      (receive ch (fn [_]))
-      (enqueue ch :msg)
+      (read-channel ch)
       (enqueue ch :msg)))
-  (bench "create, multi-enqueue, and multi-receive"
+  (bench "create, enqueue, and read"
     (let [ch (channel)]
       (enqueue ch :msg)
-      (enqueue ch :msg)
-      (receive ch (fn [_]))
-      (receive ch (fn [_]))))
-  (bench "create, receive, and enqueue"
-    (let [ch (channel)]
-      (receive ch (fn [_]))
-      (enqueue ch :msg)))
+      (read-channel ch)))
   (bench "create, receive-all, and enqueue"
     (let [ch (channel)]
       (receive-all ch (fn [_]))
       (enqueue ch :msg)))
-  (bench "create, enqueue, and receive"
-    (let [ch (channel)]
-      (enqueue ch :msg)
-      (receive ch (fn [_]))))
   (bench "create, enqueue, and receive-all"
     (let [ch (channel)]
       (enqueue ch :msg)
-      (receive-all ch (fn [_]))))
-  (let [p (p/pipeline read-channel (constantly (p/restart)))
-        ch (channel)]
-    (p ch)
-    (bench "read-channel pipeline loop"
-      (enqueue ch :msg))))
+      (receive-all ch (fn [_])))))
+
+(deftest ^:benchmark benchmark-queues
+  (let [ch (channel)]
+    (bench "enqueue 1e3"
+      (dotimes [_ 1e3]
+        (enqueue ch 1))
+      (channel-seq ch))
+    (bench "enqueue 1e6"
+      (dotimes [_ 1e6]
+        (enqueue ch 1))
+      (channel-seq ch))))

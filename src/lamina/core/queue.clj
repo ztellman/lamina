@@ -190,8 +190,8 @@
   ;;
   (ground [_]
     (io! "Cannot modify non-transactional queues inside a transaction."
-      (l/with-exclusive-lock lock
-        (when-not (.isEmpty messages)
+      (when-not (.isEmpty messages)
+        (l/with-exclusive-lock lock
           (let [msgs (seq (.toArray messages))]
             (.clear messages)
             (map #(if (identical? ::nil %) nil %) msgs))))))

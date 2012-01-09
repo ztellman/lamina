@@ -7,15 +7,24 @@
 ;;   You must not remove this notice, or any other, from this software.
 
 (ns lamina.core.threads
+  (:require
+    [clojure.tools.logging :as log])
   (:import
     [java.util.concurrent
      ExecutorService
      Executors
-     ThreadFactory]))
+     ThreadFactory
+     ScheduledThreadPoolExecutor
+     TimeUnit]))
 
 (set! *warn-on-reflection* true)
 
-(defn thread-factory [name-generator]
+;;;
+
+(defn num-cores []
+  (.availableProcessors (Runtime/getRuntime)))
+
+(defn ^ThreadFactory thread-factory [name-generator]
   (reify ThreadFactory
     (newThread [_ runnable]
       (doto (Thread. runnable) (.setName (name-generator))))))
@@ -26,3 +35,21 @@
 
 (defn enqueue-cleanup [f]
   (.execute cleanup-executor f))
+
+(let [cnt (atom 0)
+      tf (thread-factory #(str "Lamina - scheduler thread #" (swap! cnt inc)))]
+  (def ^ScheduledThreadPoolExecutor scheduled-executor
+    (ScheduledThreadPoolExecutor. (int (num-cores)) ^ThreadFactory tf)))
+
+(defn delay-invoke [interval ^Runnable f]
+  (let [^Runnable f
+        (fn []
+          (try
+            (f)
+            (catch Exception e
+              (log/error e "Error in delayed invocation."))))]
+    (.schedule scheduled-executor f (long (* 1e3 interval)) TimeUnit/MICROSECONDS)
+    nil))
+
+;;;
+

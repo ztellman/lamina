@@ -132,6 +132,14 @@
 
 ;;;
 
+(defn channel-seq
+  ([channel]
+     (channel-seq channel 0))
+  ([channel timeout]
+     (n/ground (emitter-node channel))))
+
+;;;
+
 (defn siphon [src dst]
   (n/siphon (emitter-node src) (receiver-node dst)))
 
@@ -139,13 +147,11 @@
   (n/join (emitter-node src) (receiver-node dst)))
 
 (defn map* [f channel]
-  (let [n (n/node f)]
-    (n/join (emitter-node channel) n)
+  (let [n (n/downstream-node f (emitter-node channel))]
     (Channel. n n)))
 
 (defn filter* [f channel]
-  (let [n (n/node (n/predicate-operator f))]
-    (n/join (emitter-node channel) n)
+  (let [n (n/downstream-node (n/predicate-operator f) (emitter-node channel))]
     (Channel. n n)))
 
 ;;;

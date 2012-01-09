@@ -10,7 +10,8 @@
   (:use
     [useful.datatypes :only (assoc-record)])
   (:require
-    [lamina.core.lock :as l])
+    [lamina.core.lock :as l]
+    [lamina.core.threads :as t])
   (:import
     [lamina.core.lock
      Lock]
@@ -326,6 +327,10 @@
 (defn siphon-result [src dst]
   (subscribe src (result-callback #(success dst %) #(error dst %)))
   dst)
+
+(defn result-timeout [interval result]
+  (t/delay-invoke interval #(error result :lamina/timeout))
+  result)
 
 ;;;
 
