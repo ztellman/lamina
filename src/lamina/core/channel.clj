@@ -67,7 +67,7 @@
 
 (defn channel
   [& messages]
-  (let [n (n/node identity (seq messages))]
+  (let [n (n/node identity false (seq messages))]
     (Channel. n n)))
 
 (defn splice [emitter receiver]
@@ -82,8 +82,12 @@
 ;;;
 
 (defn enqueue
-  [channel message]
-  (n/propagate (receiver-node channel) message true))
+  ([channel message]
+     (n/propagate (receiver-node channel) message true))
+  ([channel message & messages]
+     (n/propagate (receiver-node channel) message true)
+     (doseq [m messages]
+       (n/propagate (receiver-node channel) m true))))
 
 (defn receive [channel callback]
   (n/receive (emitter-node channel) callback callback))
@@ -102,7 +106,7 @@
      (n/cancel (emitter-node channel) callback)))
 
 (defn fork [channel]
-  (let [n (n/node identity)
+  (let [n (n/node identity false)
         emitter (split-receiver channel)]
     (n/join (receiver-node channel) n
       #(when-let [q (n/queue emitter)]

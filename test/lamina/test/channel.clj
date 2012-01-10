@@ -14,6 +14,46 @@
     [lamina.core.pipeline :as p]
     [criterium.core :as c]))
 
+;;;
+
+(defn sink []
+  (let [a (atom [])]
+    [a
+     #(do
+        (swap! a conj %)
+        true)]))
+
+;;;
+
+(deftest test-map*
+  (let [[v callback] (sink)
+        a (channel 0 1 2)
+        b (map* inc a)]
+    (receive-all b callback)
+    (enqueue a 3)
+    (enqueue b 4)
+    (is (= (range 1 6) @v))))
+
+(deftest test-filter*
+  (let [[v callback] (sink)
+        a (channel 0 1 2)
+        b (->> a (map* inc) (filter* even?))]
+    (receive-all b callback)
+    (enqueue a 3 4)
+    (is (= [2 4] @v))))
+
+(deftest test-fork
+  (let [a (channel 0 1 2)
+        b (->> a fork (map* inc))
+        c (->> a fork (filter* even?))
+        d (->> b fork (filter* even?))]
+    (is (= [0 1 2] (channel-seq a)))
+    (is (= [1 2 3] (channel-seq b)))
+    (is (= [0 2] (channel-seq c)))
+    (is (= [2] (channel-seq d)))))
+
+;;;
+
 (defmacro bench [name & body]
   `(do
      (println "\n-----\n lamina.core.channel -" ~name "\n-----\n")
@@ -26,6 +66,8 @@
     (channel))
   (bench "create and map*"
     (->> (channel) (map* inc)))
+  (bench "create and fork"
+    (->> (channel) fork))
   (let [ch (channel)]
     (receive-all ch (fn [_]))
     (bench "simple-enqueue"

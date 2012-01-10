@@ -33,14 +33,28 @@
 
 ;;;
 
+;; The possible modes:
+;; zero         no downstream nodes, messages go in queue
+;; one          a single downstream node, propagate return value back
+;; many         multiple downstream nodes, return :lamina/branch
+;; split-one    split node, single downstream node
+;; split-many   split node, multiple downstream nodes
+;; consumed     single consuming process (i.e. take-while*), messages go in queue
+;; closed       no further messages can propagate through the node, messages still in queue
+;; drained      no further messages can propagate through the node, queue is empty
+;; error        an error prevents any further messages from being propagated
 (deftype NodeState
-  [mode ;; ::zero, ::one, ::many, ::split-one, ::split-many, ::closed, ::error
-   queue
+  [mode
+   next
+   ;; queue info
+   queue 
    consumed?
+   ;; special node states
    transactional?
    permanent?
+   ;; for ::error
    error
-   next
+   ;; for ::split-one and ::split-many
    split-next])
 
 (defprotocol PropagateProtocol
@@ -207,6 +221,10 @@
               :lamina/error!
               
               ::zero
+              (when-not probe?
+                (enqueue-and-release lock state msg true))
+
+              ::consumed
               (enqueue-and-release lock state msg true)
               
               (::one ::split-one)
@@ -280,66 +298,60 @@
 
   ;;
   (read-node [_]
-    (if probe?
-      (throw (IllegalStateException. "Cannot do single message consumption on probe-channels."))
-      (read-from-queue [lock state state-callbacks cancellations]
-       (read-node (.split-next state))
-       (q/receive (.queue state)))))
+    (read-from-queue [lock state state-callbacks cancellations]
+      (read-node (.split-next state))
+      (q/receive (.queue state))))
   
   (read-node [_ predicate false-value result-channel]
-    (if probe?
-      (throw (IllegalStateException. "Cannot do single message consumption on probe-channels."))
-      (read-from-queue [lock state state-callbacks cancellations]
-       (read-node (.split-next state) predicate false-value result-channel)
-       (q/receive (.queue state) predicate false-value result-channel))))
+    (read-from-queue [lock state state-callbacks cancellations]
+      (read-node (.split-next state) predicate false-value result-channel)
+      (q/receive (.queue state) predicate false-value result-channel)))
 
   ;;
   (receive [_ name callback]
-    (if probe?
-      (throw (IllegalStateException. "Cannot do single message consumption on probe-channels."))
-      (let [x (l/with-exclusive-lock* lock
-               (let [s state]
-                 (case (.mode s)
+    (let [x (l/with-exclusive-lock* lock
+              (let [s state]
+                (case (.mode s)
                   
-                   (::split-one ::split-many)
-                   ::split
+                  (::split-one ::split-many)
+                  ::split
                   
-                   (if-let [v (.get cancellations name)]
+                  (if-let [v (.get cancellations name)]
                     
-                     (if (r/result-channel? v)
-                       ::already-registered
-                       ::invalid-name)
+                    (if (r/result-channel? v)
+                      ::already-registered
+                      ::invalid-name)
                     
-                     ;; return the current state
-                     (ensure-queue state s)))))]
-       (case x
-         ::split
-         (receive (.split-next state) name callback)
+                    ;; return the current state
+                    (ensure-queue state s)))))]
+      (case x
+        ::split
+        (receive (.split-next state) name callback)
         
-         ::invalid-name
-         (throw (IllegalStateException. "Invalid callback identifier used for (receive ...)"))
+        ::invalid-name
+        (throw (IllegalStateException. "Invalid callback identifier used for (receive ...)"))
 
         
-         ::already-registered
-         true
+        ::already-registered
+        true
 
-         (let [^NodeState s x
-               result (q/receive (.queue s) nil nil nil)]
+        (let [^NodeState s x
+              result (q/receive (.queue s) nil nil nil)]
 
-           (cond
+          (cond
 
-             (instance? SuccessResult result)
-             (check-for-drained state state-callbacks cancellations)
+            (instance? SuccessResult result)
+            (check-for-drained state state-callbacks cancellations)
 
-             (instance? ResultChannel result)
-             (when name
-               (.put cancellations name
-                 #(when-let [q (.queue ^NodeState (.state ^Node %))]
-                    (q/cancel-receive q result)))
-               (let [f (fn [_] (.remove cancellations name))]
-                 (r/subscribe result (r/result-callback f f)))))
+            (instance? ResultChannel result)
+            (when name
+              (.put cancellations name
+                #(when-let [q (.queue ^NodeState (.state ^Node %))]
+                   (q/cancel-receive q result)))
+              (let [f (fn [_] (.remove cancellations name))]
+                (r/subscribe result (r/result-callback f f)))))
 
-           (r/subscribe result (r/result-callback callback (fn [_]))))))))
+          (r/subscribe result (r/result-callback callback (fn [_])))))))
 
   ;;
   (close [_]
@@ -352,7 +364,8 @@
                      (::closed ::drained ::error)
                      nil
                      
-                     (close-node! state s))))]
+                     (when-not (.permanent? s)
+                       (close-node! state s)))))]
         ;; signal state change
         (do
           (doseq [l state-callbacks]
@@ -360,7 +373,7 @@
           (.clear state-callbacks)
           true)
 
-        ;; state has already been permanently changed
+        ;; state has already been permanently changed or cannot be changed
         false)))
 
   ;;
@@ -373,13 +386,14 @@
                                (::drained ::error)
                                nil
                                
-                               (let [q (.queue s)]
-                                 (set-state! state s
-                                   :mode ::error
-                                   :queue (q/error-queue err)
-                                   :error err
-                                   :next nil)
-                                 (or q ::nil-queue)))))]
+                               (when-not (.permanent? s)
+                                 (let [q (.queue s)]
+                                   (set-state! state s
+                                     :mode ::error
+                                     :queue (q/error-queue err)
+                                     :error err
+                                     :next nil)
+                                   (or q ::nil-queue))))))]
         ;; signal state change
         (do
           (when-not (identical? ::nil-queue old-queue)
@@ -390,7 +404,7 @@
           (.clear cancellations)
           true)
         
-        ;; state has already been permanently changed
+        ;; state has already been permanently changed or cannot be changed
         false)))
 
   ;;
@@ -406,28 +420,31 @@
                   (::closed ::drained ::error)
                   this
 
-                  (::zero ::one ::many)
+                  (::zero ::one ::many ::consumed)
                   (let [n (Node.
                             (l/asymmetric-lock)
                             identity
                             probe?
-                            s
+                            (assoc-record s
+                              :permanent? false)
                             (Collections/synchronizedMap (HashMap. cancellations))
                             (CopyOnWriteArrayList. state-callbacks))]
                     (.clear cancellations)
                     (.clear state-callbacks)
                     (set-state! state s
                       :mode ::split-one
-                      :permanent? false
                       :consumed? false
                       :queue nil
                       :next n
                       :split-next n)
                     n))))]
-      (on-state-changed n nil (siphon-callback this n))
-      (on-state-changed this nil (join-callback n))
-      (.put cancellations n #(unlink % n))
-      n))
+      (if-not n
+        (.split-next state)
+        (do
+          (on-state-changed n nil (siphon-callback this n))
+          (on-state-changed this nil (join-callback n))
+          (.put cancellations n #(unlink % n))
+          n))))
   
   ;;
   (link [this name node execute-within-lock]
@@ -471,7 +488,7 @@
                                :mode ::drained
                                :next node))
                          
-                           (::error ::drained)
+                           (::error ::drained ::consumed)
                            nil)]
 
                      (when new-state
@@ -510,12 +527,13 @@
                        ::zero
                        nil
                        
-                       (::one ::split-one)
+                       (::one ::split-one ::consumed)
                        (when (identical? node (.next s))
                          (if-not (.permanent? s)
                            (close-node! state s)
                            (set-state! state s
                              :mode ::zero
+                             :split-next nil
                              :queue (when (.consumed? s) (q/queue)))))
                        
                        (::many ::split-many)
@@ -622,6 +640,16 @@
 (defn callback-node [callback]
   (CallbackNode. callback))
 
+(deftype BridgeNode [callback downstream]
+  PropagateProtocol
+  (downstream-nodes [_]
+    downstream)
+  (propagate [_ msg _]
+    (callback msg)))
+
+(defn bridge-node [callback downstream]
+  (BridgeNode. callback downstream))
+
 ;;;
 
 (defn predicate-operator [predicate]
@@ -676,22 +704,24 @@
 
 (defn node
   ([operator]
-     (node operator nil))
-  ([operator messages]
+     (node operator false nil))
+  ([operator probe?]
+     (node operator probe? nil))
+  ([operator probe? messages]
      (when-not (ifn? operator)
        (throw (Exception. (str (pr-str operator) " is not a valid function."))))
      (Node.
        (l/asymmetric-lock)
        operator
-       false
+       probe?
        (make-record NodeState
          :mode ::zero
          :queue (q/queue messages))
        (Collections/synchronizedMap (HashMap.))
        (CopyOnWriteArrayList.))))
 
-(defn downstream-node [operator upstream-node]
-  (let [n (node operator)]
+(defn downstream-node [operator ^Node upstream-node]
+  (let [^Node n (node operator false)]
     (join upstream-node n)
     n))
 
