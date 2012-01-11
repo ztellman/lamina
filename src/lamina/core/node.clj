@@ -13,7 +13,8 @@
   (:require
     [lamina.core.result :as r]
     [lamina.core.queue :as q]
-    [lamina.core.lock :as l])
+    [lamina.core.lock :as l]
+    [clojure.tools.logging :as log])
   (:import
     [lamina.core.lock
      AsymmetricLock]
@@ -41,30 +42,40 @@
      should treat the message as pre-transformed."))
 
 (defprotocol NodeProtocol
+  ;;
   (read-node [_] [_ predicate false-value result-channel]
     "Straight call to the queue which cannot be cancelled. Intended for (read-channel ...).")
   (receive [_ name callback]
     "Cancellable call to the queue. Intended for (receive ...).")
+
+  ;;
   (close [_]
     "Closes the node. This is a permanent state change.")
   (error [_ error]
     "Puts the node into an error mode. This is a permanent state change.")
+
+  ;;
   (link [_ name node execute-within-lock]
     "Adds a downstream node. The link should be cancelled using (cancel this name).")
   (unlink [_ node]
     "Removes a downstream node. Returns true if there was any such downstream node, false
      otherwise.")
+  (consume [_ name node]
+    )
+  (split [_]
+    "Splits a node so that the upstream half can be forked.")
+  (cancel [_ name]
+    "Cancels a callback registered by link, on-state-changed, or receive.  Returns true
+     if a callback with that identifier is currently registered.")
+
+  ;;
   (^NodeState state [_]
     "Returns the NodeState for this node.")
   (on-state-changed [_ name callback]
     "Adds a callback which takes two paramters: [state downstream-node-count error].
      Possible states are ::open, ::consumed, ::split, ::closed, ::drained, ::error.")
-  (cancel [_ name]
-    "Cancels a callback registered by link, on-state-changed, or receive.  Returns true
-     if a callback with that identifier is currently registered.")
   (ground [_]
-    "Consumes and returns all messages currently in the queue.")
-  (split [_]))
+    "Consumes and returns all messages currently in the queue."))
 
 ;; The possible modes:
 ;; open
@@ -80,7 +91,7 @@
    error
    ;; queue info
    queue 
-   consumed?
+   read?
    ;; special node states
    transactional?
    permanent?])
@@ -112,6 +123,7 @@
        (try
          (operator# msg#)
          (catch Exception e#
+           (log/warn e# "Error in map*/filter* function.")
            (error node# e#)
            ::error)))))
 
@@ -123,7 +135,7 @@
            :mode ::drained
            :queue (q/drained-queue))
          (doseq [l# ~state-callbacks]
-           (l# ::drained nil))
+           (l# ::drained 0 nil))
          (.clear ~state-callbacks)
          (.clear ~cancellations)))))
 
@@ -133,7 +145,7 @@
        s#
        (set-state! ~state s#
          :queue (q/queue)
-         :consumed? true))))
+         :read? true))))
 
 (defmacro close-node! [state downstream-nodes s]
   `(let [^NodeState s# ~s
@@ -359,7 +371,7 @@
         ;; signal state change
         (do
           (doseq [l state-callbacks]
-            (l (.mode s) nil))
+            (l (.mode s) (.downstream-count s) nil))
           (.clear state-callbacks)
           true)
 
@@ -388,13 +400,27 @@
           (when-not (identical? ::nil-queue old-queue)
             (q/error old-queue err))
           (doseq [l state-callbacks]
-            (l ::error err))
+            (l ::error 0 err))
           (.clear state-callbacks)
           (.clear cancellations)
           true)
         
         ;; state has already been permanently changed or cannot be changed
         false)))
+
+  ;;
+  (consume [this name node]
+    (l/with-exclusive-lock* lock
+      (let [s state]
+        (if (identical? 0 (.downstream-count s))
+          (do
+            (.add downstream-nodes node)
+            (.put cancellations name #(unlink % name))
+            (set-state! state s
+              :mode ::consumed
+              :downstream-count 1)
+            true)
+          false))))
 
   ;;
   (split [this]
@@ -415,7 +441,7 @@
                     (.clear state-callbacks)
                     (set-state! state s
                       :mode ::split
-                      :consumed? false
+                      :read? false
                       :queue nil
                       :split n)
                     (.clear downstream-nodes)
@@ -439,7 +465,7 @@
                            (let [cnt (unchecked-inc (.downstream-count s))]
                              (.add downstream-nodes node)
                              (set-state! state s
-                               :queue (when (.consumed? s) (q/queue))
+                               :queue (when (.read? s) (q/queue))
                                :downstream-count cnt)
                              (assoc-record s
                                :downstream-count cnt))
@@ -477,8 +503,9 @@
               (propagate node msg true)))
 
           ;; notify all state-changed listeners
-          (doseq [l state-callbacks]
-            (l (.mode ^NodeState s) nil))
+          (let [^NodeState s s]
+            (doseq [l state-callbacks]
+              (l (.mode s) (.downstream-count s) nil)))
 
           true)
 
@@ -513,8 +540,9 @@
                        nil)))]
         (do
           (when-not (identical? s ::state-unchanged)
-            (doseq [l state-callbacks]
-              (l (.mode ^NodeState s) nil)))
+            (let [^NodeState s s]
+              (doseq [l state-callbacks]
+                (l (.mode s) (.downstream-count s) nil))))
           true)
         false)))
 
@@ -535,8 +563,8 @@
                           #(.remove ^CopyOnWriteArrayList (.state-callbacks ^Node %) callback)))))
                   s)))]
       (if s
-        (do
-          (callback (.mode ^NodeState s) (.error ^NodeState s))
+        (let [^NodeState s s]
+          (callback (.mode s) (.downstream-count s) (.error s))
           true)
         false)))
 
@@ -591,7 +619,10 @@
   (downstream [_]
     nil)
   (propagate [_ msg _]
-    (callback msg)))
+    (try
+      (callback msg)
+      (catch Exception e
+        (log/error e "Error in permanent callback.")))))
 
 (defn callback-node [callback]
   (CallbackNode. callback))
@@ -616,13 +647,13 @@
 ;;;
 
 (defn siphon-callback [src dst]
-  (fn [state _]
+  (fn [state _ _]
     (case state
       (::closed ::drained ::error) (enqueue-cleanup #(cancel src dst))
       nil)))
 
 (defn join-callback [dst]
-  (fn [state err]
+  (fn [state _ err]
     (case state
       (::closed ::drained) (enqueue-cleanup #(close dst))
       ::error (enqueue-cleanup #(error dst err))
@@ -722,7 +753,7 @@
 (defn on-closed [node callback]
   (let [latch (atom false)]
     (on-state-changed node callback
-      (fn [state _]
+      (fn [state _ _]
         (case state
           (::closed ::drained)
           (when (compare-and-set! latch false true)
@@ -733,7 +764,7 @@
 (defn on-drained [node callback]
   (let [latch (atom false)]
     (on-state-changed node callback
-      (fn [state _]
+      (fn [state _ _]
         (case state
           ::drained
           (when (compare-and-set! latch false true)
@@ -744,7 +775,7 @@
 (defn on-error [node callback]
   (let [latch (atom false)]
     (on-state-changed node callback
-      (fn [state err]
+      (fn [state _ err]
         (case state
           ::error
           (when (compare-and-set! latch false true)

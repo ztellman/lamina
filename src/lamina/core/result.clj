@@ -11,7 +11,8 @@
     [useful.datatypes :only (assoc-record)])
   (:require
     [lamina.core.lock :as l]
-    [lamina.core.threads :as t])
+    [lamina.core.threads :as t]
+    [clojure.tools.logging :as log])
   (:import
     [lamina.core.lock
      Lock]
@@ -146,12 +147,18 @@
              :lamina/realized
              
              1
-             ((~f ^ResultCallback (.removeFirst ~subscribers)) (.value s#))
+             (try
+               ((~f ^ResultCallback (.removeFirst ~subscribers)) (.value s#))
+               (catch Exception e#
+                 (log/error e# "Error in result callback.")))
 
              (let [value# (.value s#)]
                (loop []
                  (when-let [^ResultCallback c# (.poll ~subscribers)]
-                   ((~f c#) value#)
+                   (try
+                     ((~f c#) value#)
+                     (catch Exception e#
+                       (log/error e# "Error in result callback.")))
                    (recur)))
                :lamina/branch)))))))
 
