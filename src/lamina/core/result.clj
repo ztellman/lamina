@@ -42,7 +42,7 @@
 
 ;;;
 
-(deftype SuccessResult [value callback-modifier]
+(deftype SuccessResult [value]
   clojure.lang.IDeref
   (deref [_] value)
   Result
@@ -63,13 +63,13 @@
   (result [_]
     :success)
   (subscribe [_ callback]
-    ((callback-modifier (.on-success ^ResultCallback callback)) value))
+    ((.on-success ^ResultCallback callback) value))
   (cancel-callback [_ callback]
     false)
   (toString [_]
     (str "<< " value " >>")))
 
-(deftype ErrorResult [error callback-modifier]
+(deftype ErrorResult [error]
   clojure.lang.IDeref
   (deref [_]
     (if (instance? Throwable error)
@@ -93,7 +93,7 @@
   (result [_]
     :error)
   (subscribe [_ callback]
-    ((callback-modifier (.on-error ^ResultCallback callback)) error))
+    ((.on-error ^ResultCallback callback) error))
   (cancel-callback [_ callback]
     false)
   (toString [_]
@@ -282,16 +282,12 @@
 ;;;
 
 (defn success-result
-  ([value]
-     (success-result value identity))
-  ([value callback-modifier]
-     (SuccessResult. value callback-modifier)))
+  [value]
+  (SuccessResult. value))
 
 (defn error-result
-  ([error]
-     (error-result error identity))
-  ([error callback-modifier]
-     (ErrorResult. error callback-modifier)))
+  [error]
+  (ErrorResult. error))
 
 (defn result-channel
   []

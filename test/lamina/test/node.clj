@@ -147,8 +147,9 @@
     (is (= [nil 1] @v))))
 
 (deftest test-long-chain-propagation
-  (let [n (node-chain (dec 1e5) inc inc)]
-    (is (= (int 1e5) (enqueue n 0)))
+  (let [cnt 1e4
+        n (node-chain (dec cnt) inc inc)]
+    (is (= (int cnt) (enqueue n 0)))
     (-> n node-seq butlast last close)
     (wait-for-drained n)))
 

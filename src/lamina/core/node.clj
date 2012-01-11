@@ -33,32 +33,8 @@
 
 ;;;
 
-;; The possible modes:
-;; zero         no downstream nodes, messages go in queue
-;; one          a single downstream node, propagate return value back
-;; many         multiple downstream nodes, return :lamina/branch
-;; split-one    split node, single downstream node
-;; split-many   split node, multiple downstream nodes
-;; consumed     single consuming process (i.e. take-while*), messages go in queue
-;; closed       no further messages can propagate through the node, messages still in queue
-;; drained      no further messages can propagate through the node, queue is empty
-;; error        an error prevents any further messages from being propagated
-(deftype NodeState
-  [mode
-   next
-   ;; queue info
-   queue 
-   consumed?
-   ;; special node states
-   transactional?
-   permanent?
-   ;; for ::error
-   error
-   ;; for ::split-one and ::split-many
-   split-next])
-
 (defprotocol PropagateProtocol
-  (downstream-nodes [_]
+  (downstream [_]
     "Returns a list of nodes which are downstream of this node.")
   (propagate [_ msg transform?]
     "Sends a message downstream through the node. If 'transform?' is false, the node
@@ -81,8 +57,8 @@
   (^NodeState state [_]
     "Returns the NodeState for this node.")
   (on-state-changed [_ name callback]
-    "Adds a callback which takes two paramters: [state error].  Possible states are
-     ::zero, ::one, ::many, ::closed, ::drained, and ::error.")
+    "Adds a callback which takes two paramters: [state downstream-node-count error].
+     Possible states are ::open, ::consumed, ::split, ::closed, ::drained, ::error.")
   (cancel [_ name]
     "Cancels a callback registered by link, on-state-changed, or receive.  Returns true
      if a callback with that identifier is currently registered.")
@@ -90,7 +66,29 @@
     "Consumes and returns all messages currently in the queue.")
   (split [_]))
 
-(declare join-callback siphon-callback)
+;; The possible modes:
+;; open
+;; split
+;; consumed     single consuming process (i.e. take-while*), messages go in queue
+;; closed       no further messages can propagate through the node, messages still in queue
+;; drained      no further messages can propagate through the node, queue is empty
+;; error        an error prevents any further messages from being propagated
+(deftype NodeState
+  [mode
+   ^long downstream-count
+   split
+   error
+   ;; queue info
+   queue 
+   consumed?
+   ;; special node states
+   transactional?
+   permanent?])
+
+(defmacro set-state! [state state-val & key-vals]
+  `(let [val# (assoc-record ~state-val ~@key-vals)]
+     (set! ~state val#)
+     val#))
 
 ;;;
 
@@ -137,23 +135,21 @@
          :queue (q/queue)
          :consumed? true))))
 
-(defmacro close-node! [state s]
-  `(let [s# ~s
+(defmacro close-node! [state downstream-nodes s]
+  `(let [^NodeState s# ~s
          q# (q/closed-copy (.queue s#))
          drained?# (q/drained? q#)]
+     (.clear ~downstream-nodes)
      (set-state! ~state s#
        :mode (if drained?# ::drained ::closed)
-       :queue (if drained?# (q/drained-queue) q#)
-       :next nil)))
+       :queue (if drained?# (q/drained-queue) q#))))
 
 (defmacro read-from-queue [[lock state state-callbacks cancellations] forward queue-receive]
   (let [state-sym (gensym "state")]
     `(let [x# (l/with-exclusive-lock* ~lock
                 (let [s# ~state]
-                  (case (.mode s#)
-                    (::split-one ::split-many)
+                  (if (identical? ::split (.mode s#))
                     ::split
-                    
                     (ensure-queue state s#))))]
 
       (case x#
@@ -166,12 +162,15 @@
             (check-for-drained ~state ~state-callbacks ~cancellations))
           result#)))))
 
+(declare split-node join)
+
 (deftype Node
   [^AsymmetricLock lock
    operator
    probe?
    ^{:volatile-mutable true :tag NodeState} state
    ^Map cancellations
+   ^CopyOnWriteArrayList downstream-nodes
    ^CopyOnWriteArrayList state-callbacks]
 
   l/LockProtocol
@@ -186,16 +185,8 @@
   PropagateProtocol
 
   ;;
-  (downstream-nodes [_]
-    (let [state state]
-      (case (.mode state)
-        (::one ::split-one)
-        [(.next state)]
-
-        (::many ::split-many)
-        (seq (.next state))
-
-        nil)))
+  (downstream [_]
+    (seq downstream-nodes))
 
   ;;
   (propagate [this msg transform?]
@@ -219,60 +210,64 @@
 
               ::error
               :lamina/error!
-              
-              ::zero
-              (when-not probe?
-                (enqueue-and-release lock state msg true))
 
               ::consumed
               (enqueue-and-release lock state msg true)
-              
-              (::one ::split-one)
-              (do
-                (enqueue-and-release lock state msg false)
 
-                ;; walk the chain of nodes until there's a split
-                (loop [node (.next state), msg msg]
+              (::split ::open)
+              (case (.downstream-count state)
+                0
+                (when-not probe?
+                  (enqueue-and-release lock state msg true))
+
+                1
+                (do
+                  (enqueue-and-release lock state msg false)
                   
-                  (if-not (instance? Node node)
-
-                    ;; if it's not a normal node, forward the message
-                    (propagate node msg true)
-
-                    (let [^Node node node
-                          msg (transform-message node msg true)]
-
-                      (case msg
-
-                        ::error
-                        :lamina/error!
-
-                        ::false
-                        :lamina/filtered
+                  ;; walk the chain of nodes until there's a split
+                  (loop [node (.get downstream-nodes 0), msg msg]
+                    
+                    (if-not (instance? Node node)
+                      
+                      ;; if it's not a normal node, forward the message
+                      (propagate node msg true)
+                      
+                      (let [^Node node node
+                            msg (transform-message node msg true)]
                         
-                        (do
-                          (l/acquire (.lock node))
-                          (let [^NodeState state (.state node)]
-                            (case (.mode state)
+                        (case msg
+                          
+                          ::error
+                          :lamina/error!
+                          
+                          ::false
+                          :lamina/filtered
 
-                              (::one ::split-one)
-                              (do
-                                (enqueue-and-release (.lock node) state msg false)
-                                (recur (.next state) msg))
+                          (::drained ::closed)
+                          :lamina/closed
+                          
+                          (do
+                            (l/acquire (.lock node))
+                            (let [^NodeState state (.state node)]
+                              (if (identical? 1 (.downstream-count state))
+                                (do
+                                  (enqueue-and-release (.lock node) state msg false)
+                                  (recur
+                                    (.get ^CopyOnWriteArrayList (.downstream-nodes node) 0)
+                                    msg))
+                                (do
+                                  (l/release (.lock node))
+                                  (propagate node msg false))))))))))
 
-                              (do
-                                (l/release (.lock node))
-                                (propagate node msg false))))))))))
-              
-              (::many ::split-many)
-              (do
-                (enqueue-and-release lock state msg false)
-
-                ;; send message to all nodes
-                (doseq [node (.next state)]
-                  (propagate node msg true))
-
-                :lamina/branch)))))))
+                ;; more than one node
+                (do
+                  (enqueue-and-release lock state msg false)
+                  
+                  ;; send message to all nodes
+                  (doseq [n (downstream this)]
+                    (propagate n msg true))
+                  
+                  :lamina/branch))))))))
 
   NodeProtocol
 
@@ -284,14 +279,12 @@
   (ground [_]
     (let [x (l/with-exclusive-lock* lock
               (let [s state]
-                (case (.mode s)
-
-                  (::split-one ::split-many) ::split
-
+                (if (identical? ::split (.mode s))
+                  ::split
                   (when-let [q (.queue state)]
                     (q/ground q)))))]
       (if (identical? ::split x)
-        (ground (.split-next state))
+        (ground (.split state))
         (do
           (check-for-drained state state-callbacks cancellations)
           x))))
@@ -299,23 +292,20 @@
   ;;
   (read-node [_]
     (read-from-queue [lock state state-callbacks cancellations]
-      (read-node (.split-next state))
+      (read-node (.split state))
       (q/receive (.queue state))))
   
   (read-node [_ predicate false-value result-channel]
     (read-from-queue [lock state state-callbacks cancellations]
-      (read-node (.split-next state) predicate false-value result-channel)
+      (read-node (.split state) predicate false-value result-channel)
       (q/receive (.queue state) predicate false-value result-channel)))
 
   ;;
   (receive [_ name callback]
     (let [x (l/with-exclusive-lock* lock
               (let [s state]
-                (case (.mode s)
-                  
-                  (::split-one ::split-many)
+                (if (identical? ::split (.mode s))
                   ::split
-                  
                   (if-let [v (.get cancellations name)]
                     
                     (if (r/result-channel? v)
@@ -326,7 +316,7 @@
                     (ensure-queue state s)))))]
       (case x
         ::split
-        (receive (.split-next state) name callback)
+        (receive (.split state) name callback)
         
         ::invalid-name
         (throw (IllegalStateException. "Invalid callback identifier used for (receive ...)"))
@@ -365,7 +355,7 @@
                      nil
                      
                      (when-not (.permanent? s)
-                       (close-node! state s)))))]
+                       (close-node! state downstream-nodes s)))))]
         ;; signal state change
         (do
           (doseq [l state-callbacks]
@@ -391,8 +381,7 @@
                                    (set-state! state s
                                      :mode ::error
                                      :queue (q/error-queue err)
-                                     :error err
-                                     :next nil)
+                                     :error err)
                                    (or q ::nil-queue))))))]
         ;; signal state change
         (do
@@ -414,37 +403,27 @@
 
                 (case (.mode s)
 
-                  (::split-one ::split-many)
+                  ::split
                   nil
 
                   (::closed ::drained ::error)
                   this
 
-                  (::zero ::one ::many ::consumed)
-                  (let [n (Node.
-                            (l/asymmetric-lock)
-                            identity
-                            probe?
-                            (assoc-record s
-                              :permanent? false)
-                            (Collections/synchronizedMap (HashMap. cancellations))
-                            (CopyOnWriteArrayList. state-callbacks))]
+                  (::open ::consumed)
+                  (let [n (split-node this)]
                     (.clear cancellations)
                     (.clear state-callbacks)
                     (set-state! state s
-                      :mode ::split-one
+                      :mode ::split
                       :consumed? false
                       :queue nil
-                      :next n
-                      :split-next n)
+                      :split n)
+                    (.clear downstream-nodes)
+                    (join this n)
                     n))))]
-      (if-not n
-        (.split-next state)
-        (do
-          (on-state-changed n nil (siphon-callback this n))
-          (on-state-changed this nil (join-callback n))
-          (.put cancellations n #(unlink % n))
-          n))))
+      (if (nil? n)
+        (.split state)
+        n)))
   
   ;;
   (link [this name node execute-within-lock]
@@ -456,27 +435,14 @@
                          new-state
                          (case (.mode s)
 
-                           ::zero
-                           (do
+                           (::open ::split)
+                           (let [cnt (unchecked-inc (.downstream-count s))]
+                             (.add downstream-nodes node)
                              (set-state! state s
-                               :mode ::one
                                :queue (when (.consumed? s) (q/queue))
-                               :next node)
+                               :downstream-count cnt)
                              (assoc-record s
-                               :mode ::one
-                               :next node))
-                         
-                           (::one ::split-one)
-                           (set-state! state s
-                             :mode (if (identical? ::one (.mode s))
-                                     ::many
-                                     ::split-many)
-                             :next (CopyOnWriteArrayList. ^objects (to-array [(.next s) node])))
-                         
-                           (::split-many ::many)
-                           (do
-                             (.add ^CopyOnWriteArrayList (.next s) node)
-                             s)
+                               :downstream-count cnt))
 
                            ::closed
                            (do
@@ -485,8 +451,8 @@
                                :queue (q/drained-queue))
                              ;; make sure we return the original queue
                              (assoc-record s
-                               :mode ::drained
-                               :next node))
+                               :downstream-count 1
+                               :mode ::drained))
                          
                            (::error ::drained ::consumed)
                            nil)]
@@ -502,12 +468,13 @@
           ;; send all queued messages
           (when-let [msgs (and
                             (case (.mode s)
-                              (::one ::drained) true
+                              (::open ::drained) true
                               false)
+                            (identical? 1 (.downstream-count s))
                             (.queue s)
                             (q/ground (.queue s)))]
             (doseq [msg msgs]
-              (propagate (.next s) msg true)))
+              (propagate node msg true)))
 
           ;; notify all state-changed listeners
           (doseq [l state-callbacks]
@@ -524,29 +491,24 @@
       (if-let [s (l/with-exclusive-lock* lock
                    (let [s state]
                      (case (.mode s)
-                       ::zero
-                       nil
-                       
-                       (::one ::split-one ::consumed)
-                       (when (identical? node (.next s))
-                         (if-not (.permanent? s)
-                           (close-node! state s)
-                           (set-state! state s
-                             :mode ::zero
-                             :split-next nil
-                             :queue (when (.consumed? s) (q/queue)))))
-                       
-                       (::many ::split-many)
-                       (let [l ^CopyOnWriteArrayList (.next s)]
-                         (when (.remove l node)
-                           (if (identical? 1 (.size l))
+
+                       (::open ::consumed ::split)
+                       (when (.remove downstream-nodes node)
+                         (let [cnt (unchecked-dec (.downstream-count s))]
+                           (if (identical? 0 cnt)
+
+                             ;; no more downstream nodes
+                             (if-not (.permanent? s)
+                               (close-node! state downstream-nodes s)
+                               (set-state! state s
+                                 :mode ::open
+                                 :queue (or (.queue s) (q/queue))
+                                 :split nil))
+
+                             ;; reduce counter by one
                              (set-state! state s
-                               :mode (if (identical? ::many (.mode s))
-                                       ::one
-                                       ::split-one)
-                               :next (.get l 0))
-                             ::state-unchanged)))
-                           
+                               :downstream-count cnt))))
+                       
                        (::closed ::drained :error)
                        nil)))]
         (do
@@ -581,14 +543,12 @@
   ;;
   (cancel [this name]
     (if-let [x (l/with-lock lock
-                 (case (.mode state)
-                   (::split-one ::split-many)
+                 (if (identical? ::split (.mode state))
                    (or (.remove cancellations name) ::split)
-
                    (.remove cancellations name)))]
       (cond
         (identical? ::split x)
-        (cancel (.split-next state) name)
+        (cancel (.split state) name)
 
         (r/result-channel? x)
         (l/with-lock lock
@@ -610,19 +570,15 @@
     false))
 
 (defn drained? [node]
-  (case (.mode (state node))
-    ::drained true
-    false))
+  (identical? ::drained (.mode (state node))))
 
 (defn split? [node]
-  (case (.mode (state node))
-    (::split-one :split-many) true
-    false))
+  (identical? ::split (.mode (state node))))
 
 (defn error-value [node default-value]
   (let [s (state node)]
-    (case (.mode s)
-      ::error (.error s)
+    (if (identical? ::error (.mode s))
+      (.error s)
       default-value)))
 
 (defn queue [node]
@@ -632,7 +588,7 @@
 
 (deftype CallbackNode [callback]
   PropagateProtocol
-  (downstream-nodes [_]
+  (downstream [_]
     nil)
   (propagate [_ msg _]
     (callback msg)))
@@ -642,7 +598,7 @@
 
 (deftype BridgeNode [callback downstream]
   PropagateProtocol
-  (downstream-nodes [_]
+  (downstream [_]
     downstream)
   (propagate [_ msg _]
     (callback msg)))
@@ -715,10 +671,24 @@
        operator
        probe?
        (make-record NodeState
-         :mode ::zero
+         :mode ::open
+         :downstream-count 0
          :queue (q/queue messages))
        (Collections/synchronizedMap (HashMap.))
+       (CopyOnWriteArrayList.)
        (CopyOnWriteArrayList.))))
+
+(defn split-node
+  [^Node node]
+  (let [^NodeState s (.state node)]
+    (Node.
+      (l/asymmetric-lock)
+      identity
+      false
+      (assoc-record s :permanent? false)
+      (Collections/synchronizedMap (HashMap. ^Map (.cancellations node)))
+      (CopyOnWriteArrayList. ^CopyOnWriteArrayList (.state-callbacks node))
+      (CopyOnWriteArrayList. ^CopyOnWriteArrayList (.downstream-nodes node)))))
 
 (defn downstream-node [operator ^Node upstream-node]
   (let [^Node n (node operator false)]
@@ -731,7 +701,7 @@
 ;;;
 
 (defn walk-nodes [f exclusive? n]
-  (let [s (downstream-nodes n)]
+  (let [s (downstream n)]
     (->> s (filter node?) (l/acquire-all exclusive?))
     (when (node? n)
       (f n)
@@ -743,8 +713,8 @@
 
 (defn node-seq [n]
   (tree-seq
-    (comp seq downstream-nodes)
-    downstream-nodes
+    (comp seq downstream)
+    downstream
     n))
 
 ;;;
