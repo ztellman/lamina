@@ -123,7 +123,7 @@
        (try
          (operator# msg#)
          (catch Exception e#
-           (log/warn e# "Error in map*/filter* function.")
+           ;;(log/warn e# "Error in map*/filter* function.")
            (error node# e#)
            ::error)))))
 
@@ -548,7 +548,12 @@
 
   ;;
   (on-state-changed [_ name callback]
-    (let [s (l/with-exclusive-lock lock
+    (let [callback (fn [& args]
+                     (try
+                       (apply callback args)
+                       (catch Exception e
+                         (log/error e "Error in on-state-changed callback."))))
+          s (l/with-exclusive-lock lock
               (when (or (nil? name) (not (.containsKey cancellations name)))
                 (let [s state]
                   (case (.mode s)
