@@ -18,8 +18,11 @@
     [java.util.concurrent
      ConcurrentLinkedQueue
      CountDownLatch]
-    [java.util ArrayList]
-    [java.io Writer]))
+    [java.util
+     ArrayList
+     LinkedList]
+    [java.io
+     Writer]))
 
 (set! *warn-on-reflection* true)
 
@@ -98,51 +101,64 @@
 
 ;;;
 
-(deftype ResultState
-  [mode ;; ::claimed, ::success, ::error
-   subscriber-mode ;; ::zero, ::one, ::many
-   subscribers
-   value])
+(defrecord ResultState [^long subscribers mode value])
 
-(defmacro compare-and-trigger! [old-mode new-mode lock state f value]
+(defmacro update-state [signal ^ResultState state value]
+  `(let [signal# ~signal
+         ^ResultState state# ~state
+         mode# (.mode state#)
+         value# ~value]
+     (case mode#
+       ::none
+       (case signal#
+         ::add (assoc-record state# :subscribers (inc (.subscribers state#)))
+         ::remove (assoc-record state# :subscribers (dec (.subscribers state#)))
+         ::claim (assoc-record state# :mode ::claimed)
+         ::success (assoc-record state# :mode ::success, :value value#)
+         ::error (assoc-record state# :mode ::error, :value value#)
+         (::success! ::error!) :lamina/not-claimed!)
+       
+       ::claimed
+       (case signal#
+         ::success! (assoc-record state# :mode ::success, :value value#)
+         ::error! (assoc-record state# :mode ::error, :value value#)
+         (::success ::error) :lamina/already-claimed!)
+       
+       (::success ::error)
+       :lamina/already-realized!)))
+
+(defmacro compare-and-trigger! [[lock state subscribers] signal f value]
   `(io! "Cannot modify result-channels inside a transaction."
      (let [value# ~value
            s# ~state
-           result# (l/with-exclusive-lock* ~lock
-                     (case (.mode s#)
-                       ~old-mode (do (set! ~state (ResultState. ~new-mode nil nil value#)) nil)
-                       ~@(if (identical? ::none old-mode)
-                           `(::claimed :lamina/already-claimed!)
-                           `(::none :lamina/not-claimed!))
-                       :lamina/already-realized!))]
+           s# (l/with-exclusive-lock* ~lock
+                (let [s# (update-state ~signal s# ~value)]
+                  (if (keyword? s#)
+                    s#
+                    (do (set! ~state s#) s#))))]
+       
+       (if (keyword? s#)
+         s#
+         (let [^ResultState s# s#]
+           (case (.subscribers s#)
+             
+             0
+             :lamina/realized
+             
+             1
+             ((~f ^ResultCallback (.removeFirst ~subscribers)) (.value s#))
 
-       (if-not (identical? nil result#)
-         result#
-         (let [subscribers# (.subscribers s#)]
-           (case (.subscriber-mode s#)
-           
-            ::zero
-            :lamina/realized
-           
-            ::one
-            ((~f ^ResultCallback subscribers#) value#)
-
-            ::many
-            (let [^ConcurrentLinkedQueue q# subscribers#]
-              (loop []
-                (when-let [^ResultCallback c# (.poll q#)]
-                  ((~f c#) value#)
-                  (recur)))
-              :lamina/branch)))))))
-
-(defmacro set-state! [state state-val & key-vals]
-  `(let [val# (assoc-record ~state-val ~@key-vals)]
-     (set! ~state val#)
-     val#))
+             (let [value# (.value s#)]
+               (loop []
+                 (when-let [^ResultCallback c# (.poll ~subscribers)]
+                   ((~f c#) value#)
+                   (recur)))
+               :lamina/branch)))))))
 
 (deftype ResultChannel
   [^Lock lock
-   ^{:volatile-mutable true :tag ResultState} state]
+   ^{:volatile-mutable true :tag ResultState} state
+   ^LinkedList subscribers]
 
   clojure.lang.IDeref
 
@@ -174,30 +190,27 @@
 
   ;;
   (success [_ val]
-    (compare-and-trigger! ::none ::success lock state .on-success val))
+    (compare-and-trigger! [lock state subscribers] ::success .on-success val))
 
   ;;
   (success! [_ val]
-    (compare-and-trigger! ::claimed ::success lock state .on-success val))
+    (compare-and-trigger! [lock state subscribers] ::success! .on-success val))
 
   ;;
   (error [_ err]
-    (compare-and-trigger! ::none ::error lock state .on-error err))
+    (compare-and-trigger! [lock state subscribers] ::error .on-error err))
 
   ;;
   (error! [_ err]
-    (compare-and-trigger! ::claimed ::error lock state .on-error err))
+    (compare-and-trigger! [lock state subscribers] ::error! .on-error err))
 
   ;;
   (claim [_]
     (io! "Cannot modify result-channels inside a transaction."
       (l/with-exclusive-lock* lock
-        (let [s state]
-          (if (identical? ::none (.mode s))
-            (do
-              (set-state! state s
-                :mode ::claimed)
-              true)
+        (let [s (update-state ::claim state nil)]
+          (if (instance? ResultState s)
+            (do (set! state s) true)
             false)))))
 
   ;;;
@@ -235,24 +248,12 @@
                     ::success (.on-success callback)
                     ::error (.on-error callback)
                     (do
-                      (case (.subscriber-mode s)
-                        
-                        ::zero
-                        (set-state! state s
-                          :subscriber-mode ::one
-                          :subscribers callback)
-                        
-                        ::one
-                        (set-state! state s
-                          :subscriber-mode ::many
-                          :subscribers (ConcurrentLinkedQueue. [(.subscribers s) callback]))
-                        
-                        ::many
-                        (.add ^ConcurrentLinkedQueue (.subscribers s) callback))
-                      :lamina/subscribed))))]
-        (if-not (identical? :lamina/subscribed x)
-          (x (.value state))
-          x))))
+                      (.add subscribers callback)
+                      (set! state (update-state ::add state nil))
+                      nil))))]
+        (if (identical? nil x)
+          :lamina/subscribed
+          (x (.value state))))))
 
   ;;
   (cancel-callback [_ callback]
@@ -262,30 +263,13 @@
           (case (.mode s)
             ::error   false
             ::success false
-            (case (.subscriber-mode s)
-              
-              ::zero
-             false
-            
-             ::one
-             (if-not (identical? callback (.subscribers s))
-               false
-               (do
-                 (set-state! state s
-                   :subscriber-mode ::zero
-                   :subscribers nil)
-                 true))
-            
-             ::many
-             (let [^ConcurrentLinkedQueue q (.subscribers s)]
-               (if-not (.remove ^ConcurrentLinkedQueue q callback)
-                 false
-                 (do
-                   (when (identical? 1 (.size q))
-                     (set-state! state s
-                       ::subscriber-mode ::one
-                       :subscribers (.poll q)))
-                   true)))))))))
+            (if (identical? 0 (.subscribers state))
+              false
+              (if (.remove subscribers callback)
+                (do
+                  (set! state (update-state ::remove s nil))
+                  true)
+                false)))))))
 
   ;;
   (toString [_]
@@ -313,7 +297,8 @@
   []
   (ResultChannel.
     (l/lock)
-    (ResultState. ::none ::zero nil nil)))
+    (ResultState. 0 ::none nil)
+    (LinkedList.)))
 
 (defn result-callback [on-success on-error]
   (ResultCallback. on-success on-error))
