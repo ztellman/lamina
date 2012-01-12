@@ -16,8 +16,7 @@
 
 ;;;
 
-;; adapted from Chris Houser's clojure-classes: https://github.com/Chouser/clojure-classes
-(defn view-dot-string [s]
+(defn view-graphviz [s]
   (doto (JFrame. "Lamina")
     (.add (-> (sh "dot" "-Tpng" :in s :out-enc :bytes)
             :out
@@ -30,10 +29,33 @@
 
 ;;;
 
+(defn format-options [m]
+  (str "["
+    (->> m
+      (remove (comp nil? second))
+      (map
+        (fn [[k v]]
+          (str (name k) " = "
+            (cond
+              (string? v) (str \" v \")
+              (keyword? v) (name v)
+              :else (str v)))))
+      (interpose ", ")
+      (apply str))
+    "]"))
+
+(defn format-edge [src dst & {:as m}]
+  (str src " -> " dst (format-options m)))
+
+(defn format-node [id & {:as m}]
+  (str id " " (format-options m)))
+
+;;;
+
 (defn create-node [n]
-  {:id (gensym "node")
-   :description (:description n)
-   :messages (:messages n)})
+  (merge
+    {:id (gensym "node")}
+    n))
 
 (defn update-node-map [m n]
   (let [k (:node n)]
@@ -50,30 +72,60 @@
         edges (->> edges
                 (filter :src)
                 (map (fn [e]
-                       (-> e
-                         (update-in [:src] #(-> % :node node-map :id))
-                         (update-in [:dst] #(-> % :node node-map :id))))))]
+                       (assoc e
+                         :src-id (-> e :src :node node-map :id)
+                         :dst-id (-> e :dst :node node-map :id)))))
+        queues (->> node-map
+                 vals
+                 (filter :node?)
+                 (filter (comp zero? :downstream-count))
+                 (map #(select-keys % [:id :messages])))]
     {:nodes (vals node-map)
-     :edges edges}))
+     :edges edges
+     :queues queues}))
 
-(defn edge-string [{:keys [src dst description]}]
-  (str src " -> " dst "[label=\"" description "\"]"))
+;;;
 
-(defn node-string [{:keys [id description]}]
-  (str id " [label=\"" description "\", shape=box]"))
+(defn edge-string [{:keys [src-id dst-id description]}]
+  (let [hide-desc? (#{"join" "split" "fork"} description)
+        dotted? (= "fork" description)]
+    (format-edge src-id dst-id
+      :label (or (when-not hide-desc? description) "")
+      :style (if dotted? :dotted :normal)
+      :fontfamily :helvetica)))
 
-(defn gen-dot-string [nodes]
-  (let [{:keys [nodes edges]} (graph-data nodes)]
+(defn node-string [{:keys [id description predicate?]}]
+  (format-node id
+    :label (or description "")
+    :fontname :helvetica
+    :shape :box
+    :peripheries (if predicate? 2 1)))
+
+(defn queue-string [{:keys [id messages]}]
+  (let [queue-id (gensym "queue")
+        messages? (seq messages)]
     (str
-      "digraph {
-        rankdir=LR;\n"
-      (apply str
-        (interleave
-          (concat
-            (map edge-string edges)
-            (map node-string nodes))
-          (repeat ";\n")))
-      "}")))
+      (format-node queue-id
+        :shape :record
+        :fontname (if messages? :helvetica :times)
+        :label (str "{" (if-not messages?
+                          "\u2205"
+                          (->> messages reverse (interpose " | ") (apply str))) "}"))
+      ";\n"
+      (format-edge id queue-id :arrowhead :dot))))
+
+(defn graphviz-description [{:keys [nodes edges queues]}]
+  (str
+    "digraph {
+        rankdir=LR;"
+    (->> (map node-string nodes)
+      (concat
+        (map edge-string edges)
+        (map queue-string queues))
+      (remove empty?)
+      (interleave (repeat ";\n"))
+      (apply str))
+    ";}"))
 
 (defn viz [& nodes]
-  (->> nodes gen-dot-string view-dot-string))
+  (->> nodes graph-data graphviz-description view-graphviz))

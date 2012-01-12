@@ -72,7 +72,7 @@
         (str
           (when-not (= "clojure.core" ns) (str ns "/"))
           f
-          (when anon? "[\u03BB]"))))))
+          (when anon? "[fn]"))))))
 
 ;;;
 
@@ -83,9 +83,11 @@
             :else nil)]
     (merge
       {:node n
-       :description (or (description n) (function-description f))}
+       :description (or (description n) (function-description f))
+       :downstream-count (count (downstream n))}
       (when (node? n)
-        {:messages (when (queue n) (-> n queue q/messages))
+        {:node? true
+         :messages (when (queue n) (-> n queue q/messages))
          :predicate? (boolean (operator-predicate f))
          :closed? (closed? n)
          :drained? (drained? n)
@@ -111,6 +113,7 @@
   (l/acquire-exclusive n)
   (walk-nodes- f true n))
 
+;; TODO: make these short-circuit on cycles
 (defn node-seq [n]
   (tree-seq
     (comp seq downstream-nodes)
