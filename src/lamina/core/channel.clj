@@ -65,10 +65,12 @@
   (toString [_]
     (str emitter)))
 
-(defn channel
-  [& messages]
-  (let [n (n/node identity false (seq messages))]
-    (Channel. n n)))
+(defmacro channel* [& options]
+  `(let [n# (n/node* ~@options)]
+     (Channel. n# n#)))
+
+(defn channel [& messages]
+  (channel* :messages (seq messages)))
 
 (defn splice [emitter receiver]
   (SplicedChannel.
@@ -99,16 +101,21 @@
      (n/read-node (emitter-node channel) predicate false-value result-channel)))
 
 (defn receive-all [channel callback]
-  (n/link (emitter-node channel) callback (n/callback-node callback) nil))
+  (n/link (emitter-node channel)
+    callback
+    (n/edge "receive-all" (n/callback-node callback))
+    nil))
 
 (defn cancel-callback
   ([channel callback]
      (n/cancel (emitter-node channel) callback)))
 
 (defn fork [channel]
-  (let [n (n/node identity false)
+  (let [n (n/node identity)
         emitter (split-receiver channel)]
-    (n/join (receiver-node channel) n
+    (n/join
+      (receiver-node channel)
+      (n/edge "fork" n)
       #(when-let [q (n/queue emitter)]
          (-> n n/queue (q/append (q/messages q)))))
     (Channel. n n))) 

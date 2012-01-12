@@ -8,23 +8,33 @@
 
 (ns lamina.test.benchmarks
   (:use
-    [clojure test])
+    [clojure test]
+    [lamina core])
   (:require
-    [criterium.core :as cr]
-    [lamina.core.channel :as c]
-    [lamina.core.pipeline :as p]
-    [lamina.core.threads :as t]))
+    [criterium.core :as c]))
 
 (defmacro bench [name & body]
   `(do
      (println "\n-----\n" ~name "\n-----\n")
-     (cr/quick-bench
+     (c/quick-bench
        (do ~@body)
        :reduce-with #(and %1 %2))))
 
+(defn map-seq [ch f]
+  (iterate #(map* f %) ch))
+
 (deftest ^:benchmark benchmarks
-  (let [p (p/pipeline c/read-channel (constantly (p/restart)))
-        ch (c/channel)]
+  (let [p (pipeline
+            read-channel
+            (constantly (restart)))
+        ch (channel)]
     (p ch)
     (bench "read-channel pipeline loop"
-      (c/enqueue ch :msg))))
+      (enqueue ch :msg)))
+  (let [ch (channel)]
+    (->
+      (take 1e3 (map-seq ch inc))
+      last
+      (receive-all (fn [_])))
+    (bench "map* chain"
+      (enqueue ch 1))))

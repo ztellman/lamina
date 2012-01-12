@@ -9,7 +9,7 @@
 (ns lamina.test.node
   (:use
     [clojure test]
-    [lamina.core node])
+    [lamina.core node walk])
   (:require
     [lamina.core.queue :as q]
     [criterium.core :as c]))
@@ -23,7 +23,7 @@
       (propagate n m true))))
 
 (defn link* [src dst]
-  (link src dst dst nil))
+  (link src dst (edge "link" dst) nil))
 
 (defn close* [& nodes]
   (doseq [n nodes]

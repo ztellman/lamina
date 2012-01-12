@@ -34,6 +34,21 @@
 
 ;;;
 
+(defprotocol Described
+  (description [_]))
+
+(deftype Edge [^String description node]
+  Described
+  (description [_] description))
+
+(defn edge [description node]
+  (Edge. description node))
+
+(defn edge? [x]
+  (instance? Edge x))
+
+;;;
+
 (defprotocol PropagateProtocol
   (downstream [_]
     "Returns a list of nodes which are downstream of this node.")
@@ -55,12 +70,12 @@
     "Puts the node into an error mode. This is a permanent state change.")
 
   ;;
-  (link [_ name node execute-within-lock]
+  (link [_ name ^Edge edge execute-within-lock]
     "Adds a downstream node. The link should be cancelled using (cancel this name).")
-  (unlink [_ node]
+  (unlink [_ ^Edge edge]
     "Removes a downstream node. Returns true if there was any such downstream node, false
      otherwise.")
-  (consume [_ name node]
+  (consume [_ name ^Edge edge]
     )
   (split [_]
     "Splits a node so that the upstream half can be forked.")
@@ -78,8 +93,8 @@
     "Consumes and returns all messages currently in the queue."))
 
 ;; The possible modes:
-;; open
-;; split
+;; open         messages can freely pass through
+;; split        messages can freely pass through, queue operations are forwarded to upstream split node
 ;; consumed     single consuming process (i.e. take-while*), messages go in queue
 ;; closed       no further messages can propagate through the node, messages still in queue
 ;; drained      no further messages can propagate through the node, queue is empty
@@ -123,20 +138,20 @@
        (try
          (operator# msg#)
          (catch Exception e#
-           ;;(log/warn e# "Error in map*/filter* function.")
+           (log/warn e# "Error in map*/filter* function.")
            (error node# e#)
            ::error)))))
 
-(defmacro check-for-drained [state state-callbacks cancellations]
+(defmacro check-for-drained [state watchers cancellations]
   `(let [^NodeState state# ~state]
      (when-let [q# (.queue state#)]
        (when (q/drained? q#)
          (set-state! ~state state#
            :mode ::drained
            :queue (q/drained-queue))
-         (doseq [l# ~state-callbacks]
+         (doseq [l# ~watchers]
            (l# ::drained 0 nil))
-         (.clear ~state-callbacks)
+         (.clear ~watchers)
          (.clear ~cancellations)))))
 
 (defmacro ensure-queue [state s]
@@ -147,16 +162,16 @@
          :queue (q/queue)
          :read? true))))
 
-(defmacro close-node! [state downstream-nodes s]
+(defmacro close-node! [state edges s]
   `(let [^NodeState s# ~s
          q# (q/closed-copy (.queue s#))
          drained?# (q/drained? q#)]
-     (.clear ~downstream-nodes)
+     (.clear ~edges)
      (set-state! ~state s#
        :mode (if drained?# ::drained ::closed)
        :queue (if drained?# (q/drained-queue) q#))))
 
-(defmacro read-from-queue [[lock state state-callbacks cancellations] forward queue-receive]
+(defmacro read-from-queue [[lock state watchers cancellations] forward queue-receive]
   (let [state-sym (gensym "state")]
     `(let [x# (l/with-exclusive-lock* ~lock
                 (let [s# ~state]
@@ -171,7 +186,7 @@
         (let [~state-sym ^NodeState x#
               result# ~queue-receive]
           (when (instance? SuccessResult result#)
-            (check-for-drained ~state ~state-callbacks ~cancellations))
+            (check-for-drained ~state ~watchers ~cancellations))
           result#)))))
 
 (declare split-node join)
@@ -179,14 +194,17 @@
 (deftype Node
   [^AsymmetricLock lock
    operator
+   description
    probe?
    ^{:volatile-mutable true :tag NodeState} state
    ^Map cancellations
-   ^CopyOnWriteArrayList downstream-nodes
-   ^CopyOnWriteArrayList state-callbacks]
+   ^CopyOnWriteArrayList edges
+   ^CopyOnWriteArrayList watchers]
+
+  Described
+  (description [_] description)
 
   l/LockProtocol
-
   (acquire [_] (l/acquire lock))
   (acquire-exclusive [_] (l/acquire-exclusive lock))
   (release [_] (l/release lock))
@@ -198,7 +216,7 @@
 
   ;;
   (downstream [_]
-    (seq downstream-nodes))
+    (seq edges))
 
   ;;
   (propagate [this msg transform?]
@@ -237,47 +255,47 @@
                   (enqueue-and-release lock state msg false)
                   
                   ;; walk the chain of nodes until there's a split
-                  (loop [node (.get downstream-nodes 0), msg msg]
-                    
-                    (if-not (instance? Node node)
+                  (loop [^Edge edge (.get edges 0), msg msg]
+                    (let [node (.node edge)]
+                      (if-not (instance? Node node)
                       
-                      ;; if it's not a normal node, forward the message
-                      (propagate node msg true)
+                       ;; if it's not a normal node, forward the message
+                       (propagate node msg true)
                       
-                      (let [^Node node node
-                            msg (transform-message node msg true)]
+                       (let [^Node node node
+                             msg (transform-message node msg true)]
                         
-                        (case msg
+                         (case msg
                           
-                          ::error
-                          :lamina/error!
+                           ::error
+                           :lamina/error!
                           
-                          ::false
-                          :lamina/filtered
+                           ::false
+                           :lamina/filtered
 
-                          (::drained ::closed)
-                          :lamina/closed
+                           (::drained ::closed)
+                           :lamina/closed
                           
-                          (do
-                            (l/acquire (.lock node))
-                            (let [^NodeState state (.state node)]
-                              (if (identical? 1 (.downstream-count state))
-                                (do
-                                  (enqueue-and-release (.lock node) state msg false)
-                                  (recur
-                                    (.get ^CopyOnWriteArrayList (.downstream-nodes node) 0)
-                                    msg))
-                                (do
-                                  (l/release (.lock node))
-                                  (propagate node msg false))))))))))
+                           (do
+                             (l/acquire (.lock node))
+                             (let [^NodeState state (.state node)]
+                               (if (identical? 1 (.downstream-count state))
+                                 (do
+                                   (enqueue-and-release (.lock node) state msg false)
+                                   (recur
+                                     (.get ^CopyOnWriteArrayList (.edges node) 0)
+                                     msg))
+                                 (do
+                                   (l/release (.lock node))
+                                   (propagate node msg false)))))))))))
 
                 ;; more than one node
                 (do
                   (enqueue-and-release lock state msg false)
                   
                   ;; send message to all nodes
-                  (doseq [n (downstream this)]
-                    (propagate n msg true))
+                  (doseq [^Edge e (downstream this)]
+                    (propagate (.node e) msg true))
                   
                   :lamina/branch))))))))
 
@@ -298,17 +316,17 @@
       (if (identical? ::split x)
         (ground (.split state))
         (do
-          (check-for-drained state state-callbacks cancellations)
+          (check-for-drained state watchers cancellations)
           x))))
 
   ;;
   (read-node [_]
-    (read-from-queue [lock state state-callbacks cancellations]
+    (read-from-queue [lock state watchers cancellations]
       (read-node (.split state))
       (q/receive (.queue state))))
   
   (read-node [_ predicate false-value result-channel]
-    (read-from-queue [lock state state-callbacks cancellations]
+    (read-from-queue [lock state watchers cancellations]
       (read-node (.split state) predicate false-value result-channel)
       (q/receive (.queue state) predicate false-value result-channel)))
 
@@ -343,7 +361,7 @@
           (cond
 
             (instance? SuccessResult result)
-            (check-for-drained state state-callbacks cancellations)
+            (check-for-drained state watchers cancellations)
 
             (instance? ResultChannel result)
             (when name
@@ -367,12 +385,12 @@
                      nil
                      
                      (when-not (.permanent? s)
-                       (close-node! state downstream-nodes s)))))]
+                       (close-node! state edges s)))))]
         ;; signal state change
         (do
-          (doseq [l state-callbacks]
+          (doseq [l watchers]
             (l (.mode s) (.downstream-count s) nil))
-          (.clear state-callbacks)
+          (.clear watchers)
           true)
 
         ;; state has already been permanently changed or cannot be changed
@@ -394,14 +412,15 @@
                                      :mode ::error
                                      :queue (q/error-queue err)
                                      :error err)
+                                   (.clear edges)
                                    (or q ::nil-queue))))))]
         ;; signal state change
         (do
           (when-not (identical? ::nil-queue old-queue)
             (q/error old-queue err))
-          (doseq [l state-callbacks]
+          (doseq [l watchers]
             (l ::error 0 err))
-          (.clear state-callbacks)
+          (.clear watchers)
           (.clear cancellations)
           true)
         
@@ -409,12 +428,12 @@
         false)))
 
   ;;
-  (consume [this name node]
+  (consume [this name edge]
     (l/with-exclusive-lock* lock
       (let [s state]
         (if (identical? 0 (.downstream-count s))
           (do
-            (.add downstream-nodes node)
+            (.add edges edge)
             (.put cancellations name #(unlink % name))
             (set-state! state s
               :mode ::consumed
@@ -438,21 +457,21 @@
                   (::open ::consumed)
                   (let [n (split-node this)]
                     (.clear cancellations)
-                    (.clear state-callbacks)
+                    (.clear watchers)
                     (set-state! state s
                       :mode ::split
                       :read? false
                       :queue nil
                       :split n)
-                    (.clear downstream-nodes)
-                    (join this n)
+                    (.clear edges)
+                    (join this (edge "split" n))
                     n))))]
       (if (nil? n)
         (.split state)
         n)))
   
   ;;
-  (link [this name node execute-within-lock]
+  (link [this name edge execute-within-lock]
     (io! "Cannot modify node while in transaction."
       (if-let [^NodeState s
                (l/with-exclusive-lock* lock
@@ -463,7 +482,7 @@
 
                            (::open ::split)
                            (let [cnt (unchecked-inc (.downstream-count s))]
-                             (.add downstream-nodes node)
+                             (.add edges edge)
                              (set-state! state s
                                :queue (when (.read? s) (q/queue))
                                :downstream-count cnt)
@@ -486,7 +505,7 @@
                      (when new-state
                        (when execute-within-lock
                          (execute-within-lock))
-                       (.put cancellations name #(unlink % node))
+                       (.put cancellations name #(unlink % edge))
                        new-state))))]
 
         (do
@@ -499,12 +518,13 @@
                             (identical? 1 (.downstream-count s))
                             (.queue s)
                             (q/ground (.queue s)))]
-            (doseq [msg msgs]
-              (propagate node msg true)))
+            (let [node (.node ^Edge edge)]
+              (doseq [msg msgs]
+                (propagate node msg true))))
 
           ;; notify all state-changed listeners
           (let [^NodeState s s]
-            (doseq [l state-callbacks]
+            (doseq [l watchers]
               (l (.mode s) (.downstream-count s) nil)))
 
           true)
@@ -513,20 +533,20 @@
         false)))
 
   ;;
-  (unlink [_ node]
+  (unlink [_ edge]
     (io! "Cannot modify node while in transaction."
       (if-let [s (l/with-exclusive-lock* lock
                    (let [s state]
                      (case (.mode s)
 
                        (::open ::consumed ::split)
-                       (when (.remove downstream-nodes node)
+                       (when (.remove edges edge)
                          (let [cnt (unchecked-dec (.downstream-count s))]
                            (if (identical? 0 cnt)
 
                              ;; no more downstream nodes
                              (if-not (.permanent? s)
-                               (close-node! state downstream-nodes s)
+                               (close-node! state edges s)
                                (set-state! state s
                                  :mode ::open
                                  :queue (or (.queue s) (q/queue))
@@ -536,12 +556,12 @@
                              (set-state! state s
                                :downstream-count cnt))))
                        
-                       (::closed ::drained :error)
+                       (::closed ::drained ::error)
                        nil)))]
         (do
           (when-not (identical? s ::state-unchanged)
             (let [^NodeState s s]
-              (doseq [l state-callbacks]
+              (doseq [l watchers]
                 (l (.mode s) (.downstream-count s) nil))))
           true)
         false)))
@@ -562,10 +582,10 @@
                     nil
                     
                     (do
-                      (.add state-callbacks callback)
+                      (.add watchers callback)
                       (when name
                         (.put cancellations name
-                          #(.remove ^CopyOnWriteArrayList (.state-callbacks ^Node %) callback)))))
+                          #(.remove ^CopyOnWriteArrayList (.watchers ^Node %) callback)))))
                   s)))]
       (if s
         (let [^NodeState s s]
@@ -619,10 +639,11 @@
 
 ;;;
 
-(deftype CallbackNode [callback]
+(deftype CallbackNode [description callback]
+  Described
+  (description [_] description)
   PropagateProtocol
-  (downstream [_]
-    nil)
+  (downstream [_] nil)
   (propagate [_ msg _]
     (try
       (callback msg)
@@ -630,24 +651,36 @@
         (log/error e "Error in permanent callback.")))))
 
 (defn callback-node [callback]
-  (CallbackNode. callback))
+  (CallbackNode. nil callback))
 
-(deftype BridgeNode [callback downstream]
+(defn callback-node? [n]
+  (instance? CallbackNode n))
+
+(deftype BridgeNode [description callback downstream]
+  Described
+  (description [_] description)
   PropagateProtocol
-  (downstream [_]
-    downstream)
-  (propagate [_ msg _]
-    (callback msg)))
+  (downstream [_] downstream)
+  (propagate [_ msg _] (callback msg)))
 
 (defn bridge-node [callback downstream]
-  (BridgeNode. callback downstream))
+  (BridgeNode. nil callback downstream))
+
+(defn bridge-node? [n]
+  (instance? BridgeNode n))
 
 ;;;
 
 (defn predicate-operator [predicate]
-  #(if (predicate %)
-     %
-     ::false))
+  (with-meta
+    (fn [x]
+      (if (predicate x)
+        x
+        ::false))
+    {::predicate predicate}))
+
+(defn operator-predicate [f]
+  (->> f meta ::predicate))
 
 ;;;
 
@@ -668,51 +701,72 @@
   ([src dst]
      (siphon src dst nil))
   ([src dst execute-in-lock]
-     (if (link src dst dst execute-in-lock)
-       (do
-         (on-state-changed dst nil (siphon-callback src dst))
-         true)
-       false)))
+     (let [^Edge dst (if (edge? dst)
+                       dst
+                       (edge "siphon" dst))]
+       (if (link src (.node dst) dst execute-in-lock)
+         (do
+           (on-state-changed (.node dst) nil (siphon-callback src (.node dst)))
+           true)
+         false))))
 
 (defn join
   ([src dst]
      (join src dst nil))
   ([src dst execute-in-lock]
-     (if (siphon src dst execute-in-lock)
-       (do
-         (on-state-changed src nil (join-callback dst))
-         true)
-       (cond
-         (closed? src)
-         (close dst)
-
-         (not (identical? ::none (error-value src ::none)))
-         (error dst (error-value src nil))
-
-         :else
-         false))))
+     (let [^Edge dst (if (edge? dst)
+                       dst
+                       (edge "join" dst))]
+       (if (siphon src dst execute-in-lock)
+         (do
+           (on-state-changed src nil (join-callback (.node dst)))
+           true)
+         (cond
+           (closed? src)
+           (close dst)
+           
+           (not (identical? ::none (error-value src ::none)))
+           (error (.node dst) (error-value src nil))
+           
+           :else
+           false)))))
 
 ;;;
 
-(defn node
-  ([operator]
-     (node operator false nil))
-  ([operator probe?]
-     (node operator probe? nil))
-  ([operator probe? messages]
-     (when-not (ifn? operator)
-       (throw (Exception. (str (pr-str operator) " is not a valid function."))))
+(defmacro node*
+  [& {:keys [permanent? probe? transactional? description operator messages]
+      :or {operator identity
+           description nil
+           permanent? false
+           probe? false
+           transactional? false
+           messages nil}}]
+  `(let [operator# ~operator]
+     (when-not (ifn? operator#)
+       (throw (Exception. (str (pr-str operator#) " is not a valid function."))))
      (Node.
        (l/asymmetric-lock)
-       operator
-       probe?
+       ~operator
+       ~description
+       ~probe?
        (make-record NodeState
          :mode ::open
          :downstream-count 0
-         :queue (q/queue messages))
+         :queue (q/queue ~messages)
+         :permanent? ~permanent?
+         :transactional? ~transactional?)
        (Collections/synchronizedMap (HashMap.))
        (CopyOnWriteArrayList.)
        (CopyOnWriteArrayList.))))
+
+(defn node
+  ([operator]
+     (node*
+       :operator operator))
+  ([operator messages]
+     (node*
+       :operator operator
+       :messages messages)))
 
 (defn split-node
   [^Node node]
@@ -720,38 +774,20 @@
     (Node.
       (l/asymmetric-lock)
       identity
+      nil
       false
       (assoc-record s :permanent? false)
       (Collections/synchronizedMap (HashMap. ^Map (.cancellations node)))
-      (CopyOnWriteArrayList. ^CopyOnWriteArrayList (.state-callbacks node))
-      (CopyOnWriteArrayList. ^CopyOnWriteArrayList (.downstream-nodes node)))))
+      (CopyOnWriteArrayList. ^CopyOnWriteArrayList (.edges node))
+      (CopyOnWriteArrayList. ^CopyOnWriteArrayList (.watchers node)))))
 
 (defn downstream-node [operator ^Node upstream-node]
-  (let [^Node n (node operator false)]
+  (let [^Node n (node operator)]
     (join upstream-node n)
     n))
 
 (defn node? [x]
   (instance? Node x))
-
-;;;
-
-(defn walk-nodes [f exclusive? n]
-  (let [s (downstream n)]
-    (->> s (filter node?) (l/acquire-all exclusive?))
-    (when (node? n)
-      (f n)
-      (if exclusive?
-        (l/release-exclusive n)
-        (l/release n)))
-    (doseq [n s]
-      (walk-nodes f exclusive? n))))
-
-(defn node-seq [n]
-  (tree-seq
-    (comp seq downstream)
-    downstream
-    n))
 
 ;;;
 
