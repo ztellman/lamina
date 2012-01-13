@@ -10,22 +10,43 @@
   (:use
     [lamina.core walk]
     [clojure.java.shell :only (sh)])
+  (:require
+    [lamina.core.node :as n]
+    [lamina.core.result :as r])
   (:import
+    [java.awt
+     Toolkit]
     [javax.swing
      JFrame JLabel JScrollPane ImageIcon]))
 
 ;;;
 
+(def frame
+  (delay
+    (let [frame (JFrame. "Lamina")
+          image-icon (ImageIcon.)]
+      (doto frame
+        (.add (-> image-icon JLabel. JScrollPane.))
+        (.setSize 1024 480)
+        (.setDefaultCloseOperation javax.swing.WindowConstants/HIDE_ON_CLOSE))
+      {:frame frame
+       :image-icon image-icon})))
+
+(defn view-image [bytes]
+  (let [image (.createImage (Toolkit/getDefaultToolkit) bytes)
+        {:keys [^JFrame frame ^ImageIcon image-icon]} @frame]
+    (.setImage image-icon image)
+    (.setVisible frame true)
+    (java.awt.EventQueue/invokeLater
+      #(doto frame
+         (.setAlwaysOnTop true)
+         .toFront
+         .repaint
+         .requestFocus
+         (.setAlwaysOnTop false)))))
+
 (defn view-graphviz [s]
-  (doto (JFrame. "Lamina")
-    (.add (-> (sh "dot" "-Tpng" :in s :out-enc :bytes)
-            :out
-            ImageIcon.
-            JLabel.
-            JScrollPane.))
-   (.setSize 640 480)
-   (.setDefaultCloseOperation javax.swing.WindowConstants/DISPOSE_ON_CLOSE)
-   (.setVisible true)))
+  (view-image (:out (sh "dot" "-Tpng" :in s :out-enc :bytes))))
 
 ;;;
 
@@ -52,9 +73,14 @@
 
 ;;;
 
+(defn show-queue? [n]
+  (or (zero? (:downstream-count n))
+    (:consumed? n)))
+
 (defn create-node [n]
   (merge
-    {:id (gensym "node")}
+    {:id (gensym "node")
+     :queue-id (when (show-queue? n) (gensym "queue"))}
     n))
 
 (defn update-node-map [m n]
@@ -77,47 +103,96 @@
                          :dst-id (-> e :dst :node node-map :id)))))
         queues (->> node-map
                  vals
-                 (filter :node?)
-                 (filter (comp zero? :downstream-count))
-                 (map #(select-keys % [:id :messages])))]
+                 (filter :queue-id)
+                 (map #(select-keys % [:id :queue-id :messages])))]
     {:nodes (vals node-map)
      :edges edges
      :queues queues}))
 
+(defn sample-graph [root message]
+  (let [readable-nodes (->> root
+                         node-seq
+                         (map node-data)
+                         (remove #(instance? (class identity) (:operator %)))
+                         (remove show-queue?))
+        results (zipmap
+                  (map :node readable-nodes)
+                  (map #(n/read-node (:node %)) readable-nodes))
+        _  (n/propagate root message true)
+        data (graph-data [root])
+        message-sym (gensym "msg")]
+    (doseq [r (vals results)]
+      (r/error r ::cancelled))
+    (prn (->> data :nodes (filter #(= root (:node %)))))
+    (-> data
+      (update-in [:edges]
+        (fn [edges]
+          (map
+            (fn [e]
+              (let [n (-> e :src :node)
+                    msg (if-let [result (results n)]
+                          (r/success-value result ::none)
+                          ::none)
+                    msg (if (= ::none msg)
+                          ""
+                          (pr-str msg))]
+                (assoc e :description msg)))
+            edges)))
+      (update-in [:nodes]
+        (fn [nodes]
+          (conj nodes {:id message-sym, :description (pr-str message), :message? true})))
+      (update-in [:edges]
+        (fn [edges]
+          (conj edges {:src-id message-sym, :dst-id (->> data :nodes (filter #(= root (:node %))) first :id)}))))))
+
 ;;;
 
-(defn edge-string [{:keys [src-id dst-id description]}]
-  (let [hide-desc? (#{"join" "split" "fork"} description)
-        dotted? (= "fork" description)]
+(defn edge-string [{:keys [src-id dst-id description type]}]
+  (let [hide-type? (#{"join" "split" "fork"} type)
+        dotted? (= "fork" type)
+        description (or description (and (not hide-type?) type))]
     (format-edge src-id dst-id
-      :label (or (when-not hide-desc? description) "")
+      :label (or description "")
       :style (if dotted? :dotted :normal)
-      :fontfamily :helvetica)))
+      :fontname :helvetica)))
 
-(defn node-string [{:keys [id description predicate?]}]
+(defn node-string [{:keys [id description predicate? message?]}]
   (format-node id
     :label (or description "")
+    :width (cond
+             message? 0
+             (not description) 0.5
+             :else nil)
     :fontname :helvetica
-    :shape :box
-    :peripheries (if predicate? 2 1)))
+    :shape (if message? :plaintext :box)
+    :peripheries (when predicate? 2)))
 
-(defn queue-string [{:keys [id messages]}]
-  (let [queue-id (gensym "queue")
-        messages? (seq messages)]
+(defn message-string [messages cnt]
+  (let [messages (take 3 messages)]
+    (str
+      (when (> cnt 3)
+        " ... | ")
+      (->> messages reverse (map pr-str) (interpose " | ") (apply str)))))
+
+(defn queue-string [{:keys [id messages queue-id]}]
+  (let [messages (seq messages)
+        cnt (count messages)]
     (str
       (format-node queue-id
-        :shape :record
-        :fontname (if messages? :helvetica :times)
-        :label (str "{" (if-not messages?
+        :shape :Mrecord
+        ;;:xlabel (when (> cnt 3) cnt)
+        :fontname (if messages :helvetica :times)
+        :label (str "{" (if-not messages
                           "\u2205"
-                          (->> messages reverse (interpose " | ") (apply str))) "}"))
+                          (message-string messages cnt)) "}"))
       ";\n"
-      (format-edge id queue-id :arrowhead :dot))))
+      (format-edge id queue-id
+        :arrowhead :dot))))
 
 (defn graphviz-description [{:keys [nodes edges queues]}]
   (str
     "digraph {
-        rankdir=LR;"
+        rankdir=LR; pad=1;"
     (->> (map node-string nodes)
       (concat
         (map edge-string edges)
@@ -128,4 +203,14 @@
     ";}"))
 
 (defn viz [& nodes]
-  (->> nodes graph-data graphviz-description view-graphviz))
+  (->> nodes
+    graph-data
+    graphviz-description
+    view-graphviz
+    ))
+
+(defn trace-viz [node message]
+  (->> (sample-graph node message)
+    graphviz-description
+    view-graphviz
+    ))

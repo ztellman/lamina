@@ -198,7 +198,7 @@
 
   ;;
   (messages [_]
-    (seq (.toArray messages)))
+    (map #(if (identical? ::nil %) nil %) (seq (.toArray messages))))
 
   ;;
   (append [_ msgs]

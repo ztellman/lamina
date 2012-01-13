@@ -177,7 +177,7 @@
                 (let [s# ~state]
                   (if (identical? ::split (.mode s#))
                     ::split
-                    (ensure-queue state s#))))]
+                    (ensure-queue ~state s#))))]
 
       (case x#
         ::split
@@ -627,6 +627,9 @@
 
 (defn split? [node]
   (identical? ::split (.mode (state node))))
+
+(defn consumed? [node]
+  (identical? ::consumed (.mode (state node))))
 
 (defn error-value [node default-value]
   (let [s (state node)]

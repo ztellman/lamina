@@ -52,7 +52,7 @@
   (boolean (re-find #"\$.*\$" instance-name)))
 
 (defn clojure-fn
-  "Returns the clojure function instance name implied by the bytecode class name."
+  "Returns the clojure function name implied by the bytecode instance name."
   [instance-name]
   (reduce
    (fn [base-name [pattern sub]] (str/replace base-name pattern sub))
@@ -61,9 +61,22 @@
 
 ;;; end clj-stacktrace
 
-(defn function-description [f]
-  (when f
-    (let [f (or (operator-predicate f) f)
+(defn function-instance? [x]
+  (boolean (re-matches #"^[^$]*\$[^@]*@[0-9a-f]*$" (str x))))
+
+(defn operator-description [x]
+  (cond
+    (map? x)
+    (str "{ ... }")
+
+    (set? x)
+    (str "#{ ... }")
+    
+    (not (function-instance? x))
+    (pr-str x)
+
+    :else
+    (let [f (or (operator-predicate x) x)
           s (str f)
           ns (clojure-ns s)
           f (clojure-fn s)
@@ -83,12 +96,14 @@
             :else nil)]
     (merge
       {:node n
-       :description (or (description n) (function-description f))
+       :description (or (description n) (operator-description f))
        :downstream-count (count (downstream n))}
       (when (node? n)
         {:node? true
+         :operator f
          :messages (when (queue n) (-> n queue q/messages))
          :predicate? (boolean (operator-predicate f))
+         :consumed? (consumed? n)
          :closed? (closed? n)
          :drained? (drained? n)
          :error (error-value n nil)}))))
@@ -129,7 +144,7 @@
         (map
           (fn [^Edge e]
             {:src data
-             :description (description e)
+             :type (description e)
              :dst (node-data (.node e))})
           (downstream n))))
     {:dst (node-data n)}))

@@ -13,3 +13,6 @@
 
 (defn viz [& channels]
   (apply v/viz (map c/receiver-node channels)))
+
+(defn trace-viz [channel message]
+  (v/trace-viz (c/receiver-node channel) message))
