@@ -12,7 +12,8 @@
     [clojure.java.shell :only (sh)])
   (:require
     [lamina.core.node :as n]
-    [lamina.core.result :as r])
+    [lamina.core.result :as r]
+    [lamina.core.lock :as l])
   (:import
     [java.awt
      Toolkit]
@@ -110,40 +111,48 @@
      :queues queues}))
 
 (defn sample-graph [root message]
-  (let [readable-nodes (->> root
-                         node-seq
-                         (map node-data)
-                         (remove #(instance? (class identity) (:operator %)))
-                         (remove show-queue?))
-        results (zipmap
-                  (map :node readable-nodes)
-                  (map #(n/read-node (:node %)) readable-nodes))
-        _  (n/propagate root message true)
-        data (graph-data [root])
-        message-sym (gensym "msg")]
-    (doseq [r (vals results)]
-      (r/error r ::cancelled))
-    (prn (->> data :nodes (filter #(= root (:node %)))))
-    (-> data
-      (update-in [:edges]
-        (fn [edges]
-          (map
-            (fn [e]
-              (let [n (-> e :src :node)
-                    msg (if-let [result (results n)]
-                          (r/success-value result ::none)
-                          ::none)
-                    msg (if (= ::none msg)
-                          ""
-                          (pr-str msg))]
-                (assoc e :description msg)))
-            edges)))
-      (update-in [:nodes]
-        (fn [nodes]
-          (conj nodes {:id message-sym, :description (pr-str message), :message? true})))
-      (update-in [:edges]
-        (fn [edges]
-          (conj edges {:src-id message-sym, :dst-id (->> data :nodes (filter #(= root (:node %))) first :id)}))))))
+  (let [nodes (node-seq root)]
+    (l/acquire-all true (filter n/node? nodes))
+    (try
+      (let [readable-nodes (->> nodes
+                             (map node-data)
+                             (remove #(instance? (class identity) (:operator %)))
+                             (remove show-queue?))
+            results (zipmap
+                      (map :node readable-nodes)
+                      (map #(n/read-node (:node %)) readable-nodes))
+            _  (n/propagate root message true)
+            data (graph-data [root])
+            message-sym (gensym "msg")]
+        (doseq [r (vals results)]
+          (r/error r ::cancelled))
+        (-> data
+          (update-in [:edges]
+            (fn [edges]
+              (map
+                (fn [e]
+                  (let [n (-> e :src :node)
+                        msg (if-let [result (results n)]
+                              (r/success-value result ::none)
+                              ::none)
+                        msg (if (= ::none msg)
+                              ""
+                              (pr-str msg))]
+                    (assoc e :description msg)))
+                edges)))
+          (update-in [:nodes]
+            (fn [nodes]
+              (conj nodes
+                {:id message-sym
+                 :description (pr-str message)
+                 :message? true})))
+          (update-in [:edges]
+            (fn [edges]
+              (conj edges
+                {:src-id message-sym
+                 :dst-id (->> data :nodes (filter #(= root (:node %))) first :id)})))))
+      (finally
+        (l/release-all true (filter n/node? nodes))))))
 
 ;;;
 
@@ -168,11 +177,12 @@
     :peripheries (when predicate? 2)))
 
 (defn message-string [messages cnt]
-  (let [messages (take 3 messages)]
+  (let [trim? (> cnt 5)
+        msgs (take (if trim? 3 5) messages)]
     (str
-      (when (> cnt 3)
-        " ... | ")
-      (->> messages reverse (map pr-str) (interpose " | ") (apply str)))))
+      (when trim?
+        (str (pr-str (last messages)) "| ... | "))
+      (->> msgs reverse (map pr-str) (interpose " | ") (apply str)))))
 
 (defn queue-string [{:keys [id messages queue-id]}]
   (let [messages (seq messages)
@@ -180,7 +190,7 @@
     (str
       (format-node queue-id
         :shape :Mrecord
-        ;;:xlabel (when (> cnt 3) cnt)
+        ;;:xlabel (when (> cnt 5) cnt)
         :fontname (if messages :helvetica :times)
         :label (str "{" (if-not messages
                           "\u2205"

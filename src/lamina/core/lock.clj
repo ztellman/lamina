@@ -121,3 +121,9 @@
             (doseq [l (take n (rest s))]
               (r l))
             (recur (drop (inc n) ss))))))))
+
+(defn release-all
+  [exclusive? locks]
+  (let [f (if exclusive? release-exclusive release)]
+    (doseq [l locks]
+      (f l))))

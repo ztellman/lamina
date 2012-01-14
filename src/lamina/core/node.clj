@@ -311,20 +311,34 @@
   ;;
   (transactional [this]
     (io! "Cannot modify node while in transaction."
+
+      ;; most often this will already have been done, but it's idempotent
       (l/acquire-exclusive this)
       (let [s state]
         (if (.transactional? s)
+
+          ;; if we're already switched over, return
           true
+
           (do
             (set-state! state s
               :transactional? true
               :queue (q/transactional-copy (.queue s)))
             (let [downstream (downstream-nodes this)]
-              (->> downstream (filter node?) (l/acquire-all true))
-              (l/release-exclusive this)
-              (doseq [n downstream]
-                (transactional n))
-              true))))))
+
+              ;; acquire children before releasing our own lock (hand-over-hand locking)
+              ;; if we are interrupted while acquiring the children, make sure we release
+              ;; our own lock
+              (when (try
+                      (->> downstream (filter node?) (l/acquire-all true))
+                      true
+                      (finally
+                        (l/release-exclusive this)))
+
+                ;; lather, rinse, recur
+                (doseq [n downstream]
+                  (transactional n))
+                true)))))))
 
   NodeProtocol
 
