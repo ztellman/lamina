@@ -14,6 +14,8 @@
     [lamina.core.pipeline :as p]))
 
 (import-fn ch/channel)
+(import-macro ch/channel*)
+
 (import-fn ch/enqueue)
 (import-fn ch/receive)
 (import-fn ch/read-channel)

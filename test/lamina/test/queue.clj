@@ -113,47 +113,60 @@
 (deftest test-basic-queue
   (test-queue #(q/queue)))
 
+(deftest test-transactional-queue
+  (test-queue #(q/transactional-queue)))
+
 ;;;
 
-(defmacro bench [name & body]
+(defmacro bench [type name & body]
   `(do
-     (println "\n-----\n lamina.core.queue -" ~name "\n-----\n")
+     (println "\n-----\n lamina.core.queue -" ~type "-" ~name "\n-----\n")
      (c/quick-bench
        (do ~@body)
        :reduce-with #(and %1 %2))))
 
-(defn benchmark-queue [name q]
-  (bench (str name " - receive and enqueue")
+(defn benchmark-queue [type q r-fn]
+  (bench type "receive and enqueue"
     (q/receive q)
     (enqueue q 1))
-  (bench (str name " - receive with explicit result-channel and enqueue")
-    (receive q nil nil (r/result-channel))
+  (bench type "receive with explicit result-channel and enqueue"
+    (receive q nil nil (r-fn))
     (enqueue q 1))
-  (bench (str name " - receive, cancel, receive and enqueue")
+  (bench type "receive, cancel, receive and enqueue"
     (let [r (receive q nil nil)]
       (cancel-receive q r))
     (q/receive q)
     (enqueue q 1))
-  (bench (str name " - multi-receive and multi-enqueue")
+  (bench type "multi-receive and multi-enqueue"
     (q/receive q)
     (q/receive q)
     (enqueue q 1)
     (enqueue q 2))
-  (bench (str name " - multi-receive, cancel, and enqueue")
+  (bench type "multi-receive, cancel, and enqueue"
     (q/receive q)
     (let [r (q/receive q)]
       (cancel-receive q r))
     (enqueue q 1))
-  (bench (str name " - enqueue and receive")
+  (bench type "enqueue and receive"
     (enqueue q 1)
     (receive q))
-  (bench (str name " - enqueue and receive with explicit result-channel")
+  (bench type "enqueue and receive with explicit result-channel"
     (enqueue q 1)
-    (receive q nil nil (r/result-channel)))
-  (bench (str name " - enqueue without persistence")
+    (receive q nil nil (r-fn)))
+  (bench type "enqueue without persistence"
     (q/enqueue q 1 false nil)))
 
 (deftest ^:benchmark benchmark-basic-queue
-  (bench "create basic queue"
+  (bench "" "create basic queue"
     (q/queue nil))
-  (benchmark-queue "basic-queue" (q/queue nil)))
+  (benchmark-queue "basic-queue"
+    (q/queue nil)
+    r/result-channel))
+
+
+(deftest ^:benchmark benchmark-transactional-queue
+  (bench "" "create transactional queue"
+    (q/queue nil))
+  (benchmark-queue "transactional-queue"
+    (q/transactional-queue nil)
+    r/transactional-result-channel))

@@ -68,14 +68,14 @@
     (is (= ex @(capture-error r :foo)))
     (is (= false (cancel-callback r nil)))))
 
-(deftest test-result-channel
-  (let [r (result-channel)]
+(defn test-result-channel [r-fn]
+  (let [r (r-fn)]
     (is (= ::none (success-value r ::none)))
     (is (= ::none (error-value r ::none)))
     (is (= nil (result r))))
 
   ;; success result
-  (let [r (result-channel)]
+  (let [r (r-fn)]
     (is (= :lamina/realized (success r 1)))
     (is (= 1 (success-value r nil)))
     (is (= ::none (error-value r ::none)))
@@ -84,7 +84,7 @@
     (is (= 1 @r)))
 
   ;; claim and success!
-  (let [r (result-channel)]
+  (let [r (r-fn)]
     (is (= true (claim r)))
     (is (= :lamina/already-claimed! (success r 1)))
     (is (= :lamina/realized (success! r 1)))
@@ -95,7 +95,7 @@
     (is (= 1 @r)))
   
   ;; error result
-  (let [r (result-channel)
+  (let [r (r-fn)
         ex (IllegalStateException. "boom")]
     (is (= :lamina/realized (error r ex)))
     (is (= ::none (success-value r ::none)))
@@ -105,7 +105,7 @@
     (is (thrown? IllegalStateException @r)))
 
   ;; claim and error!
-  (let [r (result-channel)
+  (let [r (r-fn)
         ex (IllegalStateException. "boom")]
     (is (= true (claim r)))
     (is (= :lamina/already-claimed! (error r ex)))
@@ -117,17 +117,17 @@
     (is (thrown? IllegalStateException @r)))
 
   ;; test deref with success result
-  (let [r (result-channel)]
+  (let [r (r-fn)]
     (defer (success r 1))
     (is (= 1 @r)))
 
   ;; test deref with error result
-  (let [r (result-channel)]
+  (let [r (r-fn)]
     (defer (error r (IllegalStateException. "boom")))
     (is (thrown? IllegalStateException @r)))
 
   ;; multiple callbacks w/ success
-  (let [r (result-channel)
+  (let [r (r-fn)
         callback-values (->> (range 5)
                           (map (fn [_] (future (capture-success r))))
                           (map deref)
@@ -137,7 +137,7 @@
     (is (= (repeat 5 1) (map deref callback-values))))
 
   ;; multiple callbacks w/ error
-  (let [r (result-channel)
+  (let [r (r-fn)
         callback-values (->> (range 5)
                           (map (fn [_] (future (capture-error r))))
                           (map deref)
@@ -149,20 +149,20 @@
 
   ;; callback return result propagation in ::one
   (let [callback (result-callback (constantly :foo) nil)
-        r (result-channel)]
+        r (r-fn)]
     (is (= :lamina/subscribed (subscribe r callback)))
     (is (= :foo (success r nil))))
 
   ;; callback return result with ::many
   (let [callback (result-callback (constantly :foo) nil)
-        r (result-channel)]
+        r (r-fn)]
     (is (= :lamina/subscribed (subscribe r callback)))
     (is (= :lamina/subscribed (subscribe r callback)))
     (is (= :lamina/branch (success r nil))))
 
   ;; cancel-callback ::one to ::zero
   (let [callback (result-callback (constantly :foo) nil)
-        r (result-channel)]
+        r (r-fn)]
     (is (= false (cancel-callback r callback)))
     (is (= :lamina/subscribed (subscribe r callback)))
     (is (= true (cancel-callback r callback)))
@@ -172,7 +172,7 @@
 
   ;; cancel-callback ::many to ::one
   (let [cnt (atom 0)
-        r (result-channel)
+        r (r-fn)
         a (result-callback (fn [_] (swap! cnt inc)) nil)
         b (result-callback (fn [_] (swap! cnt inc)) nil)]
     (is (= :lamina/subscribed (subscribe r a)))
@@ -183,7 +183,7 @@
 
   ;; cancel-callback ::many to ::many
   (let [cnt (atom 0)
-        r (result-channel)
+        r (r-fn)
         a (result-callback (fn [_] (swap! cnt inc)) nil)
         b (result-callback (fn [_] (swap! cnt inc)) nil)
         c (result-callback (fn [_] (swap! cnt inc)) nil)]
@@ -194,56 +194,68 @@
     (is (= :lamina/branch (success r nil)))
     (is (= 2 @cnt))))
 
+(deftest test-basic-result-channel
+  (test-result-channel result-channel))
+
+(deftest test-transactional-result-channel
+  (test-result-channel transactional-result-channel))
+
 ;;;
 
-(defmacro bench [name & body]
+(defmacro bench [type name & body]
   `(do
-     (println "\n-----\n lamina.core.result -" ~name "\n-----\n")
+     (println "\n-----\n lamina.core.result -" type "-" ~name "\n-----\n")
      (c/quick-bench
        (do ~@body)
        :reduce-with #(and %1 %2))))
 
-(deftest ^:benchmark benchmark-result-channel
-  (bench "create result-channel"
-    (result-channel))
-  (bench "subscribe and success"
-    (let [r (result-channel)]
+(defn benchmark-result-channel [type r-fn]
+  (bench type "create result-channel"
+    (r-fn))
+  (bench type "subscribe and success"
+    (let [r (r-fn)]
       (subscribe r (result-callback (fn [_]) nil))
       (success r 1)))
-  (bench "subscribe, claim, and success!"
-    (let [r (result-channel)]
+  (bench type "subscribe, claim, and success!"
+    (let [r (r-fn)]
       (subscribe r (result-callback (fn [_]) nil))
       (claim r)
       (success! r 1)))
-  (bench "subscribe, cancel, subscribe and success"
-    (let [r (result-channel)]
+  (bench type "subscribe, cancel, subscribe and success"
+    (let [r (r-fn)]
       (let [callback (result-callback (fn [_]) nil)]
         (subscribe r callback)
         (cancel-callback r callback))
       (subscribe r (result-callback (fn [_]) nil))
       (success r 1)))
-  (bench "multi-subscribe and success"
-    (let [r (result-channel)]
+  (bench type "multi-subscribe and success"
+    (let [r (r-fn)]
       (subscribe r (result-callback (fn [_]) nil))
       (subscribe r (result-callback (fn [_]) nil))
       (success r 1)))
-  (bench "multi-subscribe, cancel, and success"
-    (let [r (result-channel)]
+  (bench type "multi-subscribe, cancel, and success"
+    (let [r (r-fn)]
       (subscribe r (result-callback (fn [_]) nil))
       (let [callback (result-callback (fn [_]) nil)]
         (subscribe r callback)
         (cancel-callback r callback))
       (success r 1)))
-  (bench "success and subscribe"
-    (let [r (result-channel)]
+  (bench type "success and subscribe"
+    (let [r (r-fn)]
       (success r 1)
       (subscribe r (result-callback (fn [_]) nil))))
-  (bench "claim, success!, and subscribe"
-    (let [r (result-channel)]
+  (bench type "claim, success!, and subscribe"
+    (let [r (r-fn)]
       (claim r)
       (success! r 1)
       (subscribe r (result-callback (fn [_]) nil))))
-  (bench "success and deref"
-    (let [r (result-channel)]
+  (bench type "success and deref"
+    (let [r (r-fn)]
       (success r 1)
       @r)))
+
+(deftest ^:benchmark test-basic-result-channel
+  (benchmark-result-channel "basic result" result-channel))
+
+(deftest ^:benchmark test-transactional-result-channel
+  (benchmark-result-channel "transactional result" transactional-result-channel))

@@ -110,33 +110,30 @@
 
 ;;;
 
-(defn downstream-nodes [n]
-  (map #(.node ^Edge %) (downstream n)))
+(defn cyclic-tree-seq
+  "Version of tree-seq that doesn't infinitely recur when
+   there are cycles."
+  [branch? children root]
+  (let [seen? (atom #{})]
+    (tree-seq
+      #(when-not (@seen? %)
+         (swap! seen? conj %)
+         (branch? %))
+      #(remove @seen? (children %))
+      root)))
 
-(defn- walk-nodes- [f exclusive? n]
-  (let [s (downstream-nodes n)]
-    (->> s (filter node?) (l/acquire-all exclusive?))
-    (when (node? n)
-      (f n)
-      (if exclusive?
-        (l/release-exclusive n)
-        (l/release n)))
-    (doseq [n s]
-      (walk-nodes- f exclusive? n))))
-
-(defn walk-nodes [f n]
-  (l/acquire-exclusive n)
-  (walk-nodes- f true n))
-
-;; TODO: make these short-circuit on cycles
-(defn node-seq [n]
-  (tree-seq
+(defn node-seq
+  "Returns a list of downstream nodes."
+  [n]
+  (cyclic-tree-seq
     (comp seq downstream-nodes)
     downstream-nodes
     n))
 
-(defn edge-seq [n]
-  (tree-seq
+(defn edge-seq
+  "Returns a list of downstream edges."
+  [n]
+  (cyclic-tree-seq
     #(-> % :dst :node downstream seq)
     (fn [n]
       (let [n (-> n :dst :node)

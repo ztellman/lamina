@@ -26,11 +26,15 @@
 (deftest ^:benchmark benchmarks
   (let [p (pipeline
             read-channel
-            (constantly (restart)))
-        ch (channel)]
-    (p ch)
-    (bench "read-channel pipeline loop"
-      (enqueue ch :msg)))
+            (constantly (restart)))]
+    (let [ch (channel)]
+      (p ch)
+      (bench "read-channel pipeline loop"
+        (enqueue ch :msg)))
+    (let [ch (channel* :transactional? true)]
+      (p ch)
+      (bench "transactional read-channel pipeline loop"
+        (enqueue ch :msg))))
   (let [ch (channel)]
     (->
       (take 1e3 (map-seq ch inc))

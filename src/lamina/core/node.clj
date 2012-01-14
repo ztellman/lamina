@@ -52,9 +52,16 @@
 (defprotocol PropagateProtocol
   (downstream [_]
     "Returns a list of nodes which are downstream of this node.")
+  (transactional [_]
+    "Makes this node and all downstream nodes transactional.")
   (propagate [_ msg transform?]
     "Sends a message downstream through the node. If 'transform?' is false, the node
      should treat the message as pre-transformed."))
+
+(defn downstream-nodes [n]
+  (map #(.node ^Edge %) (downstream n)))
+
+;;;
 
 (defprotocol NodeProtocol
   ;;
@@ -159,7 +166,9 @@
      (if (.queue s#)
        s#
        (set-state! ~state s#
-         :queue (q/queue)
+         :queue (if (.transactional? s#)
+                  (q/transactional-queue)
+                  (q/queue))
          :read? true))))
 
 (defmacro close-node! [state edges s]
@@ -189,7 +198,7 @@
             (check-for-drained ~state ~watchers ~cancellations))
           result#)))))
 
-(declare split-node join)
+(declare split-node join node?)
 
 (deftype Node
   [^AsymmetricLock lock
@@ -298,6 +307,24 @@
                     (propagate (.node e) msg true))
                   
                   :lamina/branch))))))))
+
+  ;;
+  (transactional [this]
+    (io! "Cannot modify node while in transaction."
+      (l/acquire-exclusive this)
+      (let [s state]
+        (if (.transactional? s)
+          true
+          (do
+            (set-state! state s
+              :transactional? true
+              :queue (q/transactional-copy (.queue s)))
+            (let [downstream (downstream-nodes this)]
+              (->> downstream (filter node?) (l/acquire-all true))
+              (l/release-exclusive this)
+              (doseq [n downstream]
+                (transactional n))
+              true))))))
 
   NodeProtocol
 
@@ -469,7 +496,7 @@
       (if (nil? n)
         (.split state)
         n)))
-  
+
   ;;
   (link [this name edge execute-within-lock]
     (io! "Cannot modify node while in transaction."
@@ -484,8 +511,13 @@
                            (let [cnt (unchecked-inc (.downstream-count s))]
                              (.add edges edge)
                              (set-state! state s
-                               :queue (when (.read? s) (q/queue))
+                               :queue (when (.read? s)
+                                        (if (.transactional? s)
+                                          (q/transactional-queue)
+                                          (q/queue)))
                                :downstream-count cnt)
+                             (when (.transactional? s)
+                               (transactional (.node ^Edge edge)))
                              (assoc-record s
                                :downstream-count cnt))
 
@@ -549,7 +581,10 @@
                                (close-node! state edges s)
                                (set-state! state s
                                  :mode ::open
-                                 :queue (or (.queue s) (q/queue))
+                                 :queue (or (.queue s)
+                                          (if (.transactional? s)
+                                            (q/transactional-queue)
+                                            (q/queue)))
                                  :split nil))
 
                              ;; reduce counter by one
@@ -646,6 +681,7 @@
   Described
   (description [_] description)
   PropagateProtocol
+  (transactional [_] false)
   (downstream [_] nil)
   (propagate [_ msg _]
     (try
@@ -664,7 +700,10 @@
   (description [_] description)
   PropagateProtocol
   (downstream [_] downstream)
-  (propagate [_ msg _] (callback msg)))
+  (propagate [_ msg _] (callback msg))
+  (transactional [this]
+    (doseq [n (downstream-nodes this)]
+      (transactional n))))
 
 (defn bridge-node [callback downstream]
   (BridgeNode. nil callback downstream))
@@ -755,7 +794,9 @@
        (make-record NodeState
          :mode ::open
          :downstream-count 0
-         :queue (q/queue ~messages)
+         :queue ~(if transactional?
+                   `(q/transactional-queue ~messages)
+                   `(q/queue ~messages))
          :permanent? ~permanent?
          :transactional? ~transactional?)
        (Collections/synchronizedMap (HashMap.))

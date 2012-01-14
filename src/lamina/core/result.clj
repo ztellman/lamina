@@ -104,7 +104,7 @@
 
 (defrecord ResultState [^long subscribers mode value])
 
-(defmacro update-state [signal ^ResultState state value]
+(defmacro update-state [^ResultState state signal value]
   `(let [signal# ~signal
          ^ResultState state# ~state
          mode# (.mode state#)
@@ -128,12 +128,14 @@
        (::success ::error)
        :lamina/already-realized!)))
 
+;;;
+
 (defmacro compare-and-trigger! [[lock state subscribers] signal f value]
   `(io! "Cannot modify result-channels inside a transaction."
      (let [value# ~value
            s# ~state
            s# (l/with-exclusive-lock* ~lock
-                (let [s# (update-state ~signal s# ~value)]
+                (let [s# (update-state s# ~signal ~value)]
                   (if (keyword? s#)
                     s#
                     (do (set! ~state s#) s#))))]
@@ -215,7 +217,7 @@
   (claim [_]
     (io! "Cannot modify result-channels inside a transaction."
       (l/with-exclusive-lock* lock
-        (let [s (update-state ::claim state nil)]
+        (let [s (update-state state ::claim nil)]
           (if (instance? ResultState s)
             (do (set! state s) true)
             false)))))
@@ -256,7 +258,7 @@
                     ::error (.on-error callback)
                     (do
                       (.add subscribers callback)
-                      (set! state (update-state ::add state nil))
+                      (set! state (update-state state ::add nil))
                       nil))))]
         (if (identical? nil x)
           :lamina/subscribed
@@ -270,11 +272,11 @@
           (case (.mode s)
             ::error   false
             ::success false
-            (if (identical? 0 (.subscribers state))
+            (if (identical? 0 (.subscribers s))
               false
               (if (.remove subscribers callback)
                 (do
-                  (set! state (update-state ::remove s nil))
+                  (set! state (update-state s ::remove nil))
                   true)
                 false)))))))
 
@@ -285,6 +287,166 @@
         ::error   (str "<< ERROR: " (.value state) " >>")
         ::success (str "<< " (.value state) " >>")
         "<< ... >>"))))
+
+;;;
+
+(defmacro compare-and-trigger [[state subscribers] signal f value]
+  `(let [value# ~value
+         ^ResultState s# (deref ~state)
+         s# (dosync
+              (let [s# (update-state s# ~signal ~value)]
+                (if (keyword? s#)
+                  s#
+                  (ref-set ~state s#))))]
+       
+     (if (keyword? s#)
+       s#
+       (let [subscribers# (deref ~subscribers)
+             ^ResultState s# s#]
+         (dosync (ref-set ~subscribers nil))
+         (case (.subscribers s#)
+             
+           0
+           :lamina/realized
+             
+           1
+           (try
+             ((~f ^ResultCallback (first subscribers#)) (.value s#))
+             (catch Exception e#
+               (log/error e# "Error in result callback.")))
+
+           (let [value# (.value s#)]
+             (doseq [^ResultCallback c# subscribers#]
+               (try
+                 ((~f c#) value#)
+                 (catch Exception e#
+                   (log/error e# "Error in result callback."))))
+             :lamina/branch))))))
+
+(deftype TransactionalResultChannel
+  [state
+   subscribers]
+
+  clojure.lang.IDeref
+
+  ;;
+  (deref [this]
+    (if-let [result (let [^ResultState state @state
+                          value (.value state)]
+                      (case (.mode state)
+                        ::success value
+                        ::error (if (instance? Throwable value)
+                                  (throw value)
+                                  (throw (Exception. (str value))))
+                        nil))]
+      result
+      (let [^CountDownLatch latch (CountDownLatch. 1)
+            f (fn [_] (.countDown latch))]
+        (subscribe this (ResultCallback. f f))
+        (.await latch)
+        (let [^ResultState state @state
+              value (.value state)]
+          (case (.mode state)
+            ::success value
+            ::error (if (instance? Throwable value)
+                      (throw value)
+                      (throw (Exception. (str value))))
+            nil)))))
+  
+  Result
+
+  ;;
+  (success [_ val]
+    (compare-and-trigger [state subscribers] ::success .on-success val))
+
+  ;;
+  (success! [_ val]
+    (compare-and-trigger [state subscribers] ::success! .on-success val))
+
+  ;;
+  (error [_ err]
+    (compare-and-trigger [state subscribers] ::error .on-error err))
+
+  ;;
+  (error! [_ err]
+    (compare-and-trigger [state subscribers] ::error! .on-error err))
+
+  ;;
+  (claim [_]
+    (dosync
+      (let [s (update-state (ensure state) ::claim nil)]
+        (if (instance? ResultState s)
+          (do (ref-set state s) true)
+          false))))
+
+  ;;;
+
+  ;;
+  (success-value [_ default-value]
+    (let [^ResultState state @state]
+      (if (identical? ::success (.mode state))
+        (.value state)
+        default-value)))
+
+  ;;
+  (error-value [_ default-value]
+    (let [^ResultState state @state]
+      (if (identical? ::error (.mode state))
+        (.value state)
+        default-value)))
+
+  ;;
+  (result [_]
+    (let [^ResultState state @state]
+      (case (.mode state)
+        ::success :success
+        ::error :error
+        nil)))
+
+  ;;;
+
+  ;;
+  (subscribe [_ callback]
+    (let [^ResultCallback callback callback
+          x (dosync
+              (let [^ResultState s (ensure state)]
+                (case (.mode s)
+                  ::success (.on-success callback)
+                  ::error (.on-error callback)
+                  (do
+                    (alter subscribers conj callback)
+                    (ref-set state (update-state s ::add nil))
+                    nil))))]
+      (if (identical? nil x)
+        :lamina/subscribed
+        (let [^ResultState state @state]
+          (x (.value state))))))
+
+  ;;
+  (cancel-callback [_ callback]
+    (dosync
+      (let [^ResultState s (ensure state)]
+        (case (.mode s)
+          ::error   false
+          ::success false
+          (if (identical? 0 (.subscribers s))
+            false
+            (let [callbacks (remove #(= callback %) (ensure subscribers))]
+              (if (not= (count callbacks) (count @subscribers))
+                (do
+                  (ref-set subscribers callbacks)
+                  (ref-set state (update-state s ::remove nil))
+                  true)
+                false)))))))
+
+  ;;
+  (toString [_]
+    (let [^ResultState state @state]
+      (case (.mode state)
+        ::error   (str "<< ERROR: " (.value state) " >>")
+        ::success (str "<< " (.value state) " >>")
+        "<< ... >>"))))
+
 
 ;;;
 
@@ -303,12 +465,19 @@
     (ResultState. 0 ::none nil)
     (LinkedList.)))
 
+(defn transactional-result-channel
+  []
+  (TransactionalResultChannel.
+    (ref (ResultState. 0 ::none nil))
+    (ref ())))
+
 (defn result-callback [on-success on-error]
   (ResultCallback. on-success on-error))
 
 (defn result-channel? [x]
   (or
     (instance? ResultChannel x)
+    (instance? TransactionalResultChannel x)
     (instance? SuccessResult x)
     (instance? ErrorResult x)))
 
@@ -317,7 +486,9 @@
   dst)
 
 (defn result-timeout [interval result]
-  (t/delay-invoke interval #(error result :lamina/timeout))
+  (if (zero? interval)
+    (error result :lamina/timeout)
+    (t/delay-invoke interval #(error result :lamina/timeout)))
   result)
 
 ;;;
@@ -329,4 +500,7 @@
   (.write w (str o)))
 
 (defmethod print-method ResultChannel [o ^Writer w]
+  (.write w (str o)))
+
+(defmethod print-method TransactionalResultChannel [o ^Writer w]
   (.write w (str o)))
