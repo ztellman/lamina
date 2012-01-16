@@ -57,10 +57,10 @@
                     (describe-fn operator))
                   ""))]
     {:label label
-     :fontcolor (when error :red)
+     :fontcolor (when error :firebrick)
      :color (cond
               closed? :grey
-              error :red
+              error :firebrick
               :else nil)
      :width (when-not label 0.5)
      :fontname :helvetica
@@ -82,7 +82,7 @@
     (merge-with #(if (map? %1) (merge %1 %2) (concat %1 %2))
       ;; normal nodes and edges
       {:nodes (zipmap nodes (map node-descriptor nodes))
-       :edges edges}
+       :edges (map edge-descriptor edges)}
       ;; queue nodes and edges
       {:nodes (zipmap
                 (map #(vector :queue %) nodes)
@@ -114,6 +114,8 @@
     (l/acquire-all true readable-nodes)
     (let [results (zipmap readable-nodes (map n/read-node readable-nodes))]
       (n/propagate root msg true)
+      (doseq [n readable-nodes]
+        (l/release-exclusive n))
       (doseq [r (vals results)]
         (r/error r ::nothing-received))
       (->> results
