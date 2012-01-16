@@ -5,7 +5,7 @@
                  [criterium "0.2.1-SNAPSHOT"]
                  [useful "0.7.3"]
                  [potemkin "0.1.1-SNAPSHOT"]]
-  :jvm-opts ["-server" "-XX:+UseConcMarkSweepGC" "-Xmx1g" "-XX:NewSize=512m"]
+  :jvm-opts ["-server" "-XX:+UseConcMarkSweepGC" "-Xmx2g" "-XX:NewSize=1g"]
   :repositories {"sonatype-oss-public" "https://oss.sonatype.org/content/groups/public/"}
   :exclusions [org.clojure/contrib
                org.clojure/clojure-contrib]

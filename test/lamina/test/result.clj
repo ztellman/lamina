@@ -204,7 +204,7 @@
 
 (defmacro bench [type name & body]
   `(do
-     (println "\n-----\n lamina.core.result -" type "-" ~name "\n-----\n")
+     (println "\n-----\n lamina.core.result -" ~type "-" ~name "\n-----\n")
      (c/quick-bench
        (do ~@body)
        :reduce-with #(and %1 %2))))

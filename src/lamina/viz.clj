@@ -9,10 +9,14 @@
 (ns lamina.viz
   (:require
     [lamina.core.channel :as c]
-    [lamina.core.viz :as v]))
+    [lamina.viz.node :as n]))
 
-(defn viz [& channels]
-  (apply v/viz (map c/receiver-node channels)))
+(defn view-graph [& channels]
+  (->> channels
+    (map #(vector (c/receiver-node %) (c/emitter-node %)))
+    (apply concat)
+    distinct
+    (apply n/view-graph)))
 
-(defn trace-viz [channel message]
-  (v/trace-viz (c/receiver-node channel) message))
+(defn trace-message [channel message]
+  (n/trace-message (c/receiver-node channel) message))
