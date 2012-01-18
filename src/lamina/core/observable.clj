@@ -42,19 +42,19 @@
 	   (when message-callback
 	     (message-callback msgs))
 	   (catch Exception e
-	     (log/error "Error in message callback" e))))
+	     (log/error e "Error in message callback"))))
        (on-close [_]
 	 (try
 	   (when close-callback
 	     (close-callback))
 	   (catch Exception e
-	     (log/error "Error in close callback" e))))
+	     (log/error e "Error in close callback"))))
        (on-observers-changed [_ observers]
 	 (try
 	   (when observers-callback
 	     (observers-callback observers))
 	   (catch Exception e
-	     (log/error "Error in observers-changed callback" e)))))))
+	     (log/error e "Error in observers-changed callback")))))))
 
 ;;;
 
