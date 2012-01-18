@@ -2,7 +2,7 @@ Lamina provides an event-driven analogue to Clojure's sequences, called channels
 
 Channels are meant to be a generic interface for the creation and consumption of asynchronous events.  Within "Aleph":https://github.com/ztellman/aleph, they are used to represent network communication over a variety of protocols.
 
-Sequences can be turned into channels, and vise-versa:
+Sequences can be turned into channels, and vice versa:
 
 <pre><code>> (def ch (apply channel (range 3)))
 <== [0 1 2]
