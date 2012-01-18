@@ -104,7 +104,7 @@
 
 ;; This queue is specially designed to interact with the node in lamina.core.node, and
 ;; is not intended as a general-purpose data structure.
-(defprotocol QueueProtocol
+(defprotocol IEventQueue
   (error [_ error]
     "All pending receives are resolved as errors. It's expected that the queue will
      be swapped out for an error-emitting queue at this point.") 
@@ -130,7 +130,7 @@
 ;;;
 
 (deftype ErrorQueue [error]
-  QueueProtocol
+  IEventQueue
   (error [_ _] false)
   (drained? [_] false)
   (ground [_] nil)
@@ -147,7 +147,7 @@
     false))
 
 (deftype DrainedQueue []
-  QueueProtocol
+  IEventQueue
   (error [_ _] false)
   (drained? [_] true)
   (ground [_] nil)
@@ -164,13 +164,13 @@
 
 ;;;
 
-(deftype MessageQueue
+(deftype EventQueue
   [^AsymmetricLock lock
    ^ConcurrentLinkedQueue messages
    ^ConcurrentLinkedQueue consumers
    closed?]
 
-  QueueProtocol
+  IEventQueue
 
   ;;
   (error [_ error]
@@ -316,12 +316,12 @@
     (alter q pop)
     x))
 
-(deftype TransactionalMessageQueue
+(deftype TransactionalEventQueue
   [messages
    consumers
    closed?]
 
-  QueueProtocol
+  IEventQueue
 
   ;;
   (error [_ error]
@@ -468,7 +468,7 @@
   ([]
      (queue nil))
   ([messages]
-     (MessageQueue.
+     (EventQueue.
        (l/lock)
        (if messages
          (ConcurrentLinkedQueue. (map #(if (identical? nil %) ::nil %) messages))
@@ -480,7 +480,7 @@
   ([]
      (closed-queue nil))
   ([messages]
-     (MessageQueue.
+     (EventQueue.
        (l/lock)
        (if messages
          (ConcurrentLinkedQueue. (map #(if (identical? nil %) ::nil %) messages))
@@ -492,7 +492,7 @@
   ([]
      (transactional-queue nil))
   ([messages]
-     (TransactionalMessageQueue.
+     (TransactionalEventQueue.
        (ref
          (if (empty? messages)
            PersistentQueue/EMPTY
@@ -504,7 +504,7 @@
   ([]
      (transactional-queue nil))
   ([messages]
-     (TransactionalMessageQueue.
+     (TransactionalEventQueue.
        (ref (apply conj PersistentQueue/EMPTY messages))
        (ref PersistentQueue/EMPTY)
        true)))
@@ -517,7 +517,7 @@
 
 (defn closed-copy [q]
   (if q
-    (if (instance? TransactionalMessageQueue q)
+    (if (instance? TransactionalEventQueue q)
       (closed-transactional-queue (ground q))
       (closed-queue (ground q)))
     (drained-queue)))
@@ -526,6 +526,6 @@
   (cond
     (nil? q) nil
     (drained? q) (drained-queue)
-    (instance? TransactionalMessageQueue q) q
-    (.closed? ^MessageQueue q) (closed-transactional-queue (ground q))
+    (instance? TransactionalEventQueue q) q
+    (.closed? ^EventQueue q) (closed-transactional-queue (ground q))
     :else (transactional-queue (ground q))))

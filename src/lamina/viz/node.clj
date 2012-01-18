@@ -12,6 +12,7 @@
     [lamina.viz core])
   (:require
     [lamina.core.node :as n]
+    [lamina.core.queue :as q]
     [lamina.core.result :as r]
     [lamina.core.lock :as l]))
 
@@ -24,11 +25,10 @@
 
 (defn message-string [messages]
   (let [cnt (count messages)
-        trim? (> cnt 5)
-        msgs (take (if trim? 3 5) messages)]
+        trim? (> cnt 3)
+        msgs (take 3 messages)]
     (str
-      (when trim?
-        (str (pr-str (last messages)) "| ... |"))
+      (when trim? "... |")
       (->> msgs reverse (map pr-str) (interpose " | ") (apply str)))))
 
 (defn edge-seq->nodes [es]
@@ -62,9 +62,7 @@
               closed? :grey
               error :firebrick
               :else nil)
-     :width (when-not label 0.5)
-     :fontname :helvetica
-     :shape :box
+     :width (when (empty? label) 0.25)
      :peripheries (when predicate? 2)}))
 
 (defn edge-descriptor [{:keys [src dst description]}]
@@ -73,7 +71,6 @@
     {:src src
      :dst dst
      :label (when-not hide-desc? description)
-     :fontname :helvetica
      :style (when dotted? :dotted)}))
 
 (defn graph-descriptor [root]
@@ -93,33 +90,42 @@
 
 ;;;
 
-(def node-frame (gen-frame "Lamina"))
-
-(defn view-graph [& nodes]
-  (let [descriptor (->> nodes
-                     (map graph-descriptor)
-                     (apply merge-with merge))
-        dot-string (digraph {:rankdir :LR, :pad 0.25} descriptor)]
-    (view-dot-string node-frame dot-string)))
-
 (defn sample-graph [root msg]
   (let [edges (edge-seq root)
-        readable-nodes (->> edges
-                         edge-seq->nodes
-                         (filter n/node?)
-                         (map node-data)
-                         (remove #(instance? (class identity) (:operator %)))
-                         (remove show-queue?)
-                         (map :node))]
+        visible-nodes (->> edges
+                        edge-seq->nodes
+                        (filter n/node?))
+        queue? (comp show-queue? node-data)
+        queue-nodes (filter queue? visible-nodes)
+        readable-nodes (->> visible-nodes
+                         (remove queue?)
+                         (remove #(->> % node-data :operator (instance? (class identity)))))]
+
+    ;; lock all the nodes we're going to sample, so we only receive our own message
     (l/acquire-all true readable-nodes)
-    (let [results (zipmap readable-nodes (map n/read-node readable-nodes))]
+
+    ;; read the nodes
+    (let [results (zipmap
+                    readable-nodes
+                    (map n/read-node readable-nodes))]
+
+      ;; send the message
       (n/propagate root msg true)
-      (doseq [n readable-nodes]
-        (l/release-exclusive n))
+
+      ;; error out any results that didn't receive a message
       (doseq [r (vals results)]
         (r/error r ::nothing-received))
+
+      ;; release the nodes so other messages can pass through
+      (doseq [n readable-nodes]
+        (l/release-exclusive n))
+
+      ;; merge the read messages with the last message in the queue of the leaf/queue nodes
       (->> results
         (filter (fn [[_ r]] (not= ::none (r/success-value r ::none))))
+        (merge (zipmap
+                 queue-nodes
+                 (map #(-> % n/queue q/messages last r/success-result) queue-nodes)))
         (into {})))))
 
 (defn trace-descriptor [root msg]
@@ -129,13 +135,29 @@
                      (when-let [r (results (:src e))]
                        (pr-str (r/success-value r nil))))]
     (-> descriptor
-      (update-in [:nodes] assoc :msg {:label (pr-str msg), :width 0, :shape :plaintext, :fontname :helvetica})
+      (update-in [:nodes] assoc :msg {:label (pr-str msg), :width 0, :shape :plaintext})
       (update-in [:edges] (fn [edges] (map #(assoc % :label (edge-label %)) edges)))
       (update-in [:edges] conj {:src :msg :dst root}))))
 
+;;;
+
+(def node-frame (gen-frame "Lamina"))
+
+(def default-settings
+  {:options {:rankdir :LR, :pad 0.25}
+   :default-node {:fontname :helvetica, :shape :box}
+   :default-edge {:fontname :helvetica}})
+
+(defn view-graph [& nodes]
+  (let [descriptor (->> nodes
+                     (map graph-descriptor)
+                     (apply merge-with merge))
+        dot-string (digraph (merge default-settings descriptor))]
+    (view-dot-string node-frame dot-string)))
+
 (defn trace-message [root msg]
   (let [descriptor (trace-descriptor root msg)
-        dot-string (digraph {:rankdir :LR, :pad 0.25} descriptor)]
+        dot-string (digraph (merge default-settings descriptor))]
     (view-dot-string node-frame dot-string)))
 
 

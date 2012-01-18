@@ -15,7 +15,7 @@
 
 ;;;
 
-(defprotocol LockProtocol
+(defprotocol ILock
   (acquire [_])
   (acquire-exclusive [_])
   (release [_])
@@ -26,7 +26,7 @@
 ;;;
 
 (deftype AsymmetricLock [^ReentrantReadWriteLock lock]
-  LockProtocol
+  ILock
   (acquire [_] (-> lock .readLock .lock))
   (release [_] (-> lock .readLock .unlock))
   (acquire-exclusive [_] (-> lock .writeLock .lock))
@@ -38,7 +38,7 @@
   (AsymmetricLock. (ReentrantReadWriteLock. false)))
 
 (deftype Lock [^ReentrantLock lock]
-  LockProtocol
+  ILock
   (acquire-exclusive [_] (.lock lock))
   (release-exclusive [_] (.unlock lock))
   (try-acquire-exclusive [_] (.tryLock lock)))

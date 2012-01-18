@@ -23,7 +23,7 @@
 
 ;;;
 
-(defprotocol ChannelProtocol
+(defprotocol IChannel
   (receiver-node [_]
     "Returns the receiver node for the channel.")
   (emitter-node [_]
@@ -34,7 +34,7 @@
 (deftype Channel
   [^Node receiver
    ^{:volatile-mutable true :tag Node} emitter]
-  ChannelProtocol
+  IChannel
   (receiver-node [_]
     receiver)
   (emitter-node [this]
@@ -54,7 +54,7 @@
         (str "<== []")))))
 
 (defrecord SplicedChannel [^Channel receiver ^Channel emitter]
-  ChannelProtocol
+  IChannel
   (receiver-node [_]
     (receiver-node receiver))
   (emitter-node [_]

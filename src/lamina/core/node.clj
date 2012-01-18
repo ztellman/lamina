@@ -34,11 +34,11 @@
 
 ;;;
 
-(defprotocol Described
+(defprotocol IDescribed
   (description [_]))
 
 (deftype Edge [^String description node]
-  Described
+  IDescribed
   (description [_] description))
 
 (defn edge [description node]
@@ -49,7 +49,7 @@
 
 ;;;
 
-(defprotocol PropagateProtocol
+(defprotocol IPropagator
   (downstream [_]
     "Returns a list of nodes which are downstream of this node.")
   (transactional [_]
@@ -63,7 +63,7 @@
 
 ;;;
 
-(defprotocol NodeProtocol
+(defprotocol INode
   ;;
   (read-node [_] [_ predicate false-value result-channel]
     "Straight call to the queue which cannot be cancelled. Intended for (read-channel ...).")
@@ -210,10 +210,10 @@
    ^CopyOnWriteArrayList edges
    ^CopyOnWriteArrayList watchers]
 
-  Described
+  IDescribed
   (description [_] description)
 
-  l/LockProtocol
+  l/ILock
   (acquire [_] (l/acquire lock))
   (acquire-exclusive [_] (l/acquire-exclusive lock))
   (release [_] (l/release lock))
@@ -221,7 +221,7 @@
   (try-acquire [_] (l/try-acquire lock))
   (try-acquire-exclusive [_] (l/try-acquire-exclusive lock))
 
-  PropagateProtocol
+  IPropagator
 
   ;;
   (downstream [_]
@@ -229,84 +229,96 @@
 
   ;;
   (propagate [this msg transform?]
-    (let [msg (transform-message this msg transform?)]
-      (case msg
+    (if (and probe? (= 0 (.downstream-count state)))
+      :lamina/inactive-probe
+      (let [msg (transform-message this msg transform?)]
+        (case msg
 
-        ::error
-        :lamina/error!
-        
-        ::false
-        :lamina/filtered
-        
-        (do
-          ;; acquire the lock before we look at the state
-          (l/acquire lock)
-          (let [state state]
-            (case (.mode state)
+          ::error
+          :lamina/error!
+          
+          ::false
+          :lamina/filtered
+          
+          (do
+            ;; acquire the lock before we look at the state
+            (l/acquire lock)
+            (let [state state]
+              (case (.mode state)
 
-              (::drained ::closed)
-              :lamina/closed!
+                (::drained ::closed)
+                :lamina/closed!
 
-              ::error
-              :lamina/error!
+                ::error
+                :lamina/error!
 
-              ::consumed
-              (enqueue-and-release lock state msg true)
+                ::consumed
+                (enqueue-and-release lock state msg true)
 
-              (::split ::open)
-              (case (.downstream-count state)
-                0
-                (when-not probe?
-                  (enqueue-and-release lock state msg true))
+                (::split ::open)
+                (case (.downstream-count state)
+                  0
+                  (enqueue-and-release lock state msg (not probe?))
 
-                1
-                (do
-                  (enqueue-and-release lock state msg false)
-                  
-                  ;; walk the chain of nodes until there's a split
-                  (loop [^Edge edge (.get edges 0), msg msg]
-                    (let [node (.node edge)]
-                      (if-not (instance? Node node)
-                      
-                       ;; if it's not a normal node, forward the message
-                       (propagate node msg true)
-                      
-                       (let [^Node node node
-                             msg (transform-message node msg true)]
-                        
-                         (case msg
+                  1
+                  (do
+                    (enqueue-and-release lock state msg false)
+                    
+                    ;; walk the chain of nodes until there's a split
+                    (loop [^Edge edge (.get edges 0), msg msg]
+                      (let [node (.node edge)]
+                        (if-not (instance? Node node)
                           
-                           ::error
-                           :lamina/error!
+                          ;; if it's not a normal node, forward the message
+                          (try
+                            (propagate node msg true)
+                            (catch Exception e
+                              (error this e)
+                              :lamina/error!))
                           
-                           ::false
-                           :lamina/filtered
+                          (let [^Node node node
+                                msg (transform-message node msg true)]
+                            
+                            (case msg
+                              
+                              ::error
+                              :lamina/error!
+                              
+                              ::false
+                              :lamina/filtered
 
-                           (::drained ::closed)
-                           :lamina/closed
-                          
-                           (do
-                             (l/acquire (.lock node))
-                             (let [^NodeState state (.state node)]
-                               (if (identical? 1 (.downstream-count state))
-                                 (do
-                                   (enqueue-and-release (.lock node) state msg false)
-                                   (recur
-                                     (.get ^CopyOnWriteArrayList (.edges node) 0)
-                                     msg))
-                                 (do
-                                   (l/release (.lock node))
-                                   (propagate node msg false)))))))))))
+                              (::drained ::closed)
+                              :lamina/closed
+                              
+                              (do
+                                (l/acquire (.lock node))
+                                (let [^NodeState state (.state node)]
+                                  (if (identical? 1 (.downstream-count state))
+                                    (do
+                                      (enqueue-and-release (.lock node) state msg false)
+                                      (recur
+                                        (.get ^CopyOnWriteArrayList (.edges node) 0)
+                                        msg))
+                                    (do
+                                      (l/release (.lock node))
+                                      (try
+                                        (propagate node msg false)
+                                        (catch Exception e
+                                          (error this e)
+                                          :lamina/error!))))))))))))
 
-                ;; more than one node
-                (do
-                  (enqueue-and-release lock state msg false)
-                  
-                  ;; send message to all nodes
-                  (doseq [^Edge e (downstream this)]
-                    (propagate (.node e) msg true))
-                  
-                  :lamina/branch))))))))
+                  ;; more than one node
+                  (do
+                    (enqueue-and-release lock state msg false)
+                    
+                    ;; send message to all nodes
+                    (try
+                      (doseq [^Edge e (downstream this)]
+                        (propagate (.node e) msg true))
+                      :lamina/branch
+                      (catch Exception e
+                        (error this e)
+                        :lamina/error!)))))))))))
 
   ;;
   (transactional [this]
@@ -340,7 +352,7 @@
                   (transactional n))
                 true)))))))
 
-  NodeProtocol
+  INode
 
   ;;
   (state [_]
@@ -692,9 +704,9 @@
 ;;;
 
 (deftype CallbackNode [description callback]
-  Described
+  IDescribed
   (description [_] description)
-  PropagateProtocol
+  IPropagator
   (transactional [_] false)
   (downstream [_] nil)
   (propagate [_ msg _]
@@ -710,9 +722,9 @@
   (instance? CallbackNode n))
 
 (deftype BridgeNode [description callback downstream]
-  Described
+  IDescribed
   (description [_] description)
-  PropagateProtocol
+  IPropagator
   (downstream [_] downstream)
   (propagate [_ msg _] (callback msg))
   (transactional [this]
@@ -811,7 +823,7 @@
          :queue ~(if transactional?
                    `(q/transactional-queue ~messages)
                    `(q/queue ~messages))
-         :permanent? ~permanent?
+         :permanent? (or ~permanent? ~probe?)
          :transactional? ~transactional?)
        (Collections/synchronizedMap (HashMap.))
        (CopyOnWriteArrayList.)

@@ -19,7 +19,7 @@
 
 (deftype Redirect [pipeline value])
 
-(defprotocol PipelineProtocol
+(defprotocol IPipeline
   (run [_ result initial-value value step])
   (error [_ result ex]))
 
@@ -135,7 +135,7 @@
         initial-val (gensym "initial-val")
         val (gensym "val")
         step (gensym "step")]
-    `(reify PipelineProtocol
+    `(reify IPipeline
        (run [~this ~result ~initial-val ~val ~step]
          (when (or (identical? nil ~result) (identical? nil (r/result ~result)))
            (try

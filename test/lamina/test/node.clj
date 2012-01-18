@@ -16,11 +16,13 @@
 
 ;;;
 
-(defn enqueue [n & msgs]
-  (if (= 1 (count msgs))
-    (propagate n (first msgs) true)
-    (doseq [m msgs]
-      (propagate n m true))))
+(defn enqueue
+  ([n msg]
+     (propagate n msg true))
+  ([n msg & msgs]
+     (propagate n msg true)
+     (doseq [m msgs]
+       (propagate n m true))))
 
 (defn link* [src dst]
   (link src dst (edge "link" dst) nil))
@@ -252,6 +254,9 @@
 (deftest ^:benchmark benchmark-node
   (bench "create node"
     (node identity))
+  (let [n (node* :probe? true)]
+    (bench "inactive probe"
+      (enqueue n true)))
   (bench "create and siphon"
     (let [a (node identity)
           b (node identity)]

@@ -55,7 +55,7 @@
     (remove (comp nil? second))
     (map
       (fn [[k v]]
-        (str (name k) " = "
+        (str (name k) "="
           (cond
             (string? v) (str \" (str/replace v "\\" "\\\\") \")
             (keyword? v) (name v)
@@ -69,6 +69,8 @@
       [:label
        :style
        :shape
+       :ltail
+       :lhead
        :arrowhead
        :fontname]
       (select-keys options)
@@ -82,38 +84,79 @@
        :fontcolor
        :color
        :width
+       :height
        :fontname
+       :arrowhead
+       :style
        :shape
        :peripheries]
       (select-keys options)
       (format-options ", "))
     "]"))
 
-(defn digraph [options {:keys [nodes edges]}]
-  (str "digraph {\n"
-    (format-options ";\n" options) ";\n"
-    (let [id (memoize (fn [_] (gensym "node")))]
-      (->> 
-        (concat
-          (map
-            #(when (nodes %)
-               (format-node (id %) (nodes %)))
-            (keys nodes))
-          (map
-            #(when (and (nodes (:src %)) (nodes (:dst %)))
-               (format-edge (id (:src %)) (id (:dst %)) %))
-            edges))
-        (remove nil?)
-        (interpose ";\n")
-        (apply str)))
-    "}"))
+(defn digraph [{:keys
+                [default-node ;; default settings for nodes
+                 default-edge ;; default settings for edges
+                 hierarchy ;; the subgraph hierarchy
+                 subgraph->nodes ;; a map of subgraphs onto the member nodes
+                 options ;; top-level options
+                 nodes ;; a map of nodes onto node options
+                 edges ;; a list of maps containing :src, :dst, and edge options
+                 ]}]
+  (let [id (memoize #(when % (gensym "node")))
+        cluster-id (memoize #(when % (gensym "cluster")))]
+    (letfn [(subgraph [[this & subgraphs]]
+              (str "subgraph " (cluster-id this) " {\n"
+                (->> this
+                  subgraph->nodes
+                  (filter nodes)
+                  (map #(format-node (id %) (nodes %)))
+                  (interpose "\n")
+                  (apply str))
+                "\n"
+                (->> subgraphs
+                  (map subgraph)
+                  (apply str))
+                "}\n"))]
+      (str "digraph {\n"
+        (when-not (empty? options)
+          (str (format-options "\n" options) "\n"))
+        (when default-node
+          (str (format-node "node" default-node) "\n"))
+        (when default-edge
+          (str (format-node "edge" default-edge) "\n"))
+
+        ;; subgraphs
+        (->> hierarchy
+          (map subgraph)
+          (apply str))
+        
+        ;; nodes not contained in a subgraph
+        (->> (keys nodes)
+          (remove (->> subgraph->nodes vals (apply concat) set))
+          (filter nodes)
+          (map #(format-node (id %) (nodes %)))
+          (interpose "\n")
+          (apply str))
+        "\n"
+
+        ;; edges
+        (->> edges
+          (filter #(and (nodes (:src %)) (nodes (:dst %))))
+          (map #(update-in % [:ltail] cluster-id))
+          (map #(update-in % [:lhead] cluster-id))
+          (map #(format-edge (id (:src %)) (id (:dst %)) %))
+          (interpose "\n")
+          (apply str))
+
+        "\n}"))))
 
 ;; These functions are adapted from Mark McGranaghan's clj-stacktrace, which
 ;; is released under the MIT license and therefore amenable to this sort of
 ;; copy/pastery.
 
 (defn clojure-ns
-  "Returns the clojure namespace name implied by the bytecode class name."
+  "Returns the clojure namespace name implied by the bytecode instance name."
   [instance-name]
   (str/replace
     (or (get (re-find #"([^$]+)\$" instance-name) 1)
@@ -160,6 +203,9 @@
 
     (set? x)
     (str "#{ ... }")
+
+    (vector? x)
+    (str "[ ... ]")
     
     (not (fn-instance? x))
     (pr-str x)
