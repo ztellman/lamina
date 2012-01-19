@@ -42,14 +42,16 @@
     (ScheduledThreadPoolExecutor. (int (num-cores)) ^ThreadFactory tf)))
 
 (defn delay-invoke [interval ^Runnable f]
-  (let [^Runnable f
-        (fn []
-          (try
-            (f)
-            (catch Exception e
-              (log/error e "Error in delayed invocation."))))]
-    (.schedule scheduled-executor f (long (* 1e3 interval)) TimeUnit/MICROSECONDS)
-    nil))
+  (if-not (pos? interval)
+    (f)
+    (let [^Runnable f
+          (fn []
+            (try
+              (f)
+              (catch Exception e
+                (log/error e "Error in delayed invocation."))))]
+      (.schedule scheduled-executor f (long (* 1e3 interval)) TimeUnit/MICROSECONDS)
+      nil)))
 
 ;;;
 

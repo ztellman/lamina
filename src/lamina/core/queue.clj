@@ -42,6 +42,10 @@
    result
    ^ResultChannel result-channel])
 
+(deftype Consumptions [s])
+
+(deftype FailedConsumptions [s])
+
 (defn no-consumption [result-channel]
   (Consumption. ::no-dispatch nil result-channel))
 
@@ -214,9 +218,11 @@
                   (if (.isEmpty consumers)
                     
                     ;; no consumers, just hold onto the message
-                    (when persist?
-                      (.add messages msg)
-                      :lamina/enqueued) 
+                    (if persist?
+                      (do
+                        (.add messages msg)
+                        :lamina/enqueued)
+                      :lamina/discarded) 
                     
                     ;; handle the first consumer specially, since most of the time
                     ;; there will only be one
@@ -230,10 +236,10 @@
                             (do
                               (when persist?
                                 (.add messages msg))
-                              cs)
+                              (FailedConsumptions. cs))
                             (let [^Consumption c (consumption (.poll consumers) msg)]
                               (if (consumed? c)
-                                (cons c cs)
+                                (Consumptions. (cons c cs))
                                 (recur (cons c cs))))))))))]
           (when release-fn
             (release-fn))
@@ -242,14 +248,25 @@
             (identical? :lamina/enqueued x)
             x
 
+            (identical? :lamina/discarded x)
+            x
+
             (instance? Consumption x)
             (dispatch-consumption x)
 
+            (instance? Consumptions x)
+            (do
+              (doseq [c (.s ^Consumptions x)]
+                (dispatch-consumption c))
+              :lamina/queue-split)
+
             :else
             (do
-              (doseq [c x]
+              (doseq [c (.s ^FailedConsumptions x)]
                 (dispatch-consumption c))
-              :lamina/queue-split))))))
+              (if persist?
+                :lamina/enqueued
+                :lamina/discarded)))))))
 
   ;;
   (receive [_]

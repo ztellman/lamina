@@ -69,10 +69,22 @@
   `(let [n# (n/node* ~@options)]
      (Channel. n# n#)))
 
-(defn channel [& messages]
+(defn channel
+  "Returns a channel containing the given messages."
+  [& messages]
   (channel* :messages (seq messages)))
 
-(defn splice [emitter receiver]
+(defn closed-channel
+  "Returns a closed channel containing the given messages."
+  [& messages]
+  (let [ch (channel* :messages (seq messages))]
+    (n/close (receiver-node ch))
+    ch))
+
+(defn splice
+  "Returns a channel where all messages are enqueud into 'receiver', and
+   consumed from 'emitter'."
+  [emitter receiver]
   (SplicedChannel.
     (if (instance? SplicedChannel emitter)
       (.emitter ^SplicedChannel emitter)
@@ -84,6 +96,7 @@
 ;;;
 
 (defn enqueue
+  "Enqueues the message or messages into the channel."
   ([channel message]
      (n/propagate (receiver-node channel) message true))
   ([channel message & messages]
@@ -91,14 +104,38 @@
      (doseq [m messages]
        (n/propagate (receiver-node channel) m true))))
 
-(defn receive [channel callback]
+(defn receive
+  "Consumes a single message from the channel, which will be passed to 'callback.'  Only
+   one callback can receive any given message; calling (receive ...) multiple times will
+   always consume multiple messages.
+
+   Callbacks registered with this method can be cancelled using (cancel-callback ...) if
+   they have not already been triggered."
+  [channel callback]
   (n/receive (emitter-node channel) callback callback))
 
 (defn read-channel
+  "Returns a result-channel representing the next message from the channel.  Only one
+   result-channel can represent any given message; calling (read-channel ...) multiple times
+   will always consume multiple messages.
+
+   Enqueueing a value into the result-channel before it is realized will prevent the message from
+   being consumed."
   ([channel]
-     (n/read-node (emitter-node channel)))
-  ([channel predicate false-value result-channel]
-     (n/read-node (emitter-node channel) predicate false-value result-channel)))
+     (n/read-node (emitter-node channel))))
+
+(defmacro read-channel*
+  "A version of (read-channel ...) with more dials.  Valid options include:
+
+   :timeout -
+   :on-timeout -
+   :predicate -
+   :on-false -
+   :result -
+   :on-drained -
+   :on-error -"
+  [ch & {:as options}]
+  `(n/read-node* (emitter-node ~ch) ~@(apply concat options)))
 
 (defn receive-all [channel callback]
   (n/link (emitter-node channel)

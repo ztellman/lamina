@@ -54,10 +54,9 @@
 ;;;
 
 (defn- split-options [opts+stages]
-  (let [s (partition-all 2 opts+stages)
-        f (comp keyword? first)]
-    [(->> s (take-while f) (apply concat) (apply hash-map))
-     (->> s (drop-while f) (apply concat))]))
+  (if (map? (first opts+stages))
+    [(first opts+stages) (rest opts+stages)]
+    [nil opts+stages]))
 
 (defn- subscribe [this result initial-val val idx]
   `(let [result# (or ~result (r/result-channel))]

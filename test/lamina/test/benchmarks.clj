@@ -41,4 +41,7 @@
       last
       (receive-all (fn [_])))
     (bench "map* chain"
-      (enqueue ch 1))))
+      (enqueue ch 1)))
+  (let [ch (probe-channel :abc)]
+    (bench "inactive probe channel"
+      (enqueue ch :msg))))

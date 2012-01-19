@@ -487,8 +487,8 @@
 
 (defn result-timeout [interval result]
   (if (zero? interval)
-    (error result :lamina/timeout)
-    (t/delay-invoke interval #(error result :lamina/timeout)))
+    (error result :lamina/timeout!)
+    (t/delay-invoke interval #(error result :lamina/timeout!)))
   result)
 
 ;;;

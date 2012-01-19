@@ -14,6 +14,7 @@
     [lamina.core.result :as r]
     [lamina.core.queue :as q]
     [lamina.core.lock :as l]
+    [lamina.core.threads :as t]
     [clojure.tools.logging :as log])
   (:import
     [lamina.core.lock
@@ -587,7 +588,7 @@
 
           true)
 
-        ;; already ::closed, ::drained, or ::error
+        ;; already ::error, ::drained, ::consumed
         false)))
 
   ;;
@@ -731,9 +732,6 @@
     (doseq [n (downstream-nodes this)]
       (transactional n))))
 
-(defn bridge-node [callback downstream]
-  (BridgeNode. nil callback downstream))
-
 (defn bridge-node? [n]
   (instance? BridgeNode n))
 
@@ -778,6 +776,17 @@
            true)
          false))))
 
+(defn bridge-siphon [src edge-description node-description callback dsts]
+  (let [downstream (CopyOnWriteArrayList. ^objects (to-array (map #(edge nil %) dsts)))
+        n (BridgeNode. node-description callback downstream)
+        upstream (edge edge-description n)]
+    (if (link src n upstream nil)
+      (do
+        (doseq [dst dsts]
+          (on-state-changed dst nil (siphon-callback src n)))
+        true)
+      false)))
+
 (defn join
   ([src dst]
      (join src dst nil))
@@ -790,14 +799,50 @@
            (on-state-changed src nil (join-callback (.node dst)))
            true)
          (cond
-           (closed? src)
-           (close dst)
+           (drained? src)
+           (close (.node dst))
            
            (not (identical? ::none (error-value src ::none)))
            (error (.node dst) (error-value src nil))
            
            :else
            false)))))
+
+(defn bridge-join [src edge-description node-description callback dsts]
+  (let [downstream (CopyOnWriteArrayList. ^objects (to-array (map #(edge nil %) dsts)))
+        n (BridgeNode. node-description callback downstream)
+        upstream (edge edge-description n)]
+    (if (link src n upstream nil)
+      (do
+        (doseq [dst dsts]
+          (on-state-changed dst nil (siphon-callback src n)))
+        (on-state-changed src nil
+          (fn [state _ err]
+            (case state
+              (::closed ::drained)
+              (enqueue-cleanup
+                #(doseq [dst dsts]
+                   (close dst)))
+
+              ::error
+              (enqueue-cleanup
+                #(doseq [dst dsts]
+                   (error dst err)))
+
+              nil)))
+        true)
+      (cond
+        (drained? src)
+        (doseq [dst dsts]
+          (close dst))
+        
+        (not (identical? ::none (error-value src ::none)))
+        (let [err (error-value src nil)]
+          (doseq [dst dsts]
+            (error dst err)))
+        
+        :else
+        false))))
 
 ;;;
 
@@ -893,3 +938,42 @@
             (callback err))
 
           nil)))))
+
+;;;
+
+(defmacro read-node*
+  [n & {:keys [predicate
+               timeout
+               result
+               on-timeout
+               on-false
+               on-error
+               on-drained
+               ]}]
+  (let [result-sym (gensym "result")]
+    `(let [~result-sym (read-node ~n
+                         ~predicate
+                         ~(when predicate
+                            (or on-false :lamina/false))
+                         ~result)]
+       
+       ~@(when timeout
+           `((when (instance? ResultChannel ~result-sym)
+               (t/delay-invoke ~timeout
+                 (fn []
+                   ~(if on-timeout
+                      `(r/success ~result-sym ~on-timeout)
+                      `(r/error ~result-sym :lamina/timeout!)))))))
+       ~(if-not (or on-error on-drained)
+          result-sym
+          `(if (instance? SuccessResult ~result-sym)
+             ~result-sym
+             (let [result# (r/result-channel)]
+               (r/subscribe ~result-sym
+                 (r/result-callback
+                   (fn [x#] (r/success result# x#))
+                   (fn [err#]
+                     (if (identical? err# :lamina/drained!)
+                       (r/success result# ~(or on-drained on-error))
+                       (r/success result# ~on-error)))))
+               result#))))))

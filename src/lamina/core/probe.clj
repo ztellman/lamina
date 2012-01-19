@@ -11,8 +11,12 @@
     [lamina.core.channel :as c]
     [lamina.core.node :as n])
   (:import
+    [java.io
+     Writer]
     [java.util.concurrent
-     ConcurrentHashMap]))
+     ConcurrentHashMap]
+    [java.util.concurrent.atomic
+     AtomicBoolean]))
 
 (defprotocol IProbe
   (enabled? [_]))
@@ -21,7 +25,7 @@
   [^AtomicBoolean enabled?
    channel]
   IProbe
-  (enabled? []
+  (enabled? [_]
     (.get enabled?))
   c/IChannel
   (receiver-node [_]
@@ -29,12 +33,12 @@
   (emitter-node [_]
     (c/emitter-node channel)))
 
-(defn probe-channel- []
+(defn probe-channel- [description]
   (let [flag (AtomicBoolean. false)
-        ch (c/channel* :probe? true)]
+        ch (c/channel* :probe? true :description (name description))]
 
     ;; set the flag whenever the downstream count changes
-    (n/on-state-changed (c/emitter-node ch)
+    (n/on-state-changed (c/emitter-node ch) nil
       (fn [_ downstream _]
         (.set flag (pos? downstream))))
 
@@ -45,7 +49,7 @@
 (defn probe-channel [id]
   (if-let [ch (.get probes id)]
     ch
-    (let [ch (probe-channel-)]
+    (let [ch (probe-channel- id)]
       (or (.putIfAbsent probes id ch) ch))))
 
 ;;;
@@ -75,12 +79,20 @@
         enabled? (AtomicBoolean. false)]
 
     ;; bridge the upstream and downstream nodes whenever the source channel is active
-    (n/on-state-changed (c/emitter-node ch)
+    (n/on-state-changed (c/emitter-node ch) nil
       (fn [_ downstream _]
         (if (zero? downstream)
           (when (.compareAndSet enabled? true false)
-            (n/link receiver emitter emitter nil))
+            (n/link upstream downstream downstream nil))
           (when (.compareAndSet enabled? false true)
-            (n/cancel receiver emitter)))))
+            (n/cancel upstream downstream)))))
 
     (SympatheticProbeChannel. enabled? upstream downstream)))
+
+;;;
+
+(defmethod print-method ProbeChannel [o ^Writer w]
+  (.write w (str o)))
+
+(defmethod print-method SympatheticProbeChannel [o ^Writer w]
+  (.write w (str o)))

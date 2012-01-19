@@ -11,10 +11,13 @@
     [potemkin])
   (:require
     [lamina.core.channel :as ch]
-    [lamina.core.pipeline :as p]))
+    [lamina.core.pipeline :as p]
+    [lamina.core.probe :as pr]))
 
 (import-fn ch/channel)
 (import-macro ch/channel*)
+(import-fn pr/probe-channel)
+(import-fn pr/sympathetic-probe-channel)
 
 (import-fn ch/enqueue)
 (import-fn ch/receive)
