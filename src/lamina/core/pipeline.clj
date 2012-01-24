@@ -8,12 +8,15 @@
 
 (ns lamina.core.pipeline
   (:require
-    [lamina.core.result :as r])
+    [lamina.core.result :as r]
+    [clojure.tools.logging :as log])
   (:import
     [lamina.core.result
      ResultChannel
      SuccessResult
      ErrorResult]))
+
+(set! *warn-on-reflection* true)
 
 ;;;
 
@@ -21,7 +24,7 @@
 
 (defprotocol IPipeline
   (run [_ result initial-value value step])
-  (error [_ result ex]))
+  (error [_ result initial-value ex]))
 
 (defn redirect
   "If returned from a pipeline stage, redirects the pipeline flow to the beginning
@@ -51,20 +54,25 @@
           (recur pipeline value value 0))
         val))))
 
+(defn subscribe-fn [transactional? result?]
+  (let [result-fn (cond
+                    (not result?) (fn [] nil)
+                    transactional? r/transactional-result-channel
+                    :else r/result-channel)]
+    (fn [pipeline result initial-val val idx]
+      (let [result (or result (result-fn))]
+        (r/subscribe val
+          (r/result-callback
+            #(start-pipeline pipeline result initial-val % idx)
+            #(error pipeline result initial-val %)))
+        result))))
+
 ;;;
 
 (defn- split-options [opts+stages]
   (if (map? (first opts+stages))
     [(first opts+stages) (rest opts+stages)]
     [nil opts+stages]))
-
-(defn- subscribe [this result initial-val val idx]
-  `(let [result# (or ~result (r/result-channel))]
-     (r/subscribe ~val
-       (r/result-callback
-         (fn [val#] (start-pipeline ~this result# ~initial-val val# ~idx))
-         (fn [err#] (error ~this result# err#))))
-     result#))
 
 ;; this is a Duff's device-ish unrolling of the pipeline, the resulting code
 ;; will end up looking something like:
@@ -80,14 +88,14 @@
 ;;  the longer the pipeline, the fewer steps per clause, since the JVM doesn't
 ;;  like big functions.  Currently at eight or more steps, each clause only handles
 ;;  a single step. 
-(defn- unwind-stages [stages this result initial-val val idx remaining]
+(defn- unwind-stages [this result initial-val val idx subscribe stages remaining]
   `(cond
        
      (r/result-channel? ~val)
      (let [val# (r/success-value ~val ::unrealized)]
        (if (identical? ::unrealized val#)
-         ~(subscribe this result initial-val val idx)
-         (recur val# ~idx)))
+         (~subscribe ~this ~result ~initial-val ~val ~idx)
+         (recur val# (long ~idx))))
        
 
      (instance? Redirect ~val)
@@ -96,7 +104,7 @@
          (let [value# (if (identical? ::initial (.value redirect#))
                         ~initial-val
                         (.value redirect#))]
-           (recur value# 0))
+           (recur value# (long 0)))
          ~val))
 
      :else
@@ -107,15 +115,33 @@
         (let [val-sym (gensym "val")]
           `(let [~val-sym (~(first stages) ~val)]
              ~(if (zero? remaining)
-                `(recur ~val-sym ~(inc idx))
+                `(recur ~val-sym (long ~(inc idx)))
                 (unwind-stages
-                  (rest stages)
                   this
                   result
                   initial-val
                   val-sym
                   (inc idx)
+                  subscribe
+                  (rest stages)
                   (dec remaining))))))))
+
+(defn- complex-error-handler [error-handler]
+  `(error [this# result# initial-value# ex#]
+     (let [value# (~error-handler ex#)]
+       (if (instance? Redirect value#)
+         (let [^Redirect redirect# value#
+               value# (if (identical? ::initial (.value redirect#))
+                        initial-value#
+                        (.value redirect#))
+               pipeline# (if (identical? ::current (.pipeline redirect#))
+                           this#
+                           (.pipeline redirect#))]
+           (start-pipeline pipeline# result# value# value# 0))
+         (do
+           (if result#
+            (r/error result# ex#)
+            (r/error-result ex#)))))))
 
 ;; totally ad hoc
 (defn- max-depth [num-stages]
@@ -127,44 +153,75 @@
 
 (defmacro pipeline [& opts+stages]
   (let [[options stages] (split-options opts+stages)
+        {:keys [transactional?
+                result?]
+         :or {result? true
+              transactional? false}} options
         len (count stages)
         depth (max-depth len)
+
+        ;; define symbols that will be used in the macro
         this (gensym "this")
         result (gensym "result")
         initial-val (gensym "initial-val")
+        error-handler (gensym "error-handler")
         val (gensym "val")
-        step (gensym "step")]
-    `(reify IPipeline
-       (run [~this ~result ~initial-val ~val ~step]
-         (when (or (identical? nil ~result) (identical? nil (r/result ~result)))
-           (try
-             (loop [~val ~val, ~step ~step]
-               (case ~step
-                 ~@(interleave
-                     (iterate inc 0)
-                     (map
-                       #(unwind-stages
-                          (drop % stages)
-                          this
-                          result
-                          initial-val
-                          val
-                          %
-                          depth)
-                       (range (inc len))))))
-             (catch Exception ex#
-               (error ~this ~result ex#)))))
-       (error [this# result# ex#]
-         (if result#
-           (r/error result# ex#)
-           (r/error-result ex#)))
-       clojure.lang.IFn
-       (invoke [this# val#]
-         (start-pipeline this# nil val# val# 0)))))
+        step (gensym "step")
+        subscribe (gensym "subscribe")]
+    `(let [result?# ~result?
+           transactional?# ~transactional?
+           ~subscribe (subscribe-fn transactional?# result?#)
+           ~error-handler ~(:error-handler options)
+           check-for-transaction?# (and result?# transactional?#)]
+       (reify IPipeline
+         (run [~this ~result ~initial-val ~val ~step] 
+           (when check-for-transaction?#
+             (io! "Cannot run non-transactional pipeline within a transaction."))
+           (when (or (identical? nil ~result) (identical? nil (r/result ~result)))
+             (try
+               (loop [~val ~val, ~step (long ~step)]
+                 (case (int ~step)
+                   ~@(interleave
+                       (iterate inc 0)
+                       (map
+                         (fn [step]
+                           (unwind-stages
+                             this
+                             result
+                             initial-val
+                             val
+                             step
+                             subscribe
+                             (drop step stages)
+                             depth))
+                         (range (inc len))))))
+               (catch Exception ex#
+                 (error ~this ~result ~initial-val ex#)))))
+         ~(if (:error-handler options)
+            (complex-error-handler error-handler)
+            `(error [_# result# _# ex#]
+               (log/error ex# "Unhandled exception in pipeline")
+               (if result#
+                 (r/error result# ex#)
+                 (r/error-result ex#))))
+         clojure.lang.IFn
+         (invoke [this# val#]
+           (start-pipeline this# nil val# val# 0))))))
 
 (defmacro run-pipeline [value & opts+stages]
   `(let [p# (pipeline ~@opts+stages)
          value# ~value]
      (start-pipeline p# nil value# value# 0)))
+
+(defn read-merge [read-fn merge-fn]
+  (pipeline
+    (fn [val]
+      (run-pipeline (read-fn)
+        #(merge-fn val %)))))
+
+(defn complete [value]
+  (redirect
+    (pipeline (constantly value))
+    nil))
 
 

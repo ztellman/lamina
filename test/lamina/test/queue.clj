@@ -8,11 +8,12 @@
 
 (ns lamina.test.queue
   (:use
-    [clojure test])
+    [clojure test]
+    [lamina.test utils]
+    [lamina.core.threads :only (delay-invoke)])
   (:require
     [lamina.core.queue :as q]
-    [lamina.core.result :as r]
-    [criterium.core :as c]))
+    [lamina.core.result :as r]))
 
 (defn enqueue
   ([q msg]
@@ -46,6 +47,12 @@
     (enqueue q 0 false)
     (enqueue q nil)
     (is (= nil @(receive q))))
+
+  ;; multi-enqueue, then ground
+  (let [q (q-fn)]
+    (enqueue q 0)
+    (enqueue q 1)
+    (is (= [0 1] (q/ground q))))
 
   ;; multi-receive, then enqueue
   (let [q (q-fn)
@@ -118,55 +125,72 @@
 
 ;;;
 
-(defmacro bench [type name & body]
-  `(do
-     (println "\n-----\n lamina.core.queue -" ~type "-" ~name "\n-----\n")
-     (c/quick-bench
-       (do ~@body)
-       :reduce-with #(and %1 %2))))
+(defn stress-test-single-queue [q-fn]
+  (let [q (q-fn)]
+    (future
+      (dotimes [i 1e9]
+        (enqueue q i)))
+    (dotimes* [i 1e9]
+      (is (= i @(receive q)))))
+  #_(let [q (q-fn)]
+    (dotimes* [i 1e9]
+      (delay-invoke 0.01 #(enqueue q i))
+      (Thread/yield)
+      (is (= i @(receive q))))))
+
+(defn stress-test-closing-queue [q-fn]
+  (dotimes* [i 1e5]
+    (let [q (q-fn)
+          result (receive q)]
+      (delay-invoke 0.1
+        #(q/close q))
+      (Thread/sleep 1)
+      (is (thrown? Exception @result)))))
+
+;;;
 
 (defn benchmark-queue [type q r-fn]
-  (bench type "receive and enqueue"
+  (bench (str type "receive and enqueue")
     (q/receive q)
     (enqueue q 1))
-  (bench type "receive with explicit result-channel and enqueue"
+  (bench (str type "receive with explicit result-channel and enqueue")
     (receive q nil nil (r-fn))
     (enqueue q 1))
-  (bench type "receive, cancel, receive and enqueue"
+  (bench (str type "receive, cancel, receive and enqueue")
     (let [r (receive q nil nil)]
       (cancel-receive q r))
     (q/receive q)
     (enqueue q 1))
-  (bench type "multi-receive and multi-enqueue"
+  (bench (str type "multi-receive and multi-enqueue")
     (q/receive q)
     (q/receive q)
     (enqueue q 1)
     (enqueue q 2))
-  (bench type "multi-receive, cancel, and enqueue"
+  (bench (str type "multi-receive, cancel, and enqueue")
     (q/receive q)
     (let [r (q/receive q)]
       (cancel-receive q r))
     (enqueue q 1))
-  (bench type "enqueue and receive"
+  (bench (str type "enqueue and receive")
     (enqueue q 1)
     (receive q))
-  (bench type "enqueue and receive with explicit result-channel"
+  (bench (str type "enqueue and receive with explicit result-channel")
     (enqueue q 1)
     (receive q nil nil (r-fn)))
-  (bench type "enqueue without persistence"
+  (bench (str type "enqueue without persistence")
     (q/enqueue q 1 false nil)))
 
 (deftest ^:benchmark benchmark-basic-queue
-  (bench "" "create basic queue"
+  (bench "create basic queue"
     (q/queue nil))
-  (benchmark-queue "basic-queue"
-    (q/queue nil)
-    r/result-channel))
+  (benchmark-queue "basic-queue - "
+      (q/queue nil)
+      r/result-channel))
 
 
 (deftest ^:benchmark benchmark-transactional-queue
-  (bench "" "create transactional queue"
+  (bench "create transactional queue"
     (q/queue nil))
-  (benchmark-queue "transactional-queue"
-    (q/transactional-queue nil)
-    r/transactional-result-channel))
+  (benchmark-queue "transactional-queue - "
+      (q/transactional-queue nil)
+      r/transactional-result-channel))

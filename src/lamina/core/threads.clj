@@ -31,13 +31,13 @@
 
 (def ^ExecutorService cleanup-executor
   (Executors/newSingleThreadExecutor
-    (thread-factory (constantly "Lamina - cleanup thread"))))
+    (thread-factory (constantly "lamina-cleanup"))))
 
 (defn enqueue-cleanup [f]
   (.execute cleanup-executor f))
 
 (let [cnt (atom 0)
-      tf (thread-factory #(str "Lamina - scheduler thread #" (swap! cnt inc)))]
+      tf (thread-factory #(str "lamina-scheduler-" (swap! cnt inc)))]
   (def ^ScheduledThreadPoolExecutor scheduled-executor
     (ScheduledThreadPoolExecutor. (int (num-cores)) ^ThreadFactory tf)))
 

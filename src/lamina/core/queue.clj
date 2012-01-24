@@ -9,7 +9,8 @@
 (ns lamina.core.queue
   (:require
     [lamina.core.result :as r]
-    [lamina.core.lock :as l])
+    [lamina.core.lock :as l]
+    [clojure.tools.logging :as log])
   (:import
     [clojure.lang PersistentQueue]
     [lamina.core.lock AsymmetricLock]
@@ -92,7 +93,7 @@
        (if (identical? nil result-channel#)
          (r/success-result (.result c#))
          (r/success! result-channel# (.result c#)))
-
+ 
        ::error
        (if (identical? nil result-channel#)
          (r/error-result (.result c#))
@@ -111,7 +112,11 @@
 (defprotocol IEventQueue
   (error [_ error]
     "All pending receives are resolved as errors. It's expected that the queue will
-     be swapped out for an error-emitting queue at this point.") 
+     be swapped out for an error-emitting queue at this point.")
+  (close [_]
+    )
+  (closed? [_]
+    )
   (drained? [_]
     "Returns true if the queue is closed and empty.")
   (ground [_]
@@ -136,7 +141,9 @@
 (deftype ErrorQueue [error]
   IEventQueue
   (error [_ _] false)
+  (close [_] false)
   (drained? [_] false)
+  (closed? [_] false)
   (ground [_] nil)
   (messages [_] nil)
   (enqueue [_ _ _ _] false)
@@ -153,7 +160,9 @@
 (deftype DrainedQueue []
   IEventQueue
   (error [_ _] false)
+  (close [_] false)
   (drained? [_] true)
+  (closed? [_] true)
   (ground [_] nil)
   (messages [_] nil)
   (enqueue [_ _ _ _] false)
@@ -172,22 +181,43 @@
   [^AsymmetricLock lock
    ^ConcurrentLinkedQueue messages
    ^ConcurrentLinkedQueue consumers
-   closed?]
+   ^{:volatile-mutable true} closed?]
 
   IEventQueue
 
   ;;
   (error [_ error]
     (io! "Cannot modify non-transactional queues inside a transaction."
-      (l/with-exclusive-lock lock
+      (let [consumers
+            (l/with-exclusive-lock lock
+              (let [cs (.toArray consumers)]
+                (.clear consumers)
+                (.clear messages)))]
         (doseq [^MessageConsumer c consumers]
-          (r/error (.result-channel c) error))
-        (.clear consumers)
-        (.clear messages))))
+          (r/error (.result-channel c) error)))))
+
+  ;;
+  (close [_]
+    (io! "Cannot modify non-transactional queues inside a transaction."
+      (if closed?
+        false
+        (let [consumers
+              (l/with-exclusive-lock* lock
+                (set! closed? true)
+                (let [cs (.toArray consumers)]
+                  (.clear consumers)
+                  cs))]
+          (doseq [^MessageConsumer c consumers]
+            (r/error (.result-channel c) :lamina/drained!))
+          true))))
 
   ;;
   (drained? [_]
     (and closed? (identical? nil (.peek messages))))
+
+  ;;
+  (closed? [_]
+    closed?)
 
   ;;
   (ground [_]
@@ -209,7 +239,10 @@
   ;;
   (enqueue [_ msg persist? release-fn]
     (if closed?
-      false
+      (do
+        (when release-fn
+          (release-fn))
+        false)
       (io! "Cannot modify non-transactional queues inside a transaction."
         (let [msg (if (identical? nil msg) ::nil msg)
               x (l/with-exclusive-lock lock
@@ -276,27 +309,31 @@
 
           (r/success-result (if (identical? ::nil msg) nil msg))
               
-          ;; if there are no messages, add a consumer to the consumer queue
-          (let [result-channel (r/result-channel)]
-            (.add consumers (SimpleConsumer. result-channel))
-            result-channel)))))
+          (if closed?
+            (do (println "already closed") (r/error-result :lamina/drained!))
+            (let [result-channel (r/result-channel)]
+              (.add consumers (SimpleConsumer. result-channel))
+              result-channel))))))
   
   (receive [_ predicate false-value result-channel]
     (io! "Cannot modify non-transactional queues inside a transaction."
       (let [^Consumption consumption
             (l/with-exclusive-lock lock
+
               (let [msg (.peek messages)]
             
                 ;; check if there are any messages
                 (if (identical? nil msg)
               
                   ;; if there are no messages, add a consumer to the consumer queue
-                  (let [rc (or result-channel (r/result-channel))]
-                    (.add consumers (MessageConsumer.
-                                      predicate
-                                      false-value
-                                      rc))
-                    (no-consumption rc))
+                  (if closed?
+                    (error-consumption :lamina/drained! result-channel)
+                    (let [rc (or result-channel (r/result-channel))]
+                      (.add consumers (MessageConsumer.
+                                        predicate
+                                        false-value
+                                        rc))
+                      (no-consumption rc)))
               
                   (let [msg (if (identical? ::nil msg) nil msg)
                         c (consumption
@@ -345,14 +382,31 @@
     (let [consumers (dosync
                       (let [cs (ensure consumers)]
                         (ref-set consumers nil)
-                        (ref-set messages)
+                        (ref-set messages nil)
                         cs))]
       (doseq [^MessageConsumer c consumers]
         (r/error (.result-channel c) error))))
 
   ;;
+  (close [this]
+    (if @closed?
+      false
+      (let [cs (dosync
+                 (let [cs (ensure consumers)]
+                   (ref-set closed? true)
+                   (ref-set consumers nil)
+                   cs))]
+        (doseq [^MessageConsumer c cs]
+          (r/error (.result-channel c) :lamina/drained!))
+        true)))
+
+  ;;
   (drained? [_]
-    (and closed? (empty? @messages)))
+    (and @closed? (empty? @messages)))
+
+  ;;
+  (closed? [_]
+    @closed?)
 
   ;;
   (ground [_]
@@ -372,37 +426,42 @@
 
   ;;
   (enqueue [_ msg persist? release-fn]
-    (if closed?
-      false
-      (let [x (dosync
-                (let [cs (ensure consumers)]
-
-                  (if (empty? cs)
-                    
-                    ;; no consumers, just hold onto the message
-                    (when persist?
-                      (alter messages conj msg)
-                      :lamina/enqueued) 
-                    
-                    ;; handle the first consumer specially, since most of the time
-                    ;; there will only be one
-                    (let [^Consumption c (consumption (poll-queue consumers) msg)]
-                      (if (consumed? c)
-                        c
-                        
-                        ;; iterate over the remaining consumers
-                        (loop [cs (list c)]
-                          (if (empty? @consumers)
-                            (do
-                              (when persist?
-                                (alter messages conj msg))
-                              cs)
-                            (let [^Consumption c (consumption (poll-queue consumers) msg)]
-                              (if (consumed? c)
-                                (cons c cs)
-                                (recur (cons c cs)))))))))))]
+    (if @closed?
+      (do
         (when release-fn
           (release-fn))
+        false)
+      (let [x (try
+                (dosync
+                  (let [cs (ensure consumers)]
+                    
+                    (if (empty? cs)
+                      
+                      ;; no consumers, just hold onto the message
+                      (when persist?
+                        (alter messages conj msg)
+                        :lamina/enqueued) 
+                      
+                      ;; handle the first consumer specially, since most of the time
+                      ;; there will only be one
+                      (let [^Consumption c (consumption (poll-queue consumers) msg)]
+                        (if (consumed? c)
+                          c
+                          
+                          ;; iterate over the remaining consumers
+                          (loop [cs (list c)]
+                            (if (empty? @consumers)
+                              (do
+                                (when persist?
+                                  (alter messages conj msg))
+                                cs)
+                              (let [^Consumption c (consumption (poll-queue consumers) msg)]
+                                (if (consumed? c)
+                                  (cons c cs)
+                                  (recur (cons c cs)))))))))))
+                (finally
+                  (when release-fn
+                    (release-fn))))]
 
         (cond
           (identical? :lamina/enqueued x)
@@ -424,39 +483,41 @@
 
         (r/success-result (poll-queue messages))
               
-        ;; if there are no messages, add a consumer to the consumer queue
-        (let [result-channel (r/transactional-result-channel)]
-          (alter consumers conj (SimpleConsumer. result-channel))
-          result-channel))))
+        (if (ensure closed?)
+          (r/error-result :lamina/drained!)
+          (let [result-channel (r/transactional-result-channel)]
+            (alter consumers conj (SimpleConsumer. result-channel))
+            result-channel)))))
   
-  (receive [_ predicate false-value result-channel]
-    (io! "Cannot modify non-transactional queues inside a transaction."
-      (let [^Consumption consumption
-            (dosync
-              (if (empty? (ensure messages))
+  (receive [this predicate false-value result-channel]
+    (let [^Consumption consumption
+          (dosync
+            (if (empty? (ensure messages))
             
+              (if (ensure closed?)
+                (error-consumption :lamina/drained! result-channel)
                 (let [rc (or result-channel (r/transactional-result-channel))]
                   (alter consumers conj
                     (MessageConsumer.
                       predicate
                       false-value
                       rc))
-                  (no-consumption rc))
+                  (no-consumption rc)))
               
-                (let [msg (first @messages)
-                      c (consumption
-                          (MessageConsumer.
-                            predicate
-                            false-value
-                            result-channel)
-                          msg)]
-                  (when (consumed? c)
-                    (alter messages pop))
-                  c)))]
-        (let [result (dispatch-consumption consumption)]
-          (if-not (.result-channel consumption)
-            result
-            (.result-channel consumption))))))
+              (let [msg (first @messages)
+                    c (consumption
+                        (MessageConsumer.
+                          predicate
+                          false-value
+                          result-channel)
+                        msg)]
+                (when (consumed? c)
+                  (alter messages pop))
+                c)))]
+      (let [result (dispatch-consumption consumption)]
+        (if-not (.result-channel consumption)
+          result
+          (.result-channel consumption)))))
 
   ;; TODO: make this a bit more efficient
   (cancel-receive [_ result-channel]
@@ -481,6 +542,14 @@
 
 ;;;
 
+(defn persistent-queue
+  ([]
+     PersistentQueue/EMPTY)
+  ([s]
+     (if (empty? s)
+       PersistentQueue/EMPTY
+       (apply conj PersistentQueue/EMPTY s))))
+
 (defn queue
   ([]
      (queue nil))
@@ -493,38 +562,14 @@
        (ConcurrentLinkedQueue.)
        false)))
 
-(defn closed-queue
-  ([]
-     (closed-queue nil))
-  ([messages]
-     (EventQueue.
-       (l/lock)
-       (if messages
-         (ConcurrentLinkedQueue. (map #(if (identical? nil %) ::nil %) messages))
-         (ConcurrentLinkedQueue.))
-       (ConcurrentLinkedQueue.)
-       true)))
-
 (defn transactional-queue
   ([]
      (transactional-queue nil))
   ([messages]
      (TransactionalEventQueue.
-       (ref
-         (if (empty? messages)
-           PersistentQueue/EMPTY
-           (apply conj PersistentQueue/EMPTY messages)))
-       (ref PersistentQueue/EMPTY)
-       false)))
-
-(defn closed-transactional-queue
-  ([]
-     (transactional-queue nil))
-  ([messages]
-     (TransactionalEventQueue.
-       (ref (apply conj PersistentQueue/EMPTY messages))
-       (ref PersistentQueue/EMPTY)
-       true)))
+       (ref (persistent-queue messages))
+       (ref (persistent-queue))
+       (ref false))))
 
 (defn error-queue [error]
   (ErrorQueue. error))
@@ -532,17 +577,15 @@
 (defn drained-queue []
   (DrainedQueue.))
 
-(defn closed-copy [q]
-  (if q
-    (if (instance? TransactionalEventQueue q)
-      (closed-transactional-queue (ground q))
-      (closed-queue (ground q)))
-    (drained-queue)))
-
 (defn transactional-copy [q]
   (cond
     (nil? q) nil
     (drained? q) (drained-queue)
     (instance? TransactionalEventQueue q) q
-    (.closed? ^EventQueue q) (closed-transactional-queue (ground q))
-    :else (transactional-queue (ground q))))
+    :else (let [^EventQueue q q
+                msgs (.messages q)
+                consumers (.consumers q)]
+            (TransactionalEventQueue.
+              (ref (persistent-queue messages))
+              (ref (persistent-queue consumers))
+              (ref (closed? q))))))

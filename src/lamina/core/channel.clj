@@ -10,7 +10,10 @@
   (:require
     [lamina.core.node :as n]
     [lamina.core.queue :as q]
-    [lamina.core.lock :as l])
+    [lamina.core.lock :as l]
+    [lamina.core.result :as r]
+    [lamina.core.protocol :as proto]
+    [clojure.string :as str])
   (:import
     [lamina.core.lock
      AsymmetricLock]
@@ -34,6 +37,9 @@
 (deftype Channel
   [^Node receiver
    ^{:volatile-mutable true :tag Node} emitter]
+  proto/IEnqueue
+  (enqueue [_ msg]
+    (n/propagate receiver msg true))
   IChannel
   (receiver-node [_]
     receiver)
@@ -50,10 +56,26 @@
     (if-not (= ::none (n/error-value receiver ::none))
       (str "<== | ERROR: " (n/error-value receiver nil) " |")
       (if-let [q (n/queue emitter)]
-        (str "<== " (-> q q/messages vec str))
-        (str "<== []")))))
+        (str "<== "
+          (let [msgs (q/messages q)
+                msgs-str (-> msgs vec str)]
+            (str
+              (first msgs-str)
+              (subs msgs-str 1 (dec (count msgs-str)))
+              (when-not (n/closed? receiver)
+                (str
+                  (when-not (empty? msgs) " ")
+                 "\u2026"))
+              (last msgs-str))))
+        (str "<== "
+          (if-not (n/closed? receiver)
+            "[ \u2026 ]"
+            "[ ]"))))))
 
 (defrecord SplicedChannel [^Channel receiver ^Channel emitter]
+  proto/IEnqueue
+  (enqueue [_ msg]
+    (n/propagate (receiver-node receiver) msg true))
   IChannel
   (receiver-node [_]
     (receiver-node receiver))
@@ -93,16 +115,18 @@
       (.receiver ^SplicedChannel receiver)
       receiver)))
 
+
+
 ;;;
 
 (defn enqueue
   "Enqueues the message or messages into the channel."
   ([channel message]
-     (n/propagate (receiver-node channel) message true))
+     (proto/enqueue channel message))
   ([channel message & messages]
-     (n/propagate (receiver-node channel) message true)
+     (proto/enqueue channel message)
      (doseq [m messages]
-       (n/propagate (receiver-node channel) m true))))
+       (proto/enqueue channel m))))
 
 (defn receive
   "Consumes a single message from the channel, which will be passed to 'callback.'  Only
@@ -161,13 +185,18 @@
   (n/close (receiver-node channel)))
 
 (defn error [channel err]
-  (n/error (receiver-node channel) err))
+  (if (r/result-channel? channel)
+    (r/error channel err)
+    (n/error (receiver-node channel) err)))
 
 (defn closed? [channel]
   (n/closed? (receiver-node channel)))
 
 (defn drained? [channel]
   (n/drained? (emitter-node channel)))
+
+(defn transactional? [channel]
+  (n/transactional? (receiver-node channel)))
 
 (defn on-closed [channel callback]
   (n/on-closed (receiver-node channel) callback))
@@ -177,14 +206,6 @@
 
 (defn on-error [channel callback]
   (n/on-error (emitter-node channel) callback))
-
-;;;
-
-(defn channel-seq
-  ([channel]
-     (channel-seq channel 0))
-  ([channel timeout]
-     (n/ground (emitter-node channel))))
 
 ;;;
 

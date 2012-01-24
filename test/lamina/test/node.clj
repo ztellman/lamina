@@ -9,10 +9,10 @@
 (ns lamina.test.node
   (:use
     [clojure test]
+    [lamina.test utils]
     [lamina.core node walk])
   (:require
-    [lamina.core.queue :as q]
-    [criterium.core :as c]))
+    [lamina.core.queue :as q]))
 
 ;;;
 
@@ -149,7 +149,7 @@
     (is (= [nil 1] @v))))
 
 (deftest test-long-chain-propagation
-  (let [cnt 1e4
+  (let [cnt 1e1
         n (node-chain (dec cnt) inc inc)]
     (is (= (int cnt) (enqueue n 0)))
     (-> n node-seq butlast last close)
@@ -243,13 +243,6 @@
     (wait-for-error b ::error)))
 
 ;;;
-
-(defmacro bench [name & body]
-  `(do
-     (println "\n-----\n lamina.core.node -" ~name "\n-----\n")
-     (c/quick-bench
-       (do ~@body)
-       :reduce-with #(and %1 %2))))
 
 (deftest ^:benchmark benchmark-node
   (bench "create node"

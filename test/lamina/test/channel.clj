@@ -9,10 +9,11 @@
 (ns lamina.test.channel
   (:use
     [clojure test]
-    [lamina.core channel])
+    [lamina.test utils]
+    [lamina.core channel]
+    [lamina.core.operators :only (channel-seq)])
   (:require
-    [lamina.core.pipeline :as p]
-    [criterium.core :as c]))
+    [lamina.core.pipeline :as p]))
 
 ;;;
 
@@ -53,13 +54,6 @@
     (is (= [2] (channel-seq d)))))
 
 ;;;
-
-(defmacro bench [name & body]
-  `(do
-     (println "\n-----\n lamina.core.channel -" ~name "\n-----\n")
-     (c/quick-bench
-       (do ~@body)
-       :reduce-with #(and %1 %2))))
 
 (deftest ^:benchmark benchmark-channels
   (bench "create channel"

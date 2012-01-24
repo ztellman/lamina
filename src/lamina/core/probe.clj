@@ -9,7 +9,8 @@
 (ns lamina.core.probe
   (:require
     [lamina.core.channel :as c]
-    [lamina.core.node :as n])
+    [lamina.core.node :as n]
+    [lamina.core.protocol :as proto])
   (:import
     [java.io
      Writer]
@@ -19,13 +20,16 @@
      AtomicBoolean]))
 
 (defprotocol IProbe
-  (enabled? [_]))
+  (probe-enabled? [_]))
 
 (deftype ProbeChannel
   [^AtomicBoolean enabled?
    channel]
+  proto/IEnqueue
+  (enqueue [_ msg]
+    (n/propagate (c/receiver-node channel) msg true))
   IProbe
-  (enabled? [_]
+  (probe-enabled? [_]
     (.get enabled?))
   c/IChannel
   (receiver-node [_]
@@ -58,8 +62,11 @@
   [^AtomicBoolean enabled?
    upstream
    downstream]
+  proto/IEnqueue
+  (enqueue [_ msg]
+    (n/propagate (c/receiver-node upstream) msg true))
   IProbe
-  (enabled? [_]
+  (probe-enabled? [_]
     (.get enabled?))
   c/IChannel
   (receiver-node [_]

@@ -9,16 +9,8 @@
 (ns lamina.test.lock
   (:use
     [lamina.core lock]
-    [clojure test])
-  (:require
-    [criterium.core :as c]))
-
-(defmacro bench [name & body]
-  `(do
-     (println "\n-----\n lamina.core.lock -" ~name "\n-----\n")
-     (c/quick-bench
-       (do ~@body)
-       :reduce-with #(and %1 %2))))
+    [clojure test]
+    [lamina.test utils]))
 
 (deftest test-acquire-all
   (let [num-locks 10

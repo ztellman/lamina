@@ -68,7 +68,9 @@
 (defn edge-descriptor [{:keys [src dst description]}]
   (let [hide-desc? (#{"join" "split" "fork"} description)
         dotted? (= "fork" description)]
-    {:src src
+    {:src (if (and (n/node? src) (-> src node-data :consumed?))
+            [:queue src]
+            src)
      :dst dst
      :label (when-not hide-desc? description)
      :style (when dotted? :dotted)}))
@@ -117,8 +119,7 @@
         (r/error r ::nothing-received))
 
       ;; release the nodes so other messages can pass through
-      (doseq [n readable-nodes]
-        (l/release-exclusive n))
+      (l/release-all true readable-nodes)
 
       ;; merge the read messages with the last message in the queue of the leaf/queue nodes
       (->> results

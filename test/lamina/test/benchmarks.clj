@@ -9,16 +9,8 @@
 (ns lamina.test.benchmarks
   (:use
     [clojure test]
-    [lamina core])
-  (:require
-    [criterium.core :as c]))
-
-(defmacro bench [name & body]
-  `(do
-     (println "\n-----\n" ~name "\n-----\n")
-     (c/quick-bench
-       (do ~@body)
-       :reduce-with #(and %1 %2))))
+    [lamina core]
+    [lamina.test utils]))
 
 (defn map-seq [ch f]
   (iterate #(map* f %) ch))
@@ -44,4 +36,8 @@
       (enqueue ch 1)))
   (let [ch (probe-channel :abc)]
     (bench "inactive probe channel"
-      (enqueue ch :msg))))
+      (enqueue ch :msg)))
+  (let [ch (probe-channel :abc)]
+    (bench "probe check"
+      (when (probe-enabled? ch)
+        :hello))))

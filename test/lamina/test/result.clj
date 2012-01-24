@@ -8,10 +8,9 @@
 
 (ns lamina.test.result
   (:use
-    [lamina.core result]
-    [clojure test])
-  (:require
-    [criterium.core :as c]))
+    [lamina.core result threads]
+    [clojure test]
+    [lamina.test utils]))
 
 (defmacro defer [& body]
   `(future
@@ -202,60 +201,66 @@
 
 ;;;
 
-(defmacro bench [type name & body]
-  `(do
-     (println "\n-----\n lamina.core.result -" ~type "-" ~name "\n-----\n")
-     (c/quick-bench
-       (do ~@body)
-       :reduce-with #(and %1 %2))))
+(defn stress-test-result-channel [r-fn]
+  (dotimes* [i 1e4]
+    (let [r (r-fn)]
+      (delay-invoke 0.1 (fn [] (success r i)))
+      (Thread/sleep 1)
+      (is (= i @r)))
+    (let [r (r-fn)]
+      (delay-invoke 0.1 (fn [] (error r i)))
+      (Thread/sleep 1)
+      (is (thrown? Exception @r)))))
+
+;;;
 
 (defn benchmark-result-channel [type r-fn]
-  (bench type "create result-channel"
+  (bench (str type "create result-channel")
     (r-fn))
   (bench type "subscribe and success"
     (let [r (r-fn)]
       (subscribe r (result-callback (fn [_]) nil))
       (success r 1)))
-  (bench type "subscribe, claim, and success!"
+  (bench (str type "subscribe, claim, and success!")
     (let [r (r-fn)]
       (subscribe r (result-callback (fn [_]) nil))
       (claim r)
       (success! r 1)))
-  (bench type "subscribe, cancel, subscribe and success"
+  (bench (str type "subscribe, cancel, subscribe and success")
     (let [r (r-fn)]
       (let [callback (result-callback (fn [_]) nil)]
         (subscribe r callback)
         (cancel-callback r callback))
       (subscribe r (result-callback (fn [_]) nil))
       (success r 1)))
-  (bench type "multi-subscribe and success"
+  (bench (str type "multi-subscribe and success")
     (let [r (r-fn)]
       (subscribe r (result-callback (fn [_]) nil))
       (subscribe r (result-callback (fn [_]) nil))
       (success r 1)))
-  (bench type "multi-subscribe, cancel, and success"
+  (bench (str type "multi-subscribe, cancel, and success")
     (let [r (r-fn)]
       (subscribe r (result-callback (fn [_]) nil))
       (let [callback (result-callback (fn [_]) nil)]
         (subscribe r callback)
         (cancel-callback r callback))
       (success r 1)))
-  (bench type "success and subscribe"
+  (bench (str type "success and subscribe")
     (let [r (r-fn)]
       (success r 1)
       (subscribe r (result-callback (fn [_]) nil))))
-  (bench type "claim, success!, and subscribe"
+  (bench (str type "claim, success!, and subscribe")
     (let [r (r-fn)]
       (claim r)
       (success! r 1)
       (subscribe r (result-callback (fn [_]) nil))))
-  (bench type "success and deref"
+  (bench (str type "success and deref")
     (let [r (r-fn)]
       (success r 1)
       @r)))
 
 (deftest ^:benchmark test-basic-result-channel
-  (benchmark-result-channel "basic result" result-channel))
+  (benchmark-result-channel "basic result - " result-channel))
 
 (deftest ^:benchmark test-transactional-result-channel
-  (benchmark-result-channel "transactional result" transactional-result-channel))
+  (benchmark-result-channel "transactional result - " transactional-result-channel))

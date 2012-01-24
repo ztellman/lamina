@@ -9,17 +9,20 @@
 (ns lamina.test.pipeline
   (:use
     [lamina.core pipeline]
-    [clojure test])
+    [clojure test]
+    [lamina.test utils])
   (:require
     [lamina.core.node :as n]
-    [lamina.core.result :as r]
-    [criterium.core :as c]))
+    [lamina.core.result :as r]))
 
 (defn defer [f]
   (fn [x]
     (let [r (r/result-channel)]
       (future (Thread/sleep 10) (r/success r (f x)))
       r)))
+
+(defn boom [_]
+  (throw (Exception. "boom")))
 
 (defmacro repeated-pipeline [n f]
   `(pipeline ~@(repeat n f)))
@@ -50,14 +53,15 @@
   (is (= 10 @(pipe-a 0)))
   (is (= 10 @(pipe-b 0))))
 
-;;;
+(deftest test-error-handler
+  (is (thrown? Exception @(run-pipeline nil
+                            {:error-handler (fn [_])}
+                            boom)))
+  (is (= 1 @(run-pipeline nil
+              {:error-handler (fn [_] (complete 1))}
+              boom))))
 
-(defmacro bench [name & body]
-  `(do
-     (println "\n-----\n lamina.core.pipeline -" ~name "\n-----\n")
-     (c/quick-bench
-       (do ~@body)
-       :reduce-with #(and %1 %2))))
+;;;
 
 (deftest ^:benchmark benchmark-pipelines
   (let [f #(-> % inc inc inc inc inc)]

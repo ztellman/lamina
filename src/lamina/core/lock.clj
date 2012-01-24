@@ -7,6 +7,8 @@
 ;;   You must not remove this notice, or any other, from this software.
 
 (ns lamina.core.lock
+  (:require
+    [clojure.tools.logging :as log])
   (:import
     [java.util.concurrent Semaphore]
     [java.util.concurrent.locks ReentrantLock ReentrantReadWriteLock]))
@@ -25,12 +27,15 @@
 
 ;;;
 
+(defn info [action lock]
+  #_(log/info action (hash lock) (.getName (Thread/currentThread))))
+
 (deftype AsymmetricLock [^ReentrantReadWriteLock lock]
   ILock
-  (acquire [_] (-> lock .readLock .lock))
-  (release [_] (-> lock .readLock .unlock))
-  (acquire-exclusive [_] (-> lock .writeLock .lock))
-  (release-exclusive [_] (-> lock .writeLock .unlock))
+  (acquire [this] (-> lock .readLock .lock) (info :acquire this))
+  (release [this]  (-> lock .readLock .unlock) (info :release this))
+  (acquire-exclusive [this] (-> lock .writeLock .lock) (info :acquire-exclusive this))
+  (release-exclusive [this] (-> lock .writeLock .unlock) (info :release-exclusive this))
   (try-acquire [_] (-> lock .readLock .tryLock))
   (try-acquire-exclusive [_] (-> lock .writeLock .tryLock)))
 

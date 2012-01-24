@@ -6,17 +6,7 @@
 ;;   the terms of this license.
 ;;   You must not remove this notice, or any other, from this software.
 
-(ns lamina.test.threads
-  (:use
-    [clojure test]
-    [lamina.test utils])
-  (:require
-    [lamina.core.threads :as t]))
+(ns lamina.core.protocol)
 
-(deftest ^:benchmark benchmark-threads
-  (bench "scheduled-executor"
-    (t/delay-invoke 100 (fn [])))
-  (bench "cleanup-executor"
-    (t/enqueue-cleanup (fn []))))
-
-
+(defprotocol IEnqueue
+  (enqueue [_ msg]))
