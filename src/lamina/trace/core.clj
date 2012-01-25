@@ -8,8 +8,7 @@
 
 (ns lamina.trace.core
   (:use
-    [lamina.core channel seq]
-    [clojure.core.incubator :only (dissoc-in)])
+    [lamina.core channel seq])
   (:require
     [clojure.string :as str]
     [lamina.core.queue :as q]
@@ -29,7 +28,7 @@
 
 (defn logger [level]
   #(if (instance? Throwable %)
-     (log/log level %)
+     (log/log level % "Error.")
      (log/log level (str %))))
 
 (defmacro def-log-channel [channel-name level]

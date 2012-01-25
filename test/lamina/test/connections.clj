@@ -18,9 +18,10 @@
 ;;;
 
 (def probes
-  {:connection:lost log-info
-   :connection:opened log-info
-   :connection:failed log-info})
+  {;;:connection:lost log-info
+   ;;:connection:opened log-info
+   ;;:connection:failed log-info
+   :errors (sink (fn [_]))})
 
 (defn simple-echo-server []
   (let [[a b] (channel-pair)]
@@ -136,7 +137,7 @@
   (with-server alternating-delay-echo-server
     (when initially-disconnected
       (stop-server))
-    (let [f (client-fn #(connect) {:probes (comment probes) :description "dropped-and-restored"})]
+    (let [f (client-fn #(connect) {:probes probes :description "dropped-and-restored"})]
       (when-not initially-disconnected
         (stop-server))
       (try
@@ -150,7 +151,7 @@
 (defn persistent-connection-stress-test [client-fn]
   (with-server simple-echo-server
     (let [continue (atom true)
-	  f (client-fn #(connect) {:probes (comment probes) :description "stress-test"})]
+	  f (client-fn #(connect) {:probes probes :description "stress-test"})]
       ;; periodically drop
       (future
         (loop []
@@ -197,7 +198,7 @@
 (defn errors-propagate [client-fn]
   (with-server error-server
     (start-server)
-    (let [f (client-fn #(connect) {:description "error-server"})]
+    (let [f (client-fn #(connect) {:probes probes, :description "error-server"})]
       (is (thrown? RuntimeException @(f "fail?" 100)))
       (is (thrown? RuntimeException @(f "fail?" 100))))))
 
@@ -222,19 +223,19 @@
        ~@body)))
 
 (deftest test-server-error-handler
-  (with-handler (fn [_ _] (throw exception)) nil
+  (with-handler (fn [_ _] (throw exception)) {:probes probes}
     (enqueue ch 1 2)
     (is (= [exception exception] (channel-seq ch))))
 
-  (with-handler (fn [_ _] (run-pipeline nil :error-handler (fn [_]) (fn [_] (throw exception)))) nil
+  (with-handler (fn [_ _] (run-pipeline nil :error-handler (fn [_]) (fn [_] (throw exception)))) {:probes probes}
     (enqueue ch 1 2)
     (is (= [exception exception] (channel-seq ch))))
 
-  (with-handler (fn [_ _] (throw exception)) {:include-request true}
+  (with-handler (fn [_ _] (throw exception)) {:include-request true, :probes probes}
     (enqueue ch 1 2)
     (is (= [{:request 1, :response exception} {:request 2, :response exception}] (channel-seq ch))))
   
-  (with-handler (fn [_ _] (run-pipeline nil :error-handler (fn [_]) (fn [_] (throw exception)))) {:include-request true}
+  (with-handler (fn [_ _] (run-pipeline nil :error-handler (fn [_]) (fn [_] (throw exception)))) {:include-request true, :probes probes}
     (enqueue ch 1 2)
     (is (= [{:request 1, :response exception} {:request 2, :response exception}] (channel-seq ch)))))
 

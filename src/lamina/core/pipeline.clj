@@ -9,7 +9,6 @@
 (ns ^{:skip-wiki true}
   lamina.core.pipeline
   (:use
-    [clojure.core.incubator :only (defmacro-)]
     [lamina.core.channel]
     [clojure.pprint])
   (:require
@@ -277,7 +276,7 @@
 				 (when current-stack
 				   (.printStackTrace current-stack))
 				 (when (instance? Throwable ex)
-				   (log/warn ex))))))
+				   (log/warn ex "Unhandled exception in pipeline."))))))
 			val))]
     (when-not (every? ifn? stages)
       (throw (Exception. "Every stage in a pipeline must be a function.")))

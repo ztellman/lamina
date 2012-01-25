@@ -9,8 +9,7 @@
 (ns ^{:skip-wiki true}
   lamina.core.seq
   (:use
-    [lamina.core channel pipeline utils]
-    [clojure.algo.generic.functor])
+    [lamina.core channel pipeline utils])
   (:require
     [lamina.core.observable :as o]
     [lamina.core.queue :as q])

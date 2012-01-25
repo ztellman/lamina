@@ -12,9 +12,7 @@
     [lamina.core.channel :only (listen)])
   (:use
     [clojure.test]
-    [clojure.core.incubator]
-    [clojure.walk]
-    [clojure.math.combinatorics]))
+    [clojure.walk]))
 
 ;;
 
