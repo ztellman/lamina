@@ -61,7 +61,9 @@
     "Makes this node and all downstream nodes transactional.")
   (propagate [_ msg transform?]
     "Sends a message downstream through the node. If 'transform?' is false, the node
-     should treat the message as pre-transformed."))
+     should treat the message as pre-transformed.")
+  (close [_])
+  (error [_ err]))
 
 (defn downstream-nodes [n]
   (map #(.node ^Edge %) (downstream n)))
@@ -75,12 +77,6 @@
     "Straight call to the queue which cannot be cancelled. Intended for (read-channel ...).")
   (receive [_ name callback]
     "Cancellable call to the queue. Intended for (receive ...).")
-
-  ;;
-  (close [_]
-    "Closes the node. This is a permanent state change.")
-  (error [_ error]
-    "Puts the node into an error mode. This is a permanent state change.")
 
   ;;
   (link [_ name ^Edge edge execute-within-lock]
@@ -321,9 +317,11 @@
                     
                     ;; send message to all nodes
                     (try
-                      (doseq [^Edge e (downstream this)]
-                        (propagate (.node e) msg true))
-                      :lamina/branch
+                      (let [s (downstream this)
+                            result (propagate (.node ^Edge (first s)) msg true)]
+                        (doseq [^Edge e (rest s)]
+                          (propagate (.node e) msg true))
+                        result)
                       (catch Exception e
                         (error this e)
                         :lamina/error!)))))))))))
@@ -783,6 +781,8 @@
   IDescribed
   (description [_] description)
   IPropagator
+  (close [_])
+  (error [_ _])
   (transactional [_] false)
   (downstream [_] nil)
   (propagate [_ msg _]
@@ -801,6 +801,12 @@
   IDescribed
   (description [_] description)
   IPropagator
+  (close [_]
+    (doseq [^Edge e downstream]
+      (close (.node e))))
+  (error [_ err]
+    (doseq [^Edge e downstream]
+      (error (.node e) err)))
   (downstream [_] downstream)
   (propagate [_ msg _] (callback msg))
   (transactional [this]
@@ -814,6 +820,8 @@
   IDescribed
   (description [_] description)
   IPropagator
+  (close [_])
+  (error [_ err])
   (downstream [_] nil)
   (propagate [_ _ _] nil)
   (transactional [_] nil))
@@ -887,9 +895,6 @@
            (on-state-changed src nil (join-callback (.node dst)))
            true)
          (cond
-           (not (node? (.node dst)))
-           false
-           
            (drained? src)
            (do
              (close (.node dst))
@@ -906,8 +911,7 @@
 (defn bridge-join [src edge-description node-description callback dsts]
   (let [downstream (CopyOnWriteArrayList. ^objects (to-array (map #(edge nil %) dsts)))
         n (BridgeNode. node-description callback downstream)
-        upstream (edge edge-description n)
-        dsts (filter node? dsts)]
+        upstream (edge edge-description n)]
     (if (link src n upstream nil)
       (do
         (doseq [dst dsts]

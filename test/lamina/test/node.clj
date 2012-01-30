@@ -104,7 +104,7 @@
             [identity
              [inc [(pred even?) [callback-a]]]
              [dec [(pred even?) [callback-b]]]])]
-    (is (= :lamina/branch (enqueue n 1)))
+    (is (= true (enqueue n 1)))
     (enqueue n 2 3)
     (is (= @a [2 4]))
     (is (= @b [0 2])))

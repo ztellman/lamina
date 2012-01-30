@@ -154,7 +154,7 @@
                           (map (fn [_] (future (capture-success r))))
                           (map deref)
                           doall)]
-    (is (= :lamina/branch (success r 1)))
+    (is (= :lamina/subscribed (success r 1)))
     (is (= 1 @r))
     (is (= (repeat 5 1) (map deref callback-values))))
 
@@ -165,7 +165,7 @@
                           (map deref)
                           doall)
         ex (Exception.)]
-    (is (= :lamina/branch (error r ex)))
+    (is (= :lamina/subscribed (error r ex)))
     (is (thrown? Exception @r))
     (is (= (repeat 5 ex) (map deref callback-values))))
 
@@ -180,7 +180,7 @@
         r (r-fn)]
     (is (= :lamina/subscribed (subscribe r callback)))
     (is (= :lamina/subscribed (subscribe r callback)))
-    (is (= :lamina/branch (success r nil))))
+    (is (= :foo (success r nil))))
 
   ;; cancel-callback ::one to ::zero
   (let [callback (result-callback (constantly :foo) nil)
@@ -213,7 +213,7 @@
     (is (= :lamina/subscribed (subscribe r b)))
     (is (= :lamina/subscribed (subscribe r c)))
     (is (= true (cancel-callback r a)))
-    (is (= :lamina/branch (success r nil)))
+    (is (= 1 (success r nil)))
     (is (= 2 @cnt))))
 
 (deftest test-basic-result-channel

@@ -183,7 +183,12 @@
                  (log/error e# "Error in result callback.")
                  :lamina/error!))
 
-             (let [value# (.value s#)]
+             (let [value# (.value s#)
+                   result# (try
+                             ((~f ^ResultCallback (.poll ~subscribers)) value#)
+                             (catch Exception e#
+                               (log/error e# "Error in result callback.")
+                               :lamina/error!))]
                (loop []
                  (when-let [^ResultCallback c# (.poll ~subscribers)]
                    (try
@@ -191,7 +196,7 @@
                      (catch Exception e#
                        (log/error e# "Error in result callback.")))
                    (recur)))
-               :lamina/branch)))))))
+               result#)))))))
 
 (deftype ResultChannel
   [^Lock lock

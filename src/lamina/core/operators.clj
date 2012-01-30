@@ -173,6 +173,12 @@
   ([f val ch]
      (reductions- f val ch nil)))
 
+(defn reduce*
+  ([f ch]
+     (last* (reductions* f ch)))
+  ([f val ch]
+     (last* (reductions* f val ch))))
+
 ;;;
 
 (defn lazy-channel-seq-
