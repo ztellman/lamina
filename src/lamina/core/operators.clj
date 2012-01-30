@@ -7,9 +7,10 @@
 ;;   You must not remove this notice, or any other, from this software.
 
 (ns lamina.core.operators
+  (:use
+    [lamina.core channel])
   (:require
     [lamina.core.node :as n]
-    [lamina.core.channel :as c]
     [lamina.core.lock :as l]
     [lamina.core.result :as r]
     [lamina.core.pipeline :as p]
@@ -27,6 +28,8 @@
 
 ;; TODO: think about race conditions with closing the destination channel while a message is en-route
 ;; hand-over-hand locking in the node when ::consumed?
+
+(deftype FinalValue [val])
 
 (defmacro consume
   "Consumes messages one-by-one from the source channel, per the read-channel* style parameters.
@@ -49,8 +52,10 @@
                 channel
                 reducer
                 initial-value
-                message-transform]}]
-  (let [dst-node-sym (gensym "node")
+                message-transform] :as m}]
+  (let [channel? (not (and (contains? m :channel) (nil? channel)))
+        message-predicate? (or channel? message-predicate)
+        dst-node-sym (gensym "node")
         message-predicate-sym (gensym "message-predicate")
         while-predicate-sym (gensym "while-predicate")
         message-transform-sym (gensym "message-transform-sym")
@@ -61,79 +66,100 @@
         val-sym (gensym "val")
         msg-sym (gensym "msg")]
     `(let [~src-channel-sym ~ch
-           dst# ~(or channel `(c/channel* :transactional? (c/transactional? ~src-channel-sym)))
-           ~dst-node-sym (c/receiver-node dst#) 
+           dst# ~(when channel?
+                   (or channel `(mimic ~src-channel-sym)))
+           ~dst-node-sym (when dst# (receiver-node dst#)) 
            initial-val# ~initial-value
            ~message-predicate-sym ~message-predicate
            ~message-predicate-sym ~(if message-predicate
                                      `(fn [~@(when reducer `(val-sym)) x#]
                                         (and
-                                          (not (n/closed? ~dst-node-sym))
+                                          (or
+                                            (nil? ~dst-node-sym)
+                                            (not (n/closed? ~dst-node-sym)))
                                           (~message-predicate-sym
                                             ~@(when reducer `(val-sym))
                                             x#)))
                                      `(fn [~'& _#]
-                                        (not (n/closed? ~dst-node-sym))))
+                                        (or
+                                          (nil? ~dst-node-sym)
+                                          (not (n/closed? ~dst-node-sym)))))
            ~while-predicate-sym ~while-predicate
            ~message-transform-sym ~message-transform
            ~reducer-sym ~reducer
            ~timeout-sym ~timeout]
        (if-let [unconsume# (n/consume
-                             (c/emitter-node ~src-channel-sym)
+                             (emitter-node ~src-channel-sym)
                              (n/edge
                                ~(or description "consume")
-                               (c/receiver-node dst#)))]
+                               (if dst#
+                                 (receiver-node dst#)
+                                 (n/terminal-node nil))))]
 
-         (do
-           (p/run-pipeline initial-val#
-             {:error-handler (fn [ex#]
-                               (log/error ex# "error in consume")
-                               (c/error dst# ex#))}
-             (fn [~val-sym]
-               (if-not ~(if while-predicate
-                          `(~while-predicate-sym ~@(when reducer `(~val-sym)))
-                          true)
-                 ::close
-                 (p/run-pipeline
-                   (c/read-channel* ~src-channel-sym
-                     :on-false ::close
-                     :on-timeout ::timeout
-                     :on-drained ::close
-                     ~@(when timeout `(:timeout (~timeout-sym)))
-                     :predicate ~(if reducer
+         (let [cleanup#
+               (fn [val#]
+                 (unconsume#)
+                 (when dst# (close dst#))
+                 (FinalValue. val#))
+
+               result#
+               (p/run-pipeline initial-val#
+                 {:error-handler (fn [ex#]
+                                   (log/error ex# "error in consume")
+                                   (if dst#
+                                     (error dst# ex#)
+                                     (p/redirect (p/pipeline (constantly (r/error-result ex#))) nil)))}
+                 (fn [~val-sym]
+                   (if-not ~(if while-predicate
+                              `(~while-predicate-sym ~@(when reducer `(~val-sym)))
+                              true)
+                     (cleanup# ~val-sym)
+                     (p/run-pipeline
+                       (read-channel* ~src-channel-sym
+                         :on-false ::close
+                         :on-timeout ::close
+                         :on-drained ::close
+                         ~@(when timeout
+                             `(:timeout (~timeout-sym)))
+                         ~@(when message-predicate?
+                             `(:predicate
+                                ~(if reducer
                                    `(fn [msg#]
                                       (~message-predicate-sym ~@(when reducer `(~val-sym)) msg#))
-                                   message-predicate-sym))
-                   (fn [~msg-sym]
-                     (if (identical? ~msg-sym ::close)
-                       ::close
-                       (let [~val-sym ~(when reducer `(~reducer-sym ~val-sym ~msg-sym))]
-                         (c/enqueue dst#
-                           ~(if message-transform
-                              `(~message-transform-sym ~@(when reducer `(~val-sym)) ~msg-sym)
-                              msg-sym))
-                         ~val-sym))))))
-             (fn [val#]
-               (if (identical? val# ::close)
-                 (do
-                   (unconsume#)
-                   (c/close dst#))
-                 (p/restart val#))))
-           dst#)
+                                   message-predicate-sym))))
+                       (fn [~msg-sym]
+                         (if (identical? ::close ~msg-sym)
+                           (cleanup# ~val-sym)
+                           (let [~val-sym ~(when reducer `(~reducer-sym ~val-sym ~msg-sym))]
+                             (when dst# 
+                               (enqueue dst#
+                                 ~(if message-transform
+                                    `(~message-transform-sym ~@(when reducer `(~val-sym)) ~msg-sym)
+                                    msg-sym)))
+                             ~val-sym))))))
+                 (fn [val#]
+                   (if (instance? FinalValue val#)
+                     (.val ^FinalValue val#)
+                     (p/restart val#))))]
+           (if dst#
+             dst#
+             result#))
 
          ;; something's already attached to the source
-         (do
-           (c/error dst# (IllegalStateException. "Can't consume, channel already in use."))
-           dst#)))))
+         (if dst#
+           (do
+             (error dst# :lamina/already-consumed!)
+             dst#)
+           (r/error-result :lamina/already-consumed!))))))
 
 ;;;
 
 (defn last* [ch]
-  (let [val (atom nil)]
-    (c/receive-all ch #(reset! val %))
-    (p/run-pipeline ch
-      c/drained-result
-      (fn [_] @val))))
+  (consume ch
+    :channel nil
+    :initial-value nil
+    :reducer (fn [_ x] x)
+    :description "last*"))
 
 (defn take* [n ch]
   (consume ch
@@ -147,37 +173,41 @@
     :description "take-while*"
     :message-predicate f))
 
-(defn reductions- [f val ch ch*]
-  (let [ch* (or
-              ch*
-              (c/channel*
-               :transactional? (c/transactional? ch)
-               :messages [val]))]
-    (consume ch
-      :channel ch*
-      :description "reductions*"
-      :initial-value val
-      :reducer f
-      :message-transform (fn [v _] v))))
-
 (defn reductions*
   ([f ch]
-     (let [ch* (c/channel*
-                 :transactional? (c/transactional? ch))]
-       (p/run-pipeline ch
-         c/read-channel
-         #(do
-            (c/enqueue ch* %)
-            (reductions- f % ch ch*)))
-       ch*))
+     (let [ch* (mimic ch)]
+       (consume ch
+         :channel ch*
+         :description "reductions*"
+         :initial-value (p/run-pipeline (read-channel ch)
+                          #(do (enqueue ch* %) %))
+         :reducer f
+         :message-transform (fn [v _] v))))
   ([f val ch]
-     (reductions- f val ch nil)))
+     (consume ch
+       :channel (let [ch* (mimic ch)]
+                  (enqueue ch* val)
+                  ch*)
+       :description "reductions*"
+       :initial-value val
+       :reducer f
+       :message-transform (fn [v _] v))))
 
 (defn reduce*
   ([f ch]
-     (last* (reductions* f ch)))
+     (consume ch
+       :channel nil
+       :description "reduce*"
+       :initial-value (read-channel ch)
+       :reducer f
+       :message-transform (fn [v _] v)))
   ([f val ch]
-     (last* (reductions* f val ch))))
+     (consume ch
+       :channel nil
+       :description "reduce*"
+       :initial-value val
+       :reducer f
+       :message-transform (fn [v _] v))))
 
 ;;;
 
@@ -199,20 +229,20 @@
                           (constantly timeout))
                         timeout)
            e (n/edge "lazy-channel-seq" (n/terminal-node nil))]
-       (if-let [unconsume (n/consume (c/emitter-node ch) e)]
+       (if-let [unconsume (n/consume (emitter-node ch) e)]
          (lazy-channel-seq-
            (if timeout-fn
-             #(c/read-channel* ch :timeout (timeout-fn) :on-timeout ::end :on-drained ::end)
-             #(c/read-channel* ch :on-drained ::end))
+             #(read-channel* ch :timeout (timeout-fn) :on-timeout ::end :on-drained ::end)
+             #(read-channel* ch :on-drained ::end))
            unconsume)
          (throw (IllegalStateException. "Can't consume, channel already in use."))))))
 
 (defn channel-seq
   ([ch]
-     (n/ground (c/emitter-node ch)))
+     (n/ground (emitter-node ch)))
   ([ch timeout]
      (let [start (System/currentTimeMillis)
-           s (n/ground (c/emitter-node ch))]
+           s (n/ground (emitter-node ch))]
        (concat s
          (lazy-channel-seq ch
            #(max 0 (- timeout (- (System/currentTimeMillis) start))))))))

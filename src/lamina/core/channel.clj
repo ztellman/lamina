@@ -96,6 +96,10 @@
   [& messages]
   (channel* :messages (seq messages)))
 
+(defn mimic [channel]
+  (let [n (n/mimic (receiver-node channel))]
+    (Channel. n n)))
+
 (defn closed-channel
   "Returns a closed channel containing the given messages."
   [& messages]
@@ -115,7 +119,10 @@
       (.receiver ^SplicedChannel receiver)
       receiver)))
 
-
+(defn channel? [x]
+  (or
+    (instance? Channel x)
+    (instance? SplicedChannel x)))
 
 ;;;
 

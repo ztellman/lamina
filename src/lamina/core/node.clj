@@ -766,6 +766,12 @@
 (defn transactional? [node]
   (.transactional? (state node)))
 
+(defn permanent? [node]
+  (.permanent? (state node)))
+
+(defn probe? [node]
+  (.probe? ^Node node))
+
 (defn error-value [node default-value]
   (let [s (state node)]
     (if (identical? ::error (.mode s))
@@ -977,6 +983,12 @@
        (Collections/synchronizedMap (HashMap.))
        (CopyOnWriteArrayList.)
        (CopyOnWriteArrayList.))))
+
+(defn mimic [node]
+  (node*
+    :transactional? (transactional? node)
+    :permanent? (permanent? node)
+    :probe? (probe? node)))
 
 (defn node
   ([operator]

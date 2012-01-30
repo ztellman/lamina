@@ -31,13 +31,18 @@
 
 (defn result [f ch]
   (let [ch* (f ch)
-        result (doall (lazy-channel-seq ch* 5000))
-        ]
-    (is (drained? ch*))
+        result (if (channel? ch*)
+                 (doall (lazy-channel-seq ch* 5000))
+                 @ch*)]
+    (when (channel? ch*)
+      (is (drained? ch*)))
     result))
 
 (defn assert-equivalence [f f* input]
-  (let [expected (seq (f input))
+  (let [expected (f input)
+        expected (if (sequential? expected)
+                   (seq expected)
+                   expected)
         trans-f* #(dosync (f* %))]
 
     ;; pre-populated non-transactional channel
@@ -104,6 +109,29 @@
     conj [] [:a :b :c]
     ))
 
+(deftest test-last*
+  (are [s]
+    (assert-equivalence #(last %) #(last* %) s)
+
+    (range 3)
+    (reverse (range 10))))
+
+(deftest test-reduce*
+  (are [f val s]
+    (assert-equivalence
+      (if val
+        #(reduce f val %)
+        #(reduce f %))
+      (if val
+        #(reduce* f val %)
+        #(reduce* f %))
+      s)
+
+    + nil (range 10)
+    + 1   (range 10)
+    conj [] [:a :b :c]
+    ))
+
 ;;;
 
 (deftest ^:stress stress-test-lazy-channel-seq
@@ -132,10 +160,13 @@
           (fn [_]))))
     (let [ch (channel* :transactional? transactional?)]
       (receive-all
-        (dosync* transactional?
-          (take-while* (constantly true) ch))
+        (take-while* (constantly true) ch)
         (fn [_]))
       (bench (str prefix "take-while* true")
+        (enqueue ch 1)))
+    (let [ch (channel* :transactional? transactional?)]
+      (reduce* + 0 ch)
+      (bench (str prefix "reduce*")
         (enqueue ch 1)))))
 
 (deftest ^:benchmark benchmarks

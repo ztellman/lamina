@@ -19,6 +19,7 @@
 (import-fn ch/closed-channel)
 (import-macro ch/channel*)
 (import-fn ch/splice)
+(import-fn ch/channel?)
 
 (defn channel-pair []
   (let [a (channel)
