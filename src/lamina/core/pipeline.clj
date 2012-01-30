@@ -54,18 +54,13 @@
           (recur pipeline value value 0))
         val))))
 
-(defn subscribe-fn [transactional? result?]
-  (let [result-fn (cond
-                    (not result?) (fn [] nil)
-                    transactional? r/transactional-result-channel
-                    :else r/result-channel)]
-    (fn [pipeline result initial-val val idx]
-      (let [result (or result (result-fn))]
-        (r/subscribe val
-          (r/result-callback
-            #(start-pipeline pipeline result initial-val % idx)
-            #(error pipeline result initial-val %)))
-        result))))
+(defn subscribe [pipeline result initial-val val idx]
+  (let [result (or result (r/result-channel))]
+    (r/subscribe val
+     (r/result-callback
+       #(start-pipeline pipeline result initial-val % idx)
+       #(error pipeline result initial-val %)))
+    result))
 
 ;;;
 
@@ -88,13 +83,13 @@
 ;;  the longer the pipeline, the fewer steps per clause, since the JVM doesn't
 ;;  like big functions.  Currently at eight or more steps, each clause only handles
 ;;  a single step. 
-(defn- unwind-stages [this result initial-val val idx subscribe stages remaining]
+(defn- unwind-stages [this result initial-val val idx stages remaining]
   `(cond
        
      (r/result-channel? ~val)
      (let [val# (r/success-value ~val ::unrealized)]
        (if (identical? ::unrealized val#)
-         (~subscribe ~this ~result ~initial-val ~val ~idx)
+         (subscribe ~this ~result ~initial-val ~val ~idx)
          (recur val# (long ~idx))))
        
 
@@ -122,7 +117,6 @@
                   initial-val
                   val-sym
                   (inc idx)
-                  subscribe
                   (rest stages)
                   (dec remaining))))))))
 
@@ -153,10 +147,8 @@
 
 (defmacro pipeline [& opts+stages]
   (let [[options stages] (split-options opts+stages)
-        {:keys [transactional?
-                result?]
-         :or {result? true
-              transactional? false}} options
+        {:keys [result?]
+         :or {result? true}} options
         len (count stages)
         depth (max-depth len)
 
@@ -169,14 +161,9 @@
         step (gensym "step")
         subscribe (gensym "subscribe")]
     `(let [result?# ~result?
-           transactional?# ~transactional?
-           ~subscribe (subscribe-fn transactional?# result?#)
-           ~error-handler ~(:error-handler options)
-           check-for-transaction?# (and result?# transactional?#)]
+           ~error-handler ~(:error-handler options)]
        (reify IPipeline
          (run [~this ~result ~initial-val ~val ~step] 
-           (when check-for-transaction?#
-             (io! "Cannot run non-transactional pipeline within a transaction."))
            (when (or (identical? nil ~result) (identical? nil (r/result ~result)))
              (try
                (loop [~val ~val, ~step (long ~step)]
@@ -191,7 +178,6 @@
                              initial-val
                              val
                              step
-                             subscribe
                              (drop step stages)
                              depth))
                          (range (inc len))))))

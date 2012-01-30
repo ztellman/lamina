@@ -207,6 +207,12 @@
 (defn on-error [channel callback]
   (n/on-error (emitter-node channel) callback))
 
+(defn closed-result [channel]
+  (n/closed-result (receiver-node channel)))
+
+(defn drained-result [channel]
+  (n/drained-result (emitter-node channel)))
+
 ;;;
 
 (defn siphon [src dst]
@@ -214,6 +220,18 @@
 
 (defn join [src dst]
   (n/join (emitter-node src) (receiver-node dst)))
+
+(defn bridge-join [src description callback & dsts]
+  (n/bridge-join (emitter-node src) description nil callback
+    (if (empty? dsts)
+      [(n/terminal-node nil)]
+      (map receiver-node dsts))))
+
+(defn bridge-siphon [src description callback & dsts]
+  (n/bridge-siphon (emitter-node src) description nil callback
+    (if (empty? dsts)
+      [(n/terminal-node nil)]
+      (map receiver-node dsts))))
 
 (defn map* [f channel]
   (let [n (n/downstream-node f (emitter-node channel))]

@@ -11,6 +11,7 @@
     [lamina.core.node :as n]
     [lamina.core.channel :as c]
     [lamina.core.lock :as l]
+    [lamina.core.result :as r]
     [lamina.core.pipeline :as p]
     [clojure.tools.logging :as log])
   (:import
@@ -33,132 +34,144 @@
 
    :message-predicate - a function that takes a message, and returns true if it should be consumed
    :while-predicate - a no-arg function that returns true if another message should be read
+   :message-transform -
+   :value-transform -
+   :initial-value -
    :timeout - a no-arg function that returns the maximum time that should be spent waiting for the next message
    :description - a description of the consumption mechanism
    :channel - the destination channel for the messages
 
    If the predicate returns false or the timeout elapses, the consumption will cease."
-  [ch & {:keys [message-predicate while-predicate timeout description channel]}]
-  (let [node-sym (gensym "node")
+  [ch & {:keys [message-predicate
+                while-predicate
+                timeout
+                description
+                channel
+                reducer
+                initial-value
+                message-transform]}]
+  (let [dst-node-sym (gensym "node")
         message-predicate-sym (gensym "message-predicate")
         while-predicate-sym (gensym "while-predicate")
+        message-transform-sym (gensym "message-transform-sym")
         msg-sym (gensym "msg")
         timeout-sym (gensym "timeout")
-        src-sym (gensym "src")]
-    `(let [~src-sym ~ch
-           dst# ~(or channel `(c/channel* :transactional? (c/transactional? ~src-sym)))
-           ~node-sym (c/receiver-node dst#)
+        src-channel-sym (gensym "src")
+        reducer-sym (gensym "reducer")
+        val-sym (gensym "val")
+        msg-sym (gensym "msg")]
+    `(let [~src-channel-sym ~ch
+           dst# ~(or channel `(c/channel* :transactional? (c/transactional? ~src-channel-sym)))
+           ~dst-node-sym (c/receiver-node dst#) 
+           initial-val# ~initial-value
+           ~message-predicate-sym ~message-predicate
            ~message-predicate-sym ~(if message-predicate
-                                     `(fn [x#]
+                                     `(fn [~@(when reducer `(val-sym)) x#]
                                         (and
-                                          (not (n/closed? ~node-sym))
-                                          (~message-predicate x#)))
-                                     `(fn [_#] (not (n/closed? ~node-sym))))
+                                          (not (n/closed? ~dst-node-sym))
+                                          (~message-predicate-sym
+                                            ~@(when reducer `(val-sym))
+                                            x#)))
+                                     `(fn [~'& _#]
+                                        (not (n/closed? ~dst-node-sym))))
            ~while-predicate-sym ~while-predicate
+           ~message-transform-sym ~message-transform
+           ~reducer-sym ~reducer
            ~timeout-sym ~timeout]
        (if-let [unconsume# (n/consume
-                             (c/emitter-node ~src-sym)
+                             (c/emitter-node ~src-channel-sym)
                              (n/edge
                                ~(or description "consume")
                                (c/receiver-node dst#)))]
 
          (do
-           (p/run-pipeline ~src-sym
+           (p/run-pipeline initial-val#
              {:error-handler (fn [ex#]
                                (log/error ex# "error in consume")
-                               (c/error dst# ex#))
-              :result? false}
-             (fn [ch#]
-               (if-not ~(if while-predicate `(~while-predicate-sym) true)
+                               (c/error dst# ex#))}
+             (fn [~val-sym]
+               (if-not ~(if while-predicate
+                          `(~while-predicate-sym ~@(when reducer `(~val-sym)))
+                          true)
                  ::close
-                 (c/read-channel* ch#
-                   :on-false ::close
-                   :on-timeout ::close
-                   :on-drained ::close
-                   ~@(when timeout `(:timeout (~timeout-sym)))
-                   :predicate ~message-predicate-sym)))
-             (fn [msg#]
-               (if (identical? msg# ::close)
+                 (p/run-pipeline
+                   (c/read-channel* ~src-channel-sym
+                     :on-false ::close
+                     :on-timeout ::timeout
+                     :on-drained ::close
+                     ~@(when timeout `(:timeout (~timeout-sym)))
+                     :predicate ~(if reducer
+                                   `(fn [msg#]
+                                      (~message-predicate-sym ~@(when reducer `(~val-sym)) msg#))
+                                   message-predicate-sym))
+                   (fn [~msg-sym]
+                     (if (identical? ~msg-sym ::close)
+                       ::close
+                       (let [~val-sym ~(when reducer `(~reducer-sym ~val-sym ~msg-sym))]
+                         (c/enqueue dst#
+                           ~(if message-transform
+                              `(~message-transform-sym ~@(when reducer `(~val-sym)) ~msg-sym)
+                              msg-sym))
+                         ~val-sym))))))
+             (fn [val#]
+               (if (identical? val# ::close)
                  (do
                    (unconsume#)
                    (c/close dst#))
-                 (do
-                   (c/enqueue dst# msg#)
-                   (p/restart)))))
+                 (p/restart val#))))
            dst#)
 
          ;; something's already attached to the source
-         (throw (IllegalStateException. "Can't consume, channel already in use."))))))
+         (do
+           (c/error dst# (IllegalStateException. "Can't consume, channel already in use."))
+           dst#)))))
 
 ;;;
 
-(defprotocol ISemiTransactional
-  (transactional-copy [_]))
-
-(defn semi-transactional [f x]
-  (let [latch (AtomicBoolean. false)
-        x* (ref nil)]
-    (fn [& args]
-      (if (clojure.lang.LockingTransaction/isRunning)
-        (do
-          (when (.compareAndSet latch false true)
-            (ref-set x* (transactional-copy x)))
-          (apply f @x* args))
-        (if (.get latch)
-          (dosync (apply f @x* args))
-          (apply f x args))))))
-
-;;;
-
-(defprotocol ICounter
-  (increment [_]))
-
-(deftype TransactionalCounter [n]
-  ICounter
-  (increment [_] (alter n inc)))
-
-(deftype Counter [^AtomicInteger n]
-  ISemiTransactional
-  (transactional-copy [_] (TransactionalCounter. (ref (.get n))))
-  ICounter
-  (increment [_] (.incrementAndGet n)))
+(defn last* [ch]
+  (let [val (atom nil)]
+    (c/receive-all ch #(reset! val %))
+    (p/run-pipeline ch
+      c/drained-result
+      (fn [_] @val))))
 
 (defn take* [n ch]
-  (let [increment (semi-transactional
-                    increment
-                    (Counter. (AtomicInteger. 0)))]
-    (consume ch
-      :description (str "take " n)
-      :while-predicate #(<= (increment) n))))
+  (consume ch
+    :description (str "take* " n)
+    :initial-value 0
+    :reducer (fn [n _] (inc n))
+    :while-predicate #(< % n)))
 
 (defn take-while* [f ch]
   (consume ch
     :description "take-while*"
     :message-predicate f))
 
-;;;
+(defn reductions- [f val ch ch*]
+  (let [ch* (or
+              ch*
+              (c/channel*
+               :transactional? (c/transactional? ch)
+               :messages [val]))]
+    (consume ch
+      :channel ch*
+      :description "reductions*"
+      :initial-value val
+      :reducer f
+      :message-transform (fn [v _] v))))
 
-(defprotocol IReducer
-  (update-reduction [_ val])
-  (current-reduction [_]))
-
-(deftype Reducer
-  [^Lock lock
-   reduce-fn
-   callback
-   ^{:volatile-mutable true} value]
-  IReducer
-  (update-reduction [_ val]
-    (let [value (l/with-exclusive-lock* lock
-                  (set! value (reduce-fn value val)))]
-      (when callback
-        (callback value))
-      value))
-  (current-reduction [_]
-    value))
-
-(defn reducer [f val callback]
-  (Reducer. (l/lock) f callback val))
+(defn reductions*
+  ([f ch]
+     (let [ch* (c/channel*
+                 :transactional? (c/transactional? ch))]
+       (p/run-pipeline ch
+         c/read-channel
+         #(do
+            (c/enqueue ch* %)
+            (reductions- f % ch ch*)))
+       ch*))
+  ([f val ch]
+     (reductions- f val ch nil)))
 
 ;;;
 

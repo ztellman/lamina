@@ -16,9 +16,9 @@
   :repositories {"sonatype-oss-public" "https://oss.sonatype.org/content/groups/public/"}
   :exclusions [org.clojure/contrib
                org.clojure/clojure-contrib]
-  :test-selectors {:default #(not (some #{:benchmark :stress} (keys %)))
+  :test-selectors {:default #(not (some #{:benchmark :stress} (cons (:tag %) (keys %))))
                    :benchmark :benchmark
-                   :stress :stress
+                   :stress #(or (:stress %) (= :stress (:tag %)))
                    :all (constantly true)}
   :license {:name "Eclipse Public License - v 1.0"
             :url "http://www.eclipse.org/legal/epl-v10.html"

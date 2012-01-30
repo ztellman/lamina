@@ -118,22 +118,16 @@
     (is (= 9 @(receive q)))))
 
 (deftest test-basic-queue
-  (test-queue #(q/queue)))
+  (test-queue q/queue))
 
 (deftest test-transactional-queue
-  (test-queue #(q/transactional-queue)))
+  (test-queue q/transactional-queue))
 
 ;;;
 
 (defn stress-test-single-queue [q-fn]
   (let [q (q-fn)]
-    (future
-      (dotimes [i 1e9]
-        (enqueue q i)))
-    (dotimes* [i 1e9]
-      (is (= i @(receive q)))))
-  #_(let [q (q-fn)]
-    (dotimes* [i 1e9]
+    (dotimes* [i 1e5]
       (delay-invoke 0.01 #(enqueue q i))
       (Thread/yield)
       (is (= i @(receive q))))))
@@ -146,6 +140,18 @@
         #(q/close q))
       (Thread/sleep 1)
       (is (thrown? Exception @result)))))
+
+(deftest ^:stress stress-test-basic-queue
+  (println "\n----\n test single queue \n---\n")
+  (stress-test-single-queue q/queue)
+  (println "\n----\n test closing queue \n---\n")
+  (stress-test-closing-queue q/queue))
+
+(deftest ^:stress stress-test-transactional-queue
+  (println "\n----\n test single transactional queue \n---\n")
+  (stress-test-single-queue q/transactional-queue)
+  (println "\n----\n test closing transactional queue \n---\n")
+  (stress-test-closing-queue q/transactional-queue))
 
 ;;;
 
@@ -193,4 +199,4 @@
     (q/queue nil))
   (benchmark-queue "transactional-queue - "
       (q/transactional-queue nil)
-      r/transactional-result-channel))
+      r/result-channel))

@@ -9,7 +9,8 @@
 (ns lamina.core.node
   (:use
     [useful.datatypes :only (make-record assoc-record)]
-    [lamina.core.threads :only (enqueue-cleanup)])
+    [lamina.core.threads :only (enqueue-cleanup)]
+    [lamina.core utils])
   (:require
     [lamina.core.result :as r]
     [lamina.core.queue :as q]
@@ -22,8 +23,7 @@
     [lamina.core.result
      SuccessResult
      ErrorResult
-     ResultChannel
-     TransactionalResultChannel]
+     ResultChannel]
     [java.util
      Collection
      Collections
@@ -69,6 +69,7 @@
 ;;;
 
 (defprotocol INode
+  
   ;;
   (read-node [_] [_ predicate false-value result-channel]
     "Straight call to the queue which cannot be cancelled. Intended for (read-channel ...).")
@@ -100,6 +101,8 @@
   ;;
   (^NodeState state [_]
     "Returns the NodeState for this node.")
+  (set-state [_ val]
+    )
   (on-state-changed [_ name callback]
     "Adds a callback which takes two paramters: [state downstream-node-count error].
      Possible states are ::open, ::consumed, ::split, ::closed, ::drained, ::error.")
@@ -125,9 +128,9 @@
    transactional?
    permanent?])
 
-(defmacro set-state! [state state-val & key-vals]
+(defmacro set-state! [this state-val & key-vals]
   `(let [val# (assoc-record ~state-val ~@key-vals)]
-     (set! ~state val#)
+     (set-state ~this val#)
      val#))
 
 ;;;
@@ -136,11 +139,6 @@
   `(if-let [q# (.queue ~state)]
      (q/enqueue q# ~msg true #(l/release ~lock))
      (l/release ~lock)))
-
-(defmacro set-state! [state state-val & key-vals]
-  `(let [val# (assoc-record ~state-val ~@key-vals)]
-     (set! ~state val#)
-     val#))
 
 (defmacro transform-message [node msg transform?]
   `(let [msg# ~msg
@@ -156,11 +154,11 @@
            (error node# e#)
            ::error)))))
 
-(defmacro check-for-drained [state watchers cancellations]
+(defmacro check-for-drained [this state watchers cancellations]
   `(let [^NodeState state# ~state]
      (when-let [q# (.queue state#)]
        (when (q/drained? q#)
-         (set-state! ~state state#
+         (set-state! ~this state#
            :mode ::drained
            :queue (q/drained-queue))
          (doseq [l# ~watchers]
@@ -168,44 +166,35 @@
          (.clear ~watchers)
          (.clear ~cancellations)))))
 
-(defmacro ensure-queue [state s]
+(defmacro ensure-queue [this state s]
   `(let [^NodeState s# ~s]
      (if (.queue s#)
        s#
-       (set-state! ~state s#
+       (set-state! ~this s#
          :queue (if (.transactional? s#)
                   (q/transactional-queue)
                   (q/queue))
          :read? true))))
 
-(defmacro close-node! [state edges s]
+(defmacro close-node! [this edges s]
   `(let [^NodeState s# ~s
          q# (.queue s#)
          _# (when q# (q/close q#))
          drained?# (or (nil? q#) (q/drained? q#))]
      (.clear ~edges)
-     (set-state! ~state s#
+     (set-state! ~this s#
        :mode (if drained?# ::drained ::closed)
        :queue (if drained?# (q/drained-queue) q#))))
 
-(defmacro defer-within-transaction [[defer-fn default-response] & body]
-  `(if (clojure.lang.LockingTransaction/isRunning)
-     (do
-       (send (agent nil) (fn [_#]
-                           (try
-                             (~defer-fn)
-                             (catch Exception e#
-                               (.printStackTrace e#)))))
-       ~default-response)
-     (do ~@body)))
 
-(defmacro read-from-queue [[lock state watchers cancellations] forward queue-receive]
+
+(defmacro read-from-queue [[this lock state watchers cancellations] forward queue-receive]
   (let [state-sym (gensym "state")]
-    `(let [x# (l/with-exclusive-lock* ~lock
+    `(let [x# (l/with-exclusive-lock ~lock
                 (let [s# ~state]
                   (if (identical? ::split (.mode s#))
                     ::split
-                    (ensure-queue ~state s#))))]
+                    (ensure-queue ~this ~state s#))))]
 
       (case x#
         ::split
@@ -214,7 +203,7 @@
         (let [~state-sym ^NodeState x#
               result# ~queue-receive]
           (when (instance? SuccessResult result#)
-            (check-for-drained ~state ~watchers ~cancellations))
+            (check-for-drained ~this ~state ~watchers ~cancellations))
           result#)))))
 
 (declare split-node join node?)
@@ -353,7 +342,7 @@
           true)
 
         (do
-          (set-state! state s
+          (set-state! this s
             :transactional? true
             :queue (q/transactional-copy (.queue s)))
           (let [downstream (downstream-nodes this)]
@@ -379,8 +368,8 @@
     state)
 
   ;;
-  (ground [_]
-    (let [x (l/with-exclusive-lock* lock
+  (ground [this]
+    (let [x (l/with-exclusive-lock lock
               (let [s state]
                 (if (identical? ::split (.mode s))
                   ::split
@@ -389,23 +378,23 @@
         (ground (.split state))
         (when x
           (let [msgs (q/ground x)]
-            (check-for-drained state watchers cancellations)
+            (check-for-drained this state watchers cancellations)
             msgs)))))
 
   ;;
-  (read-node [_]
-    (read-from-queue [lock state watchers cancellations]
+  (read-node [this]
+    (read-from-queue [this lock state watchers cancellations]
       (read-node (.split state))
       (q/receive (.queue state))))
   
-  (read-node [_ predicate false-value result-channel]
-    (read-from-queue [lock state watchers cancellations]
+  (read-node [this predicate false-value result-channel]
+    (read-from-queue [this lock state watchers cancellations]
       (read-node (.split state) predicate false-value result-channel)
       (q/receive (.queue state) predicate false-value result-channel)))
 
   ;;
-  (receive [_ name callback]
-    (let [x (l/with-exclusive-lock* lock
+  (receive [this name callback]
+    (let [x (l/with-exclusive-lock lock
               (let [s state]
                 (if (identical? ::split (.mode s))
                   ::split
@@ -416,14 +405,13 @@
                       ::invalid-name)
                     
                     ;; return the current state
-                    (ensure-queue state s)))))]
+                    (ensure-queue this state s)))))]
       (case x
         ::split
         (receive (.split state) name callback)
         
         ::invalid-name
         (throw (IllegalStateException. "Invalid callback identifier used for (receive ...)"))
-
         
         ::already-registered
         true
@@ -434,7 +422,7 @@
           (cond
 
             (instance? SuccessResult result)
-            (check-for-drained state watchers cancellations)
+            (check-for-drained this state watchers cancellations)
 
             (instance? ResultChannel result)
             (when name
@@ -448,9 +436,9 @@
 
   ;;
   (close [this]
-    (defer-within-transaction [#(close this) true]
+    (defer-within-transaction [(close this) :lamina/deferred]
       (if-let [^NodeState s
-               (l/with-exclusive-lock* lock
+               (l/with-exclusive-lock lock
                  (let [s state]
                    (case (.mode s)
 
@@ -458,7 +446,7 @@
                      nil
                      
                      (when-not (.permanent? s)
-                       (close-node! state edges s)))))]
+                       (close-node! this edges s)))))]
         ;; signal state change
         (do
           (doseq [l watchers]
@@ -471,8 +459,8 @@
 
   ;;
   (error [this err]
-    (defer-within-transaction [#(error this err) true]
-      (if-let [old-queue (l/with-exclusive-lock* lock
+    (defer-within-transaction [(error this err) :lamina/deferred]
+      (if-let [old-queue (l/with-exclusive-lock lock
                            (let [s state]
                              (case (.mode s)
                                
@@ -481,7 +469,7 @@
                                
                                (when-not (.permanent? s)
                                  (let [q (.queue s)]
-                                   (set-state! state s
+                                   (set-state! this s
                                      :mode ::error
                                      :queue (q/error-queue err)
                                      :error err)
@@ -503,9 +491,9 @@
   ;;
   (consume [this edge]
     (let [latch (AtomicBoolean. false)]
-      (defer-within-transaction [#(consume this edge) #(unconsume this edge latch)]
+      (defer-within-transaction [(consume this edge) #(unconsume this edge latch)]
         (let [result
-              (l/with-exclusive-lock* lock
+              (l/with-exclusive-lock lock
                 ;; mark that we've consumed, so that we handle out-of-order consume/unconsume
                 (when (.compareAndSet latch false true)
                   (let [s state]
@@ -523,7 +511,7 @@
                         false
                         (do
                           (.add edges edge)
-                          (set-state! state s
+                          (set-state! this s
                             :mode ::consumed
                             :downstream-count 1)
                           (when (.transactional? s)
@@ -538,9 +526,9 @@
 
   ;;
   (unconsume [this edge latch]
-    (defer-within-transaction [#(unconsume this edge latch) true]
+    (defer-within-transaction [(unconsume this edge latch) :lamina/deferred]
       (let [result
-            (l/with-exclusive-lock* lock
+            (l/with-exclusive-lock lock
               ;; if we beat the consume call, just bail out
               (when-not (.compareAndSet ^AtomicBoolean latch false true)
                 (let [s state]
@@ -553,7 +541,7 @@
                       false
                       (do
                         (.clear edges)
-                        (set-state! state s
+                        (set-state! this s
                           :mode (if (q/closed? (.queue s))
                                   ::closed
                                   ::open)
@@ -571,7 +559,7 @@
 
   ;;
   (split [this]
-    (let [n (l/with-exclusive-lock* lock
+    (let [n (l/with-exclusive-lock lock
               (let [s state]
 
                 (case (.mode s)
@@ -586,7 +574,7 @@
                   (let [n (split-node this)]
                     (.clear cancellations)
                     (.clear watchers)
-                    (set-state! state s
+                    (set-state! this s
                       :mode ::split
                       :read? false
                       :queue nil
@@ -600,9 +588,9 @@
 
   ;;
   (link [this name edge execute-within-lock]
-    (io! "Cannot modify node while in transaction."
+    (defer-within-transaction [(link this name edge execute-within-lock) :lamina/deferred]
       (if-let [^NodeState s
-               (l/with-exclusive-lock* lock
+               (l/with-exclusive-lock lock
                  (when-not (.containsKey cancellations name)
                    (let [s state
                          new-state
@@ -611,7 +599,7 @@
                            (::open ::split)
                            (let [cnt (unchecked-inc (.downstream-count s))]
                              (.add edges edge)
-                             (set-state! state s
+                             (set-state! this s
                                :queue (when (.read? s)
                                         (if (.transactional? s)
                                           (q/transactional-queue)
@@ -624,7 +612,7 @@
 
                            ::closed
                            (do
-                             (set-state! state s
+                             (set-state! this s
                                :mode ::drained
                                :queue (q/drained-queue))
                              ;; make sure we return the original queue
@@ -666,9 +654,9 @@
         false)))
 
   ;;
-  (unlink [_ edge]
-    (io! "Cannot modify node while in transaction."
-      (if-let [s (l/with-exclusive-lock* lock
+  (unlink [this edge]
+    (defer-within-transaction [(unlink this edge) :lamina/deferred]
+      (if-let [s (l/with-exclusive-lock lock
                    (let [s state]
                      (case (.mode s)
 
@@ -679,8 +667,8 @@
 
                              ;; no more downstream nodes
                              (if-not (.permanent? s)
-                               (close-node! state edges s)
-                               (set-state! state s
+                               (close-node! this edges s)
+                               (set-state! this s
                                  :mode ::open
                                  :downstream-count cnt
                                  :queue (or (.queue s)
@@ -690,7 +678,7 @@
                                  :split nil))
 
                              ;; reduce counter by one
-                             (set-state! state s
+                             (set-state! this s
                                :downstream-count cnt))))
                        
                        (::closed ::drained ::consumed ::error)
@@ -704,53 +692,60 @@
         false)))
 
   ;;
-  (on-state-changed [_ name callback]
-    (let [callback (fn [& args]
-                     (try
-                       (apply callback args)
-                       (catch Exception e
-                         (log/error e "Error in on-state-changed callback."))))
-          s (l/with-exclusive-lock lock
-              (when (or (nil? name) (not (.containsKey cancellations name)))
-                (let [s state]
-                  (case (.mode s)
+  (set-state [this val]
+    (set! state val)
+    val)
 
-                    (::drained ::error)
-                    nil
+  ;;
+  (on-state-changed [this name callback]
+    (defer-within-transaction [(on-state-changed this name callback) :lamina/deferred]
+      (let [callback (fn [& args]
+                      (try
+                        (apply callback args)
+                        (catch Exception e
+                          (log/error e "Error in on-state-changed callback."))))
+           s (l/with-exclusive-lock lock
+               (when (or (nil? name) (not (.containsKey cancellations name)))
+                 (let [s state]
+                   (case (.mode s)
+
+                     (::drained ::error)
+                     nil
                     
-                    (do
-                      (.add watchers callback)
-                      (when name
-                        (.put cancellations name
-                          #(.remove ^CopyOnWriteArrayList (.watchers ^Node %) callback)))))
-                  s)))]
-      (if s
-        (let [^NodeState s s]
-          (callback (.mode s) (.downstream-count s) (.error s))
-          true)
-        false)))
+                     (do
+                       (.add watchers callback)
+                       (when name
+                         (.put cancellations name
+                           #(.remove ^CopyOnWriteArrayList (.watchers ^Node %) callback)))))
+                   s)))]
+       (if s
+         (let [^NodeState s s]
+           (callback (.mode s) (.downstream-count s) (.error s))
+           true)
+         false))))
 
   ;;
   (cancel [this name]
-    (if-let [x (l/with-lock lock
-                 (if (identical? ::split (.mode state))
-                   (or (.remove cancellations name) ::split)
-                   (.remove cancellations name)))]
-      (cond
-        (identical? ::split x)
-        (cancel (.split state) name)
+    (io! "Cannot cancel modifications to node within a transaction."
+      (if-let [x (l/with-lock lock
+                  (if (identical? ::split (.mode state))
+                    (or (.remove cancellations name) ::split)
+                    (.remove cancellations name)))]
+       (cond
+         (identical? ::split x)
+         (cancel (.split state) name)
 
-        (r/result-channel? x)
-        (l/with-lock lock
-          (q/cancel-receive (.queue state) x))
+         (r/result-channel? x)
+         (l/with-lock lock
+           (q/cancel-receive (.queue state) x))
 
-        :else
-        (do
-          (x this)
-          true))
+         :else
+         (do
+           (x this)
+           true))
 
-      ;; no such thing
-      false)))
+       ;; no such thing
+       false))))
 
 ;;;
 
@@ -863,14 +858,16 @@
                        (edge "siphon" dst))]
        (if (link src (.node dst) dst execute-in-lock)
          (do
-           (on-state-changed (.node dst) nil (siphon-callback src (.node dst)))
+           (when (node? (.node dst))
+             (on-state-changed (.node dst) nil (siphon-callback src (.node dst))))
            true)
          false))))
 
 (defn bridge-siphon [src edge-description node-description callback dsts]
   (let [downstream (CopyOnWriteArrayList. ^objects (to-array (map #(edge nil %) dsts)))
         n (BridgeNode. node-description callback downstream)
-        upstream (edge edge-description n)]
+        upstream (edge edge-description n)
+        dsts (filter node? dsts)]
     (if (link src n upstream nil)
       (do
         (doseq [dst dsts]
@@ -890,11 +887,18 @@
            (on-state-changed src nil (join-callback (.node dst)))
            true)
          (cond
+           (not (node? (.node dst)))
+           false
+           
            (drained? src)
-           (close (.node dst))
+           (do
+             (close (.node dst))
+             true)
            
            (not (identical? ::none (error-value src ::none)))
-           (error (.node dst) (error-value src nil))
+           (do
+             (error (.node dst) (error-value src nil))
+             true)
            
            :else
            false)))))
@@ -902,7 +906,8 @@
 (defn bridge-join [src edge-description node-description callback dsts]
   (let [downstream (CopyOnWriteArrayList. ^objects (to-array (map #(edge nil %) dsts)))
         n (BridgeNode. node-description callback downstream)
-        upstream (edge edge-description n)]
+        upstream (edge edge-description n)
+        dsts (filter node? dsts)]
     (if (link src n upstream nil)
       (do
         (doseq [dst dsts]
@@ -924,13 +929,16 @@
         true)
       (cond
         (drained? src)
-        (doseq [dst dsts]
-          (close dst))
+        (do
+          (doseq [dst dsts]
+            (close dst))
+          true)
         
         (not (identical? ::none (error-value src ::none)))
         (let [err (error-value src nil)]
           (doseq [dst dsts]
-            (error dst err)))
+            (error dst err))
+          true)
         
         :else
         false))))
@@ -998,46 +1006,65 @@
 
 ;;;
 
-(defn on-closed [node callback]
-  (let [latch (atom false)
-        claim #(compare-and-set! latch false true)]
-    (on-state-changed node callback
-      (fn [state _ _]
+(defn closed-result [node]
+  (let [result (r/result-channel)]
+    (on-state-changed node nil
+      (fn [state _ err]
         (case state
           ::consumed
           (when-let [q (queue node)]
-            (when (and (q/closed? q) (claim))
-              (callback)))
+            (when (q/closed? q)
+              (r/success result true)))
           
           (::closed ::drained)
-          (when (claim)
-            (callback))
+          (r/success result true)
 
-          nil)))))
+          ::error
+          (r/error result err)
+          
+          nil)))
+    result))
 
-(defn on-drained [node callback]
-  (let [latch (atom false)
-        claim #(compare-and-set! latch false true)]
-    (on-state-changed node callback
-      (fn [state _ _]
+(defn drained-result [node]
+  (let [result (r/result-channel)]
+    (on-state-changed node nil
+      (fn [state _ err]
         (case state
           ::drained
-          (when (claim)
-            (callback))
+          (r/success result true)
 
-          nil)))))
+          ::error
+          (r/error result err)
+          
+          nil)))
+    result))
 
-(defn on-error [node callback]
-  (let [latch (atom false)
-        claim #(compare-and-set! latch false true)]
-    (on-state-changed node callback
+(defn error-result [node]
+  (let [result (r/result-channel)]
+    (on-state-changed node nil
       (fn [state _ err]
         (case state
           ::error
-          (when (claim)
-            (callback err))
+          (r/error result err)
+          
+          nil)))
+    result))
 
-          nil)))))
+(defn on-event [result-fn]
+  (fn [node callback]
+    (r/subscribe (result-fn node)
+      (r/result-callback
+        (fn [_] (callback))
+        (fn [_] )))))
+
+(def on-closed (on-event closed-result))
+(def on-drained (on-event drained-result))
+
+(defn on-error [node callback]
+  (r/subscribe (error-result node)
+    (r/result-callback
+      (fn [_])
+      (fn [err] (callback err)))))
 
 ;;;
 
@@ -1047,7 +1074,6 @@
                result
                on-timeout
                on-false
-               on-error
                on-drained
                ]}]
   (let [result-sym (gensym "result")]
@@ -1057,30 +1083,23 @@
                             (or on-false :lamina/false))
                          ~result)]
        ~@(when timeout
-           `((when
-               (or
-                 (instance? TransactionalResultChannel ~result-sym)
-                 (instance? ResultChannel ~result-sym))
-               (t/delay-invoke ~timeout
-                 (fn []
-                   ~(if on-timeout
-                      `(r/success ~result-sym ~on-timeout)
-                      `(r/error ~result-sym :lamina/timeout!)))))))
-       ~(if-not (or on-error on-drained)
+           `((let [timeout# ~timeout]
+               (when (and timeout# (instance? ResultChannel ~result-sym))
+                 (t/delay-invoke timeout#
+                   (fn []
+                     ~(if on-timeout
+                        `(r/success ~result-sym ~on-timeout)
+                        `(r/error ~result-sym :lamina/timeout!))))))))
+       ~(if-not on-drained
           result-sym
-          `(if (or
-                 (instance? SuccessResult ~result-sym))
+          `(if (instance? SuccessResult ~result-sym)
              ~result-sym
-             (let [result# (if (or
-                                 (instance? TransactionalResultChannel ~result-sym)
-                                 (clojure.lang.LockingTransaction/isRunning))
-                             (r/transactional-result-channel)
-                             (r/result-channel))]
+             (let [result# (r/result-channel)]
                (r/subscribe ~result-sym
                  (r/result-callback
                    (fn [x#] (r/success result# x#))
                    (fn [err#]
                      (if (identical? :lamina/drained! err#)
-                       (r/success result# ~(or on-drained on-error))
-                       (r/success result# ~on-error)))))
+                       (r/success result# ~on-drained)
+                       (r/error result# err#)))))
                result#))))))

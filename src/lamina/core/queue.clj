@@ -196,19 +196,22 @@
         (doseq [^MessageConsumer c consumers]
           (r/error (.result-channel c) error)))))
 
-  ;;
+  ;; this isn't super atomic (multiple calls can receive 'true', though), but we
+  ;; don't much care 
   (close [_]
     (io! "Cannot modify non-transactional queues inside a transaction."
       (if closed?
         false
         (let [consumers
-              (l/with-exclusive-lock* lock
-                (set! closed? true)
+              (l/with-exclusive-lock lock
                 (let [cs (.toArray consumers)]
                   (.clear consumers)
                   cs))]
-          (doseq [^MessageConsumer c consumers]
-            (r/error (.result-channel c) :lamina/drained!))
+          (set! closed? true)
+          (doseq [c consumers]
+            (if (instance? MessageConsumer c)
+              (r/error (.result-channel ^MessageConsumer c) :lamina/drained!)
+              (r/error (.result-channel ^SimpleConsumer c) :lamina/drained!)))
           true))))
 
   ;;
@@ -396,8 +399,10 @@
                    (ref-set closed? true)
                    (ref-set consumers nil)
                    cs))]
-        (doseq [^MessageConsumer c cs]
-          (r/error (.result-channel c) :lamina/drained!))
+        (doseq [c cs]
+          (if (instance? MessageConsumer c)
+            (r/error (.result-channel ^MessageConsumer c) :lamina/drained!)
+            (r/error (.result-channel ^SimpleConsumer c) :lamina/drained!)))
         true)))
 
   ;;
@@ -485,7 +490,7 @@
               
         (if (ensure closed?)
           (r/error-result :lamina/drained!)
-          (let [result-channel (r/transactional-result-channel)]
+          (let [result-channel (r/result-channel)]
             (alter consumers conj (SimpleConsumer. result-channel))
             result-channel)))))
   
@@ -496,7 +501,7 @@
             
               (if (ensure closed?)
                 (error-consumption :lamina/drained! result-channel)
-                (let [rc (or result-channel (r/transactional-result-channel))]
+                (let [rc (or result-channel (r/result-channel))]
                   (alter consumers conj
                     (MessageConsumer.
                       predicate
@@ -586,6 +591,6 @@
                 msgs (.messages q)
                 consumers (.consumers q)]
             (TransactionalEventQueue.
-              (ref (persistent-queue messages))
+              (ref (persistent-queue msgs))
               (ref (persistent-queue consumers))
               (ref (closed? q))))))

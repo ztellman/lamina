@@ -92,6 +92,17 @@
     (is (= :success (result r)))
     (is (= 1 @(capture-success r ::return)))
     (is (= 1 @r)))
+
+  ;; transactional claim and success!
+  (let [r (r-fn)]
+    (is (= true (dosync (claim r))))
+    (is (= :lamina/already-claimed! (success r 1)))
+    (is (= :lamina/realized (success! r 1)))
+    (is (= 1 (success-value r nil)))
+    (is (= ::none (error-value r ::none)))
+    (is (= :success (result r)))
+    (is (= 1 @(capture-success r ::return)))
+    (is (= 1 @r)))
   
   ;; error result
   (let [r (r-fn)
@@ -107,6 +118,18 @@
   (let [r (r-fn)
         ex (IllegalStateException. "boom")]
     (is (= true (claim r)))
+    (is (= :lamina/already-claimed! (error r ex)))
+    (is (= :lamina/realized (error! r ex)))
+    (is (= ::none (success-value r ::none)))
+    (is (= ex (error-value r nil)))
+    (is (= :error (result r)))
+    (is (= ex @(capture-error r ::return)))
+    (is (thrown? IllegalStateException @r)))
+
+  ;; transactional claim and error!
+  (let [r (r-fn)
+        ex (IllegalStateException. "boom")]
+    (is (= true (dosync (claim r))))
     (is (= :lamina/already-claimed! (error r ex)))
     (is (= :lamina/realized (error! r ex)))
     (is (= ::none (success-value r ::none)))
@@ -196,13 +219,10 @@
 (deftest test-basic-result-channel
   (test-result-channel result-channel))
 
-(deftest test-transactional-result-channel
-  (test-result-channel transactional-result-channel))
-
 ;;;
 
 (defn stress-test-result-channel [r-fn]
-  (dotimes* [i 1e4]
+  (dotimes* [i 1e5]
     (let [r (r-fn)]
       (delay-invoke 0.1 (fn [] (success r i)))
       (Thread/sleep 1)
@@ -212,12 +232,16 @@
       (Thread/sleep 1)
       (is (thrown? Exception @r)))))
 
+(deftest ^:stress stress-test-basic-result-channel
+  (println "\n----\n test result-channel \n---\n")
+  (stress-test-result-channel result-channel))
+
 ;;;
 
 (defn benchmark-result-channel [type r-fn]
   (bench (str type "create result-channel")
     (r-fn))
-  (bench type "subscribe and success"
+  (bench (str type "subscribe and success")
     (let [r (r-fn)]
       (subscribe r (result-callback (fn [_]) nil))
       (success r 1)))
@@ -225,6 +249,11 @@
     (let [r (r-fn)]
       (subscribe r (result-callback (fn [_]) nil))
       (claim r)
+      (success! r 1)))
+  (bench (str type "subscribe, transactional claim, and success!")
+    (let [r (r-fn)]
+      (subscribe r (result-callback (fn [_]) nil))
+      (dosync (claim r))
       (success! r 1)))
   (bench (str type "subscribe, cancel, subscribe and success")
     (let [r (r-fn)]
@@ -259,8 +288,6 @@
       (success r 1)
       @r)))
 
-(deftest ^:benchmark test-basic-result-channel
+(deftest ^:benchmark benchmark-basic-result-channel
   (benchmark-result-channel "basic result - " result-channel))
 
-(deftest ^:benchmark test-transactional-result-channel
-  (benchmark-result-channel "transactional result - " transactional-result-channel))

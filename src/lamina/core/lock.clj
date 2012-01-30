@@ -27,15 +27,12 @@
 
 ;;;
 
-(defn info [action lock]
-  #_(log/info action (hash lock) (.getName (Thread/currentThread))))
-
 (deftype AsymmetricLock [^ReentrantReadWriteLock lock]
   ILock
-  (acquire [this] (-> lock .readLock .lock) (info :acquire this))
-  (release [this]  (-> lock .readLock .unlock) (info :release this))
-  (acquire-exclusive [this] (-> lock .writeLock .lock) (info :acquire-exclusive this))
-  (release-exclusive [this] (-> lock .writeLock .unlock) (info :release-exclusive this))
+  (acquire [this] (-> lock .readLock .lock))
+  (release [this]  (-> lock .readLock .unlock))
+  (acquire-exclusive [this] (-> lock .writeLock .lock))
+  (release-exclusive [this] (-> lock .writeLock .unlock))
   (try-acquire [_] (-> lock .readLock .tryLock))
   (try-acquire-exclusive [_] (-> lock .writeLock .tryLock)))
 
@@ -59,6 +56,8 @@
        (acquire lock#)
        (try
          ~@body
+         (catch Exception e#
+           (.printStackTrace e#))
          (finally
            (release lock#))))))
 
@@ -68,31 +67,10 @@
        (acquire-exclusive lock#)
        (try
          ~@body
+         (catch Exception e#
+           (.printStackTrace e#))
          (finally
            (release-exclusive lock#))))))
-
-;; These variants exists because apparently try/catch, loop/recur, et al
-;; close over the body, so using set! inside the body causes the compiler
-;; to get confused.
-;; 
-;; Per http://dev.clojure.org/jira/browse/CLJ-274, this isn't going to get fixed
-;; anytime soon, so should only be used where no exception can be thrown.  However,
-;; an exception can still be thrown by interrupting the thread, so the body should
-;; also always be uninterruptible.
-
-(defmacro with-exclusive-lock* [lock & body]
-  `(let [lock# ~lock]
-     (acquire-exclusive lock#)
-     (let [result# (do ~@body)]
-       (release-exclusive lock#)
-       result#)))
-
-(defmacro with-lock* [lock & body]
-  `(let [lock# ~lock]
-     (acquire lock#)
-     (let [result# (do ~@body)]
-       (release lock#)
-       result#)))
 
 ;;;
 

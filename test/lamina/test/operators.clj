@@ -27,43 +27,47 @@
       (Thread/yield)
       (dosync* transactional?
         (enqueue ch m)))
-    (close ch)))
+    (dosync* transactional? (close ch))))
 
 (defn result [f ch]
   (let [ch* (f ch)
-        result (doall (lazy-channel-seq ch* 2000))
+        result (doall (lazy-channel-seq ch* 5000))
         ]
     (is (drained? ch*))
     result))
 
-(defn assert-transactional-equivalence [f f* input]
-  (let [expected (seq (f input))
-        f* #(dosync (f* %))]
-    (let [ch (channel* :transactional? true :messages input)]
-      (close ch)
-      (is (= expected (result f* ch))))
-    (let [ch (channel* :transactional? true)]
-      (async-enqueue true ch input)
-      (is (= expected (result f* ch))))))
-
 (defn assert-equivalence [f f* input]
-  (let [expected (seq (f input))]
+  (let [expected (seq (f input))
+        trans-f* #(dosync (f* %))]
+
+    ;; pre-populated non-transactional channel
     (let [ch (channel* :messages input)]
       (close ch)
       (is (= expected (result f* ch))))
+
+    ;; async enqueue into non-transactional channel
     (let [ch (channel)]
       (async-enqueue false ch input)
-      (is (= expected (result f* ch))))))
+      (is (= expected (result f* ch))))
 
-(defn assert-full-equivalence [f f* input]
-  (assert-transactional-equivalence f f* input)
-  (assert-equivalence f f* input))
+    ;; pre-populated transactional channel
+    (let [ch (channel* :transactional? true :messages input)]
+      (dosync (close ch))
+      (is (= expected (result trans-f* ch))))
+
+    ;; async enqueue into transactional channel
+    (let [ch (channel* :transactional? true)]
+      (async-enqueue true ch input)
+      (is (= expected (result trans-f* ch))))))
 
 ;;;
 
 (deftest test-take*
   (are [to-take total-elements]
-    (assert-full-equivalence #(take to-take %) #(take* to-take %) (range total-elements))
+    (assert-equivalence 
+      #(take to-take %)
+      #(take* to-take %)
+      (range total-elements))
 
     1 0
     5 5
@@ -73,7 +77,10 @@
 
 (deftest test-take-while*
   (are [predicate total-elements]
-    (assert-full-equivalence #(take-while predicate %) #(take-while* predicate %) (range total-elements))
+    (assert-equivalence
+      #(take-while predicate %)
+      #(take-while* predicate %)
+      (range total-elements))
 
     even?              0
     even?              10
@@ -81,14 +88,37 @@
     (constantly true)  10
     (constantly false) 1))
 
+(deftest test-reductions*
+  (are [f val s]
+    (assert-equivalence
+      (if val
+        #(reductions f val %)
+        #(reductions f %))
+      (if val
+        #(reductions* f val %)
+        #(reductions* f %))
+      s)
+
+    + nil (range 10)
+    + 1   (range 10)
+    conj [] [:a :b :c]
+    ))
+
 ;;;
 
 (deftest ^:stress stress-test-lazy-channel-seq
-  (dotimes* [i 1e4]
+  (println "\n----\n test lazy-seq \n---\n")
+  (dotimes* [i 1e5]
     (let [s (seq (range 0))]
       (let [ch (channel)]
         (async-enqueue false ch s)
-        (is (= s (lazy-channel-seq ch 2500)))))))
+        (is (= s (lazy-channel-seq ch 10000))))))
+  (println "\n----\n test transactional lazy-seq \n---\n")
+  (dotimes* [i 1e5]
+    (let [s (seq (range 0))]
+      (let [ch (channel* :transactional? true)]
+        (async-enqueue true ch s)
+        (is (= s (lazy-channel-seq ch 10000)))))))
 
 ;;;
 

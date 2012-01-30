@@ -58,6 +58,8 @@
 (import-fn ch/filter*)
 (import-fn op/take*)
 (import-fn op/take-while*)
+(import-fn op/reductions*)
+(import-fn op/reduce*)
 
 (import-fn op/channel-seq)
 (import-fn op/lazy-channel-seq)
