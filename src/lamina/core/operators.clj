@@ -8,6 +8,7 @@
 
 (ns lamina.core.operators
   (:use
+    [potemkin :only (unify-gensyms)]
     [lamina.core channel])
   (:require
     [lamina.core.node :as n]
@@ -54,103 +55,94 @@
                 initial-value
                 message-transform] :as m}]
   (let [channel? (not (and (contains? m :channel) (nil? channel)))
-        message-predicate? (or channel? message-predicate)
-        dst-node-sym (gensym "node")
-        message-predicate-sym (gensym "message-predicate")
-        while-predicate-sym (gensym "while-predicate")
-        message-transform-sym (gensym "message-transform-sym")
-        msg-sym (gensym "msg")
-        timeout-sym (gensym "timeout")
-        src-channel-sym (gensym "src")
-        reducer-sym (gensym "reducer")
-        val-sym (gensym "val")
-        msg-sym (gensym "msg")]
-    `(let [~src-channel-sym ~ch
-           dst# ~(when channel?
-                   (or channel `(mimic ~src-channel-sym)))
-           ~dst-node-sym (when dst# (receiver-node dst#)) 
-           initial-val# ~initial-value
-           ~message-predicate-sym ~message-predicate
-           ~message-predicate-sym ~(if message-predicate
-                                     `(fn [~@(when reducer `(val-sym)) x#]
-                                        (and
-                                          (or
-                                            (nil? ~dst-node-sym)
-                                            (not (n/closed? ~dst-node-sym)))
-                                          (~message-predicate-sym
-                                            ~@(when reducer `(val-sym))
-                                            x#)))
-                                     `(fn [~'& _#]
-                                        (or
-                                          (nil? ~dst-node-sym)
-                                          (not (n/closed? ~dst-node-sym)))))
-           ~while-predicate-sym ~while-predicate
-           ~message-transform-sym ~message-transform
-           ~reducer-sym ~reducer
-           ~timeout-sym ~timeout]
-       (if-let [unconsume# (n/consume
-                             (emitter-node ~src-channel-sym)
-                             (n/edge
-                               ~(or description "consume")
-                               (if dst#
-                                 (receiver-node dst#)
-                                 (n/terminal-node nil))))]
+        message-predicate? (or channel? message-predicate)]
+    (unify-gensyms
+      `(let [src-channel## ~ch
+             dst# ~(when channel?
+                     (or channel `(mimic src-channel##)))
+             dst-node## (when dst# (receiver-node dst#)) 
+             initial-val# ~initial-value
+             message-predicate## ~message-predicate
+             message-predicate## ~(if message-predicate
+                                    `(fn [~@(when reducer `(val##)) x#]
+                                       (and
+                                         (or
+                                           (nil? dst-node##)
+                                           (not (n/closed? dst-node##)))
+                                         (message-predicate##
+                                           ~@(when reducer `(val##))
+                                           x#)))
+                                    `(fn [~'& _#]
+                                       (or
+                                         (nil? dst-node##)
+                                         (not (n/closed? dst-node##)))))
+             white-predicate## ~while-predicate
+             message-transform## ~message-transform
+             reducer## ~reducer
+             timeout## ~timeout]
+         (if-let [unconsume# (n/consume
+                               (emitter-node src-channel##)
+                               (n/edge
+                                 ~(or description "consume")
+                                 (if dst#
+                                   (receiver-node dst#)
+                                   (n/terminal-node nil))))]
 
-         (let [cleanup#
-               (fn [val#]
-                 (unconsume#)
-                 (when dst# (close dst#))
-                 (FinalValue. val#))
-
-               result#
-               (p/run-pipeline initial-val#
-                 {:error-handler (fn [ex#]
-                                   (log/error ex# "error in consume")
-                                   (if dst#
-                                     (error dst# ex#)
-                                     (p/redirect (p/pipeline (constantly (r/error-result ex#))) nil)))}
-                 (fn [~val-sym]
-                   (if-not ~(if while-predicate
-                              `(~while-predicate-sym ~@(when reducer `(~val-sym)))
-                              true)
-                     (cleanup# ~val-sym)
-                     (p/run-pipeline
-                       (read-channel* ~src-channel-sym
-                         :on-false ::close
-                         :on-timeout ::close
-                         :on-drained ::close
-                         ~@(when timeout
-                             `(:timeout (~timeout-sym)))
-                         ~@(when message-predicate?
-                             `(:predicate
-                                ~(if reducer
-                                   `(fn [msg#]
-                                      (~message-predicate-sym ~@(when reducer `(~val-sym)) msg#))
-                                   message-predicate-sym))))
-                       (fn [~msg-sym]
-                         (if (identical? ::close ~msg-sym)
-                           (cleanup# ~val-sym)
-                           (let [~val-sym ~(when reducer `(~reducer-sym ~val-sym ~msg-sym))]
-                             (when dst# 
-                               (enqueue dst#
-                                 ~(if message-transform
-                                    `(~message-transform-sym ~@(when reducer `(~val-sym)) ~msg-sym)
-                                    msg-sym)))
-                             ~val-sym))))))
+           (let [cleanup#
                  (fn [val#]
-                   (if (instance? FinalValue val#)
-                     (.val ^FinalValue val#)
-                     (p/restart val#))))]
-           (if dst#
-             dst#
-             result#))
+                   (unconsume#)
+                   (when dst# (close dst#))
+                   (FinalValue. val#))
 
-         ;; something's already attached to the source
-         (if dst#
-           (do
-             (error dst# :lamina/already-consumed!)
-             dst#)
-           (r/error-result :lamina/already-consumed!))))))
+                 result#
+                 (p/run-pipeline initial-val#
+                   {:error-handler (fn [ex#]
+                                     (log/error ex# "error in consume")
+                                     (if dst#
+                                       (error dst# ex#)
+                                       (p/redirect (p/pipeline (constantly (r/error-result ex#))) nil)))}
+                   (fn [val##]
+                     (if-not ~(if while-predicate
+                                `(white-predicate## ~@(when reducer `(val##)))
+                                true)
+                       (cleanup# val##)
+                       (p/run-pipeline
+                         (read-channel* src-channel##
+                           :on-false ::close
+                           :on-timeout ::close
+                           :on-drained ::close
+                           ~@(when timeout
+                               `(:timeout (timeout##)))
+                           ~@(when message-predicate?
+                               `(:predicate
+                                  ~(if reducer
+                                     `(fn [msg#]
+                                        (message-predicate## ~@(when reducer `(val##)) msg#))
+                                     `message-predicate##))))
+                         (fn [msg##]
+                           (if (identical? ::close msg##)
+                             (cleanup# val##)
+                             (let [val## ~(when reducer `(reducer## val## msg##))]
+                               (when dst# 
+                                 (enqueue dst#
+                                   ~(if message-transform
+                                      `(message-transform## ~@(when reducer `(val##)) msg##)
+                                      `msg##)))
+                               val##))))))
+                   (fn [val#]
+                     (if (instance? FinalValue val#)
+                       (.val ^FinalValue val#)
+                       (p/restart val#))))]
+             (if dst#
+               dst#
+               result#))
+
+           ;; something's already attached to the source
+           (if dst#
+             (do
+               (error dst# :lamina/already-consumed!)
+               dst#)
+             (r/error-result :lamina/already-consumed!)))))))
 
 ;;;
 

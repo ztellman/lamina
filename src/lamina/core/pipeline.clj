@@ -7,6 +7,8 @@
 ;;   You must not remove this notice, or any other, from this software.
 
 (ns lamina.core.pipeline
+  (:use
+    [potemkin :only (unify-gensyms)])
   (:require
     [lamina.core.result :as r]
     [clojure.tools.logging :as log])
@@ -83,42 +85,37 @@
 ;;  the longer the pipeline, the fewer steps per clause, since the JVM doesn't
 ;;  like big functions.  Currently at eight or more steps, each clause only handles
 ;;  a single step. 
-(defn- unwind-stages [this result initial-val val idx stages remaining]
+(defn- unwind-stages [idx stages remaining]
   `(cond
        
-     (r/result-channel? ~val)
-     (let [val# (r/success-value ~val ::unrealized)]
-       (if (identical? ::unrealized val#)
-         (subscribe ~this ~result ~initial-val ~val ~idx)
-         (recur val# (long ~idx))))
+     (r/result-channel? val##)
+     (let [value# (r/success-value val## ::unrealized)]
+       (if (identical? ::unrealized value#)
+         (subscribe this## result## initial-val## val## ~idx)
+         (recur value# (long ~idx))))
        
 
-     (instance? Redirect ~val)
-     (let [^Redirect redirect# ~val]
+     (instance? Redirect val##)
+     (let [^Redirect redirect# val##]
        (if (identical? ::current (.pipeline redirect#))
          (let [value# (if (identical? ::initial (.value redirect#))
-                        ~initial-val
+                        initial-val##
                         (.value redirect#))]
            (recur value# (long 0)))
-         ~val))
+         val##))
 
      :else
      ~(if (empty? stages)
-        `(if (identical? nil ~result)
-           (r/success-result ~val)
-           (r/success ~result ~val))
-        (let [val-sym (gensym "val")]
-          `(let [~val-sym (~(first stages) ~val)]
-             ~(if (zero? remaining)
-                `(recur ~val-sym (long ~(inc idx)))
-                (unwind-stages
-                  this
-                  result
-                  initial-val
-                  val-sym
-                  (inc idx)
-                  (rest stages)
-                  (dec remaining))))))))
+        `(if (identical? nil result##)
+           (r/success-result val##)
+           (r/success result## val##))
+        `(let [val## (~(first stages) val##)]
+           ~(if (zero? remaining)
+              `(recur val## (long ~(inc idx)))
+              (unwind-stages
+                (inc idx)
+                (rest stages)
+                (dec remaining)))))))
 
 (defn- complex-error-handler [error-handler]
   `(error [this# result# initial-value# ex#]
@@ -150,41 +147,23 @@
         {:keys [result?]
          :or {result? true}} options
         len (count stages)
-        depth (max-depth len)
-
-        ;; define symbols that will be used in the macro
-        this (gensym "this")
-        result (gensym "result")
-        initial-val (gensym "initial-val")
-        error-handler (gensym "error-handler")
-        val (gensym "val")
-        step (gensym "step")
-        subscribe (gensym "subscribe")]
-    `(let [result?# ~result?
-           ~error-handler ~(:error-handler options)]
-       (reify IPipeline
-         (run [~this ~result ~initial-val ~val ~step] 
-           (when (or (identical? nil ~result) (identical? nil (r/result ~result)))
+        depth (max-depth len)]
+    (unify-gensyms
+      `(reify IPipeline
+         (run [this## result## initial-val## val# step#] 
+           (when (or (identical? nil result##) (identical? nil (r/result result##)))
              (try
-               (loop [~val ~val, ~step (long ~step)]
-                 (case (int ~step)
+               (loop [val## val# step## (long step#)]
+                 (case (int step##)
                    ~@(interleave
                        (iterate inc 0)
                        (map
-                         (fn [step]
-                           (unwind-stages
-                             this
-                             result
-                             initial-val
-                             val
-                             step
-                             (drop step stages)
-                             depth))
+                         #(unwind-stages % (drop % stages) depth)
                          (range (inc len))))))
                (catch Exception ex#
-                 (error ~this ~result ~initial-val ex#)))))
+                 (error this## result## initial-val## ex#)))))
          ~(if (:error-handler options)
-            (complex-error-handler error-handler)
+            (complex-error-handler (:error-handler options))
             `(error [_# result# _# ex#]
                (log/error ex# "Unhandled exception in pipeline")
                (if result#
