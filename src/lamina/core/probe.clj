@@ -7,10 +7,11 @@
 ;;   You must not remove this notice, or any other, from this software.
 
 (ns lamina.core.probe
+  (:use
+    [lamina.core.utils])
   (:require
     [lamina.core.channel :as c]
-    [lamina.core.node :as n]
-    [lamina.core.protocol :as proto])
+    [lamina.core.node :as n])
   (:import
     [java.io
      Writer]
@@ -25,7 +26,7 @@
 (deftype ProbeChannel
   [^AtomicBoolean enabled?
    channel]
-  proto/IEnqueue
+  IEnqueue
   (enqueue [_ msg]
     (n/propagate (c/receiver-node channel) msg true))
   IProbe
@@ -48,13 +49,20 @@
 
     (ProbeChannel. flag ch)))
 
+(defn canonical-probe-name [x]
+  (cond
+    (string? x) x
+    (keyword? x) (name x)
+    (sequential? x) (->> x (map name) (interpose ":") (apply str))))
+
 (def ^ConcurrentHashMap probes (ConcurrentHashMap.))
 
 (defn probe-channel [id]
-  (if-let [ch (.get probes id)]
-    ch
-    (let [ch (probe-channel- id)]
-      (or (.putIfAbsent probes id ch) ch))))
+  (let [id (canonical-probe-name id)]
+    (if-let [ch (.get probes id)]
+      ch
+      (let [ch (probe-channel- id)]
+        (or (.putIfAbsent probes id ch) ch)))))
 
 ;;;
 
@@ -62,7 +70,7 @@
   [^AtomicBoolean enabled?
    upstream
    downstream]
-  proto/IEnqueue
+  IEnqueue
   (enqueue [_ msg]
     (n/propagate (c/receiver-node upstream) msg true))
   IProbe

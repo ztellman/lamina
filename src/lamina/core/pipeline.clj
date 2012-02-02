@@ -108,7 +108,9 @@
      ~(if (empty? stages)
         `(if (identical? nil result##)
            (r/success-result val##)
-           (r/success result## val##))
+           (do
+             (r/success result## val##)
+             result##))
         `(let [val## (~(first stages) val##)]
            ~(if (zero? remaining)
               `(recur val## (long ~(inc idx)))
@@ -144,14 +146,15 @@
 
 (defmacro pipeline [& opts+stages]
   (let [[options stages] (split-options opts+stages)
-        {:keys [result?]
-         :or {result? true}} options
+        {:keys [result error-handler]} options
         len (count stages)
         depth (max-depth len)]
     (unify-gensyms
       `(reify IPipeline
          (run [this## result## initial-val## val# step#] 
-           (when (or (identical? nil result##) (identical? nil (r/result result##)))
+           (when (or
+                   (identical? nil result##)
+                   (identical? nil (r/result result##)))
              (try
                (loop [val## val# step## (long step#)]
                  (case (int step##)
@@ -162,8 +165,8 @@
                          (range (inc len))))))
                (catch Exception ex#
                  (error this## result## initial-val## ex#)))))
-         ~(if (:error-handler options)
-            (complex-error-handler (:error-handler options))
+         ~(if error-handler
+            (complex-error-handler error-handler)
             `(error [_# result# _# ex#]
                (log/error ex# "Unhandled exception in pipeline")
                (if result#
@@ -171,12 +174,12 @@
                  (r/error-result ex#))))
          clojure.lang.IFn
          (invoke [this# val#]
-           (start-pipeline this# nil val# val# 0))))))
+           (start-pipeline this# ~result val# val# 0))))))
 
 (defmacro run-pipeline [value & opts+stages]
   `(let [p# (pipeline ~@opts+stages)
          value# ~value]
-     (start-pipeline p# nil value# value# 0)))
+     (p# value#)))
 
 (defn read-merge [read-fn merge-fn]
   (pipeline

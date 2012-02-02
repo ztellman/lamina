@@ -10,7 +10,7 @@
   (:use
     [clojure test]
     [lamina.test utils]
-    [lamina.core channel]
+    [lamina.core channel utils]
     [lamina.core.operators :only (channel-seq)])
   (:require
     [lamina.core.pipeline :as p]))
@@ -40,7 +40,8 @@
         a (channel 0 1 2)
         b (->> a (map* inc) (filter* even?))]
     (receive-all b callback)
-    (enqueue a 3 4)
+    (enqueue a 3)
+    (enqueue a 4)
     (is (= [2 4] @v))))
 
 (deftest test-fork

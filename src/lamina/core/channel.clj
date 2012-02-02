@@ -7,12 +7,13 @@
 ;;   You must not remove this notice, or any other, from this software.
 
 (ns lamina.core.channel
+  (:use
+    [lamina.core.utils])
   (:require
     [lamina.core.node :as n]
     [lamina.core.queue :as q]
     [lamina.core.lock :as l]
     [lamina.core.result :as r]
-    [lamina.core.protocol :as proto]
     [clojure.string :as str])
   (:import
     [lamina.core.lock
@@ -37,7 +38,7 @@
 (deftype Channel
   [^Node receiver
    ^{:volatile-mutable true :tag Node} emitter]
-  proto/IEnqueue
+  IEnqueue
   (enqueue [_ msg]
     (n/propagate receiver msg true))
   IChannel
@@ -73,7 +74,7 @@
             "[ ]"))))))
 
 (defrecord SplicedChannel [^Channel receiver ^Channel emitter]
-  proto/IEnqueue
+  IEnqueue
   (enqueue [_ msg]
     (n/propagate (receiver-node receiver) msg true))
   IChannel
@@ -125,15 +126,6 @@
     (instance? SplicedChannel x)))
 
 ;;;
-
-(defn enqueue
-  "Enqueues the message or messages into the channel."
-  ([channel message]
-     (proto/enqueue channel message))
-  ([channel message & messages]
-     (proto/enqueue channel message)
-     (doseq [m messages]
-       (proto/enqueue channel m))))
 
 (defn receive
   "Consumes a single message from the channel, which will be passed to 'callback.'  Only
@@ -192,9 +184,7 @@
   (n/close (receiver-node channel)))
 
 (defn error [channel err]
-  (if (r/result-channel? channel)
-    (r/error channel err)
-    (n/error (receiver-node channel) err)))
+  (n/error (receiver-node channel) err))
 
 (defn closed? [channel]
   (n/closed? (receiver-node channel)))
@@ -245,7 +235,7 @@
     (Channel. n n)))
 
 (defn filter* [f channel]
-  (let [n (n/downstream-node (n/predicate-operator f) (emitter-node channel))]
+  (let [n (n/downstream-node (predicate-operator f) (emitter-node channel))]
     (Channel. n n)))
 
 ;;;

@@ -241,7 +241,7 @@
           ::error
           :lamina/error!
           
-          ::false
+          :lamina/false
           :lamina/filtered
           
           (do
@@ -288,7 +288,7 @@
                               ::error
                               :lamina/error!
                               
-                              ::false
+                              :lamina/false
                               :lamina/filtered
 
                               (::drained ::closed)
@@ -783,9 +783,9 @@
 
 ;;;
 
-(deftype CallbackNode [description callback]
+(deftype CallbackNode [callback]
   IDescribed
-  (description [_] description)
+  (description [_] (describe-fn callback))
   IPropagator
   (close [_])
   (error [_ _])
@@ -798,7 +798,7 @@
         (log/error e "Error in permanent callback.")))))
 
 (defn callback-node [callback]
-  (CallbackNode. nil callback))
+  (CallbackNode. callback))
 
 (defn callback-node? [n]
   (instance? CallbackNode n))
@@ -834,19 +834,6 @@
 
 (defn terminal-node [description]
   (TerminalNode. description))
-
-;;;
-
-(defn predicate-operator [predicate]
-  (with-meta
-    (fn [x]
-      (if (predicate x)
-        x
-        ::false))
-    {::predicate predicate}))
-
-(defn operator-predicate [f]
-  (->> f meta ::predicate))
 
 ;;;
 

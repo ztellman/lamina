@@ -8,7 +8,7 @@
 
 (ns lamina.core.walk
   (use
-    [lamina.core.node])
+    [lamina.core node utils])
   (:require
     [lamina.core.lock :as l]
     [lamina.core.queue :as q]

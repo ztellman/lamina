@@ -9,7 +9,7 @@
 (ns lamina.core.operators
   (:use
     [potemkin :only (unify-gensyms)]
-    [lamina.core channel])
+    [lamina.core channel utils])
   (:require
     [lamina.core.node :as n]
     [lamina.core.lock :as l]

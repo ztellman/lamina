@@ -8,7 +8,7 @@
 
 (ns lamina.viz.node
   (:use
-    [lamina.core walk]
+    [lamina.core walk utils]
     [lamina.viz core])
   (:require
     [lamina.core.node :as n]
@@ -18,8 +18,9 @@
 
 ;;;
 
-(defn show-queue? [{:keys [error downstream-count consumed?]}]
+(defn show-queue? [{:keys [error downstream-count consumed? node?]}]
   (and
+    node?
     (not error)
     (or consumed? (zero? downstream-count))))
 

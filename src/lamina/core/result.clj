@@ -326,8 +326,8 @@
   (toString [_]
     (let [state state]
       (case (.mode state)
-        ::error   (str "<< ERROR: " (.value state) " >>")
-        ::success (str "<< " (.value state) " >>")
+        ::error   (str "<< ERROR: " (pr-str (.value state)) " >>")
+        ::success (str "<< " (pr-str (.value state)) " >>")
         "<< \u2026 >>"))))
 
 ;;;

@@ -10,6 +10,7 @@
   (:use
     [clojure test]
     [lamina.test utils]
+    [lamina.core.utils :only (predicate-operator)]
     [lamina.core node walk])
   (:require
     [lamina.core.queue :as q]))

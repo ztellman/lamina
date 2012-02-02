@@ -8,8 +8,7 @@
 
 (ns lamina.viz.core
   (:use
-    [clojure.java.shell :only (sh)]
-    [lamina.core.node :only (operator-predicate)])
+    [clojure.java.shell :only (sh)])
   (:require
     [clojure.string :as str])
   (:import
@@ -151,72 +150,3 @@
 
         "\n}"))))
 
-;; These functions are adapted from Mark McGranaghan's clj-stacktrace, which
-;; is released under the MIT license and therefore amenable to this sort of
-;; copy/pastery.
-
-(defn clojure-ns
-  "Returns the clojure namespace name implied by the bytecode instance name."
-  [instance-name]
-  (str/replace
-    (or (get (re-find #"([^$]+)\$" instance-name) 1)
-      (get (re-find #"(.+)\.[^.]+$" instance-name) 1))
-    #"_" "-"))
-
-(def clojure-fn-subs
-  [[#"^[^$]*\$"     ""]
-   [#"\$.*"         ""]
-   [#"@[0-9a-f]*$"  ""]
-   [#"__\d+.*"      ""]
-   [#"_QMARK_"     "?"]
-   [#"_BANG_"      "!"]
-   [#"_PLUS_"      "+"]
-   [#"_GT_"        ">"]
-   [#"_LT_"        "<"]
-   [#"_EQ_"        "="]
-   [#"_STAR_"      "*"]
-   [#"_SLASH_"     "/"]
-   [#"_"           "-"]])
-
-(defn clojure-anon-fn?
-  "Returns true if the bytecode instance name implies an anonymous inner fn."
-  [instance-name]
-  (boolean (re-find #"\$.*\$" instance-name)))
-
-(defn clojure-fn
-  "Returns the clojure function name implied by the bytecode instance name."
-  [instance-name]
-  (reduce
-   (fn [base-name [pattern sub]] (str/replace base-name pattern sub))
-   instance-name
-   clojure-fn-subs))
-
-;;; end clj-stacktrace
-
-(defn fn-instance? [x]
-  (boolean (re-matches #"^[^$]*\$[^@]*@[0-9a-f]*$" (str x))))
-
-(defn describe-fn [x]
-  (cond
-    (map? x)
-    (str "{ ... }")
-
-    (set? x)
-    (str "#{ ... }")
-
-    (vector? x)
-    (str "[ ... ]")
-    
-    (not (fn-instance? x))
-    (pr-str x)
-
-    :else
-    (let [f (or (operator-predicate x) x)
-          s (str f)
-          ns (clojure-ns s)
-          f (clojure-fn s)
-          anon? (clojure-anon-fn? s)]
-      (str
-        (when-not (= "clojure.core" ns) (str ns "/"))
-        f
-        (when anon? "[fn]")))))
