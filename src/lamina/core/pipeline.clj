@@ -127,23 +127,6 @@
                 (rest stages)
                 (dec remaining)))))))
 
-(defn- complex-error-handler [error-handler]
-  `(error [this# result# initial-value# ex#]
-     (let [value# (~error-handler ex#)]
-       (if (instance? Redirect value#)
-         (let [^Redirect redirect# value#
-               value# (if (identical? ::initial (.value redirect#))
-                        initial-value#
-                        (.value redirect#))
-               pipeline# (if (identical? ::current (.pipeline redirect#))
-                           this#
-                           (.pipeline redirect#))]
-           (start-pipeline pipeline# result# value# value# 0))
-         (do
-           (if result#
-            (r/error result# ex#)
-            (r/error-result ex#)))))))
-
 ;; totally ad hoc
 (defn- max-depth [num-stages]
   (cond
@@ -151,6 +134,27 @@
     (< num-stages 6) 2
     (< num-stages 8) 1
     :else 0))
+
+(defn- complex-error-handler [error-handler]
+  `(error [this# result# initial-value# ex#]
+     (let [result# (or result# (r/result-channel))]
+       (run-pipeline nil
+         {:result result#
+          :error-handler nil}
+         (fn [_#]
+           (~error-handler ex#))
+         (fn [value#]
+           (if (instance? Redirect value#)
+             (let [^Redirect redirect# value#
+                   value# (if (identical? ::initial (.value redirect#))
+                            initial-value#
+                            (.value redirect#))
+                   pipeline# (if (identical? ::current (.pipeline redirect#))
+                               this#
+                               (.pipeline redirect#))]
+               (start-pipeline pipeline# result# value# value# 0))
+             (r/error-result ex#))))
+       result#)))
 
 (defmacro pipeline [& opts+stages]
   (let [[options stages] (split-options opts+stages)
@@ -176,7 +180,8 @@
          ~(if error-handler
             (complex-error-handler error-handler)
             `(error [_# result# _# ex#]
-               (log/error ex# "Unhandled exception in pipeline")
+               (when-not ~(contains? options :error-handler)
+                 (log/error ex# "Unhandled exception in pipeline"))
                (if result#
                  (r/error result# ex#)
                  (r/error-result ex#))))
@@ -189,6 +194,8 @@
          value# ~value]
      (p# value#)))
 
+;;;
+
 (defn read-merge [read-fn merge-fn]
   (pipeline
     (fn [val]
@@ -199,5 +206,11 @@
   (redirect
     (pipeline (constantly value))
     nil))
+
+(defmacro wait-stage [interval]
+  `(fn [x#]
+     (run-pipeline (r/timed-result ~interval)
+       (fn [_#]
+         x#))))
 
 

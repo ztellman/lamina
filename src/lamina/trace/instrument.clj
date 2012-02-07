@@ -75,6 +75,8 @@
           enter-probe (probe-channel [nm :enter])
           return-probe (probe-channel [nm :return])
           error-probe (probe-channel [nm :error])]
+      (doseq [[k v] (:probes options)]
+        (siphon (probe-channel [~nm k]) v))
       (fn
         ([]
            (instrument-body nm enter-probe return-probe implicit?
@@ -110,6 +112,8 @@
              error-probe## (probe-channel [~nm :error])
              executor## ~(:executor mta)
              implicit?## ~(:implicit? mta)]
+         (doseq [[k# v#] ~(:probes mta)]
+           (siphon (probe-channel [~nm k#]) v#))
          ~(transform-defn-bodies
             (fn [args body]
               (if executor?

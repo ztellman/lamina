@@ -360,11 +360,16 @@
   (subscribe src (result-callback #(success dst %) #(error dst %)))
   dst)
 
-(defn result-timeout [interval result]
+(defn with-timeout [interval result]
   (if (zero? interval)
     (error result :lamina/timeout!)
     (t/delay-invoke interval #(error result :lamina/timeout!)))
   result)
+
+(defn timed-result [interval]
+  (let [result (result-channel)]
+    (t/delay-invoke interval #(success result nil))
+    result))
 
 ;;;
 

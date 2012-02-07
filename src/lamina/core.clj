@@ -15,7 +15,8 @@
     [lamina.core.pipeline :as p]
     [lamina.core.probe :as pr]
     [lamina.core.result :as r]
-    [lamina.core.operators :as op]))
+    [lamina.core.operators :as op]
+    [clojure.tools.logging :as log]))
 
 ;;;
 
@@ -40,6 +41,10 @@
 
 (import-fn r/result-channel)
 (import-fn r/result-channel?)
+(import-fn r/with-timeout)
+(import-fn r/success)
+(import-fn r/success-result)
+(import-fn r/error-result)
 
 ;;;
 
@@ -108,6 +113,8 @@
 (import-fn ch/closed?)
 (import-fn ch/on-closed)
 (import-fn ch/on-drained)
+(import-fn ch/closed-result)
+(import-fn ch/drained-result)
 (import-fn ch/cancel-callback)
 
 (import-macro p/pipeline)
@@ -116,6 +123,19 @@
 (import-fn p/redirect)
 (import-fn p/complete)
 (import-fn p/read-merge)
+(import-macro p/wait-stage)
+
+(defn receive-in-order [ch f]
+  (run-pipeline ch
+    {:error-handler (fn [ex]
+                      (log/error ex "Error in receive-in-order loop.")
+                      (restart))}
+    #(read-channel* % :on-drained ::drained)
+    #(if (= ::drained %)
+       nil
+       (do
+         (f %)
+         (restart)))))
 
 (import-macro op/consume)
 (import-fn ch/map*)

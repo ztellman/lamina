@@ -55,6 +55,9 @@
 
 (deftest test-error-handler
   (is (thrown? Exception @(run-pipeline nil
+                            {:error-handler nil}
+                            boom)))
+  (is (thrown? Exception @(run-pipeline nil
                             {:error-handler (fn [_])}
                             boom)))
   (is (= 1 @(run-pipeline nil
