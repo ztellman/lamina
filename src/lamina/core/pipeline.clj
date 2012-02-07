@@ -136,25 +136,46 @@
     :else 0))
 
 (defn- complex-error-handler [error-handler]
-  `(error [this# result# initial-value# ex#]
-     (let [result# (or result# (r/result-channel))]
-       (run-pipeline nil
-         {:result result#
-          :error-handler nil}
-         (fn [_#]
-           (~error-handler ex#))
-         (fn [value#]
-           (if (instance? Redirect value#)
-             (let [^Redirect redirect# value#
-                   value# (if (identical? ::initial (.value redirect#))
-                            initial-value#
-                            (.value redirect#))
-                   pipeline# (if (identical? ::current (.pipeline redirect#))
-                               this#
-                               (.pipeline redirect#))]
-               (start-pipeline pipeline# result# value# value# 0))
-             (r/error-result ex#))))
-       result#)))
+  (if (= "pipeline" (str (first error-handler)))
+
+    ;; pipeline error-handler
+    (let [[opts stages] (split-options (rest error-handler))]
+      (unify-gensyms
+        `(error [this# result## initial-value# ex#]
+           (let [result## (or result## (r/result-channel))
+                 p# (pipeline
+                      ~(merge opts {:result `result##})
+                      ~@(butlast stages)
+                      (fn [value#]
+                        (let [value# (~(last stages) value#)]
+                          (if (instance? Redirect value#)
+                            (let [^Redirect redirect# value#
+                                  value# (if (identical? ::initial (.value redirect#))
+                                           initial-value#
+                                           (.value redirect#))
+                                  pipeline# (if (identical? ::current (.pipeline redirect#))
+                                              this#
+                                              (.pipeline redirect#))]
+                              (start-pipeline pipeline# result## value# value# 0))
+                            (r/error-result ex#)))))]
+             (p# ex#)
+             result##))))
+
+    ;; function error-handler
+    `(error [this# result# initial-value# ex#]
+       (let [value# (~error-handler ex#)]
+         (if (instance? Redirect value#)
+           (let [^Redirect redirect# value#
+                 value# (if (identical? ::initial (.value redirect#))
+                          initial-value#
+                          (.value redirect#))
+                 pipeline# (if (identical? ::current (.pipeline redirect#))
+                             this#
+                             (.pipeline redirect#))]
+             (start-pipeline pipeline# result# value# value# 0))
+           (if result#
+             (r/error result# ex#)
+             (r/error-result ex#)))))))
 
 (defmacro pipeline [& opts+stages]
   (let [[options stages] (split-options opts+stages)

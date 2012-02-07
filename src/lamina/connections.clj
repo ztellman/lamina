@@ -107,10 +107,10 @@
        (receive-in-order requests
          (fn [^RequestTuple r]
            (run-pipeline nil
-             {:error-handler (fn [_]
-                               (when retry?
-                                 (run-pipeline nil
-                                   (wait-stage 1)
+             {:error-handler (pipeline
+                               (wait-stage 1)
+                               (fn [_]
+                                 (when retry?
                                    (restart))))
               :result (.result r)}
              (fn [_]
@@ -168,14 +168,15 @@
          (fn [^RequestTuple r]
            (when-not (r/result (.result r))
              (run-pipeline (connection)
-               {:error-handler (fn [ex]
-                                 (if retry?
-                                   (run-pipeline nil
-                                     (wait-stage 1)
-                                     (restart))
-                                   (do
-                                     (error (.result r) ex)
-                                     (complete nil))))}
+               {:error-handler (pipeline
+                                 (wait-stage 1)
+                                 (fn [ex]
+                                   (if retry?
+                                     (restart)
+                                     (do
+                                       (error (.result r) ex)
+                                       (complete nil)))))
+                }
                (fn [x]
                  (if (channel? x)
                    (do

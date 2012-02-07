@@ -62,6 +62,11 @@
                             boom)))
   (is (= 1 @(run-pipeline nil
               {:error-handler (fn [_] (complete 1))}
+              boom)))
+  (is (= 1 @(run-pipeline nil
+              {:error-handler (pipeline
+                                (wait-stage 100)
+                                (fn [_] (complete 1)))}
               boom))))
 
 ;;;
