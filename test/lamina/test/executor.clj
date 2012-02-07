@@ -8,7 +8,7 @@
 
 (ns lamina.test.executor
   (:use
-    [lamina core executor]
+    [lamina core executor trace]
     [lamina.test utils]
     [clojure test])
   (:import
@@ -17,20 +17,39 @@
      Executor
      Executors]))
 
-(def simple-executor (Executors/newSingleThreadExecutor))
-
-(def lamina-executor (executor :name "test"))
+;;;
 
 (def n 1e3)
 
+(defn benchmark-active-probe [description probe]
+   (let [nm (gensym "name")
+        x (executor :name nm :max-thread-count 1)
+        p (probe-channel [nm probe])
+        f (instrument #(.countDown ^CountDownLatch %)
+            :executor x
+            :name nm)]
+    (receive-all p (fn [_]))
+    (bench description
+      (let [latch (CountDownLatch. (int n))]
+        (dotimes [_ n]
+          (f latch))
+        (.await latch)))))
+
 (deftest ^:benchmark benchmark-executor
-  (bench "baseline executor countdown"
-    (let [latch (CountDownLatch. (int n))]
-      (dotimes [_ n]
-        (.execute ^Executor simple-executor #(.countDown latch)))
-      (.await latch)))
-  (bench "executor countdown"
-    (let [latch (CountDownLatch. (int n))]
-      (dotimes [_ n]
-        (execute lamina-executor #(.countDown latch)))
-      (.await latch))))
+  (let [^Executor x (Executors/newSingleThreadExecutor)]
+    (bench "baseline executor countdown"
+      (let [latch (CountDownLatch. (int n))]
+        (dotimes [_ n]
+          (.execute x #(.countDown latch)))
+        (.await latch))))
+  (let [x (executor :name "test" :max-thread-count 1)
+        f (instrument #(.countDown ^CountDownLatch %)
+            :executor x
+            :name :foo)]
+    (bench "executor countdown"
+      (let [latch (CountDownLatch. (int n))]
+        (dotimes [_ n]
+          (f latch))
+        (.await latch))))
+  (benchmark-active-probe "executor countdown with return probe" :return)
+  (benchmark-active-probe "executor countdown with enter probe" :enter))

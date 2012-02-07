@@ -11,6 +11,7 @@
     [potemkin :only (unify-gensyms)])
   (:require
     [lamina.core.result :as r]
+    [lamina.core.context :as context]
     [clojure.tools.logging :as log])
   (:import
     [lamina.core.result
@@ -58,10 +59,17 @@
 
 (defn subscribe [pipeline result initial-val val idx]
   (let [result (or result (r/result-channel))]
-    (r/subscribe val
-     (r/result-callback
-       #(start-pipeline pipeline result initial-val % idx)
-       #(error pipeline result initial-val %)))
+    (if-let [ctx (context/context)]
+      (r/subscribe val
+        (r/result-callback
+          #(context/with-context ctx
+             (start-pipeline pipeline result initial-val % idx))
+          #(context/with-context ctx
+             (error pipeline result initial-val %))))
+      (r/subscribe val
+        (r/result-callback
+          #(start-pipeline pipeline result initial-val % idx)
+          #(error pipeline result initial-val %))))
     result))
 
 ;;;

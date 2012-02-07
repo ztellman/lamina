@@ -11,7 +11,8 @@
     [lamina.core.utils])
   (:require
     [lamina.core.channel :as c]
-    [lamina.core.node :as n])
+    [lamina.core.node :as n]
+    [clojure.tools.logging :as log])
   (:import
     [java.io
      Writer]
@@ -25,10 +26,15 @@
 
 (deftype ProbeChannel
   [^AtomicBoolean enabled?
-   channel]
+   channel
+   log-on-disabled?
+   description]
   IEnqueue
   (enqueue [_ msg]
-    (n/propagate (c/receiver-node channel) msg true))
+    (let [result (n/propagate (c/receiver-node channel) msg true)]
+      (when (and log-on-disabled? (identical? :lamina/inactive-probe result))
+        (log/error msg (str "error on inactive probe: " description)))
+      result))
   IProbe
   (probe-enabled? [_]
     (.get enabled?))
@@ -38,7 +44,7 @@
   (emitter-node [_]
     (c/emitter-node channel)))
 
-(defn probe-channel- [description]
+(defn probe-channel- [description log-on-disabled?]
   (let [flag (AtomicBoolean. false)
         ch (c/channel* :probe? true :description (name description))]
 
@@ -47,7 +53,7 @@
       (fn [_ downstream _]
         (.set flag (pos? downstream))))
 
-    (ProbeChannel. flag ch)))
+    (ProbeChannel. flag ch log-on-disabled? description)))
 
 (defn canonical-probe-name [x]
   (cond
@@ -57,12 +63,17 @@
 
 (def ^ConcurrentHashMap probes (ConcurrentHashMap.))
 
-(defn probe-channel [id]
-  (let [id (canonical-probe-name id)]
-    (if-let [ch (.get probes id)]
-      ch
-      (let [ch (probe-channel- id)]
-        (or (.putIfAbsent probes id ch) ch)))))
+(defn probe-channel-generator [f]
+  (fn [id]
+    (let [id (canonical-probe-name id)]
+      (if-let [ch (.get probes id)]
+        ch
+        (let [ch (f id)]
+          (or (.putIfAbsent probes id ch) ch))))))
+
+(def probe-channel (probe-channel-generator #(probe-channel- % false)))
+
+(def error-probe-channel (probe-channel-generator #(probe-channel- % true)))
 
 ;;;
 

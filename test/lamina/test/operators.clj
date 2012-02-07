@@ -32,7 +32,7 @@
 (defn result [f ch]
   (let [ch* (f ch)
         result (if (channel? ch*)
-                 (doall (lazy-channel-seq ch* 5000))
+                 (doall (lazy-channel-seq ch*))
                  @ch*)]
     (when (channel? ch*)
       (is (drained? ch*)))

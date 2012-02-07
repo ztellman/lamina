@@ -993,7 +993,7 @@
       (l/asymmetric-lock)
       identity
       nil
-      false
+      (.probe? node)
       (assoc-record s :permanent? false)
       (Collections/synchronizedMap (HashMap. ^Map (.cancellations node)))
       (CopyOnWriteArrayList. ^CopyOnWriteArrayList (.edges node))

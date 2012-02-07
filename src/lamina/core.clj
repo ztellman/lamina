@@ -29,6 +29,7 @@
   (channel* :permanent? true))
 
 (import-fn pr/probe-channel)
+(import-fn pr/error-probe-channel)
 (import-fn pr/sympathetic-probe-channel)
 (import-fn pr/probe-enabled?)
 
@@ -50,7 +51,7 @@
 
 (defn on-error [channel callback]
   (if (result-channel? channel)
-    (r/subscribe result-channel (r/result-callback (fn [_]) callback))
+    (r/subscribe channel (r/result-callback (fn [_]) callback))
     (ch/on-error channel callback)))
 
 ;;;

@@ -6,4 +6,11 @@
 ;;   the terms of this license.
 ;;   You must not remove this notice, or any other, from this software.
 
-(ns lamina.trace)
+(ns lamina.trace
+  (:use [potemkin])
+  (:require
+    [lamina.trace.instrument :as i]
+    [clojure.string :as str]))
+
+(import-fn i/instrument)
+(import-macro i/defn-instrumented)
