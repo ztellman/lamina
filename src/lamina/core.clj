@@ -111,6 +111,7 @@
 (import-fn ch/close)
 (import-fn ch/drained?)
 (import-fn ch/closed?)
+(import-fn ch/transactional?)
 (import-fn ch/on-closed)
 (import-fn ch/on-drained)
 (import-fn ch/closed-result)
@@ -140,11 +141,14 @@
 (import-macro op/consume)
 (import-fn ch/map*)
 (import-fn ch/filter*)
+(import-fn ch/remove*)
 (import-fn op/take*)
 (import-fn op/take-while*)
 (import-fn op/reductions*)
 (import-fn op/reduce*)
 (import-fn op/last*)
+(import-fn op/partition*)
+(import-fn op/partition-all*)
 
 (defn remove* [f ch]
   (filter* (complement f) ch))

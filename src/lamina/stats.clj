@@ -6,4 +6,18 @@
 ;;   the terms of this license.
 ;;   You must not remove this notice, or any other, from this software.
 
-(ns lamina.stats)
+(ns lamina.stats
+  (:import
+    [com.yammer.metrics.core
+     Histogram]
+    [com.yammer.metrics.stats
+     Snapshot
+     EMWA]
+    [java.util.concurrent
+     TimeUnit]))
+
+
+
+
+
+

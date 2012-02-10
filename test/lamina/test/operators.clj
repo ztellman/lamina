@@ -21,13 +21,16 @@
 (defmacro task [& body]
   `(delay-invoke 1 (fn [] ~@body)))
 
-(defn async-enqueue [transactional? ch messages]
+(defn async-enqueue 
+  [transactional? ch messages]
   (task
     (doseq [m messages]
       (Thread/yield)
       (dosync* transactional?
         (enqueue ch m)))
-    (dosync* transactional? (close ch))))
+    (Thread/yield)
+    (dosync* transactional?
+      (close ch))))
 
 (defn result [f ch]
   (let [ch* (f ch)
@@ -38,6 +41,12 @@
       (is (drained? ch*)))
     result))
 
+(defn tick []
+  (print ".")
+  (flush))
+
+(def n 10)
+
 (defn assert-equivalence [f f* input]
   (let [expected (f input)
         expected (if (sequential? expected)
@@ -46,24 +55,33 @@
         trans-f* #(dosync (f* %))]
 
     ;; pre-populated non-transactional channel
-    (let [ch (channel* :messages input)]
-      (close ch)
-      (is (= expected (result f* ch))))
+    (dotimes [_ n]
+      (let [ch (channel* :messages input)]
+       (close ch)
+       (is (= expected (result f* ch))))
+      (tick))
 
     ;; async enqueue into non-transactional channel
-    (let [ch (channel)]
-      (async-enqueue false ch input)
-      (is (= expected (result f* ch))))
+    (dotimes [_ n]
+      (let [ch (channel)]
+       (async-enqueue false ch input)
+       (is (= expected (result f* ch))))
+      (tick))
 
     ;; pre-populated transactional channel
-    (let [ch (channel* :transactional? true :messages input)]
-      (dosync (close ch))
-      (is (= expected (result trans-f* ch))))
+    (dotimes [_ n]
+      (let [ch (channel* :transactional? true :messages input)]
+       (dosync (close ch))
+       (is (= expected (result trans-f* ch))))
+     (tick))
 
     ;; async enqueue into transactional channel
-    (let [ch (channel* :transactional? true)]
-      (async-enqueue true ch input)
-      (is (= expected (result trans-f* ch))))))
+    (dotimes [_ n] (let [ch (channel* :transactional? true)]
+       (async-enqueue true ch input)
+       (is (= expected (result trans-f* ch))))
+     (tick))
+
+    true))
 
 ;;;
 
@@ -132,21 +150,59 @@
     conj [] [:a :b :c]
     ))
 
+(deftest test-partition*
+  (are [n step s]
+    (assert-equivalence
+      #(partition n step %)
+      #(partition* n step %)
+      s)
+
+    1 1 (range 10)
+    2 1 (range 10)
+    5 3 (range 10)
+    5 5 (range 4)
+    ))
+
+(deftest test-partition-all*
+  (are [n step s]
+    (assert-equivalence
+      #(partition-all n step %)
+      #(partition-all* n step %)
+      s)
+
+    10 8 (range 20)
+    5 4 (range 10)
+    5 5 (range 4)
+    ))
+
 ;;;
+
+(deftest ^:stress stress-test-partition
+  (dotimes* [i 1e5]
+    (let [s (seq (range 10))]
+      (let [ch (channel)]
+        (async-enqueue false ch s)
+        (is (= (partition 2 1 s) (lazy-channel-seq (partition* 2 1 ch))))))))
+
+(defn identity-chain [ch]
+  (lazy-seq
+    (let [ch* (map* identity ch)]
+      (cons ch* (identity-chain ch*)))))
 
 (deftest ^:stress stress-test-lazy-channel-seq
   (println "\n----\n test lazy-seq \n---\n")
   (dotimes* [i 1e5]
-    (let [s (seq (range 0))]
+    (let [s (seq (range 10))]
       (let [ch (channel)]
         (async-enqueue false ch s)
-        (is (= s (lazy-channel-seq ch 10000))))))
+        (is (= s (lazy-channel-seq (nth (identity-chain ch) 10) 10000))))))
   (println "\n----\n test transactional lazy-seq \n---\n")
-  (dotimes* [i 1e5]
-    (let [s (seq (range 0))]
+  (dotimes* [i 1e4]
+    (prn i)
+    (let [s (seq (range 10))]
       (let [ch (channel* :transactional? true)]
         (async-enqueue true ch s)
-        (is (= s (lazy-channel-seq ch 10000)))))))
+        (is (= s (lazy-channel-seq (nth (identity-chain ch) 2) 10000)))))))
 
 ;;;
 

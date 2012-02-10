@@ -164,6 +164,7 @@
   (n/link (emitter-node channel)
     callback
     (n/edge "receive-all" (n/callback-node callback))
+    nil
     nil))
 
 (defn cancel-callback
@@ -176,8 +177,10 @@
     (n/join
       (receiver-node channel)
       (n/edge "fork" n)
-      #(when-let [q (n/queue emitter)]
-         (-> n n/queue (q/append (q/messages q)))))
+      #(when %
+         (when-let [q (n/queue emitter)]
+           (-> n n/queue (q/append (q/messages q)))))
+      nil)
     (Channel. n n))) 
 
 (defn close [channel]
@@ -237,6 +240,9 @@
 (defn filter* [f channel]
   (let [n (n/downstream-node (predicate-operator f) (emitter-node channel))]
     (Channel. n n)))
+
+(defn remove* [f channel]
+  (filter* (complement f) channel))
 
 ;;;
 

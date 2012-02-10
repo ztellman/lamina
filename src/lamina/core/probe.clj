@@ -109,7 +109,7 @@
       (fn [_ downstream _]
         (if (zero? downstream)
           (when (.compareAndSet enabled? true false)
-            (n/link upstream downstream downstream nil))
+            (n/link upstream downstream downstream nil nil))
           (when (.compareAndSet enabled? false true)
             (n/cancel upstream downstream)))))
 

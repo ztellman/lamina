@@ -225,8 +225,8 @@
   ;;
   (ground [_]
     (io! "Cannot modify non-transactional queues inside a transaction."
-      (when-not (.isEmpty messages)
-        (l/with-exclusive-lock lock
+      (l/with-exclusive-lock lock
+        (when-not (.isEmpty messages)
           (let [msgs (seq (.toArray messages))]
             (.clear messages)
             (map #(if (identical? ::nil %) nil %) msgs))))))
@@ -247,38 +247,37 @@
           (release-fn))
         false)
       (io! "Cannot modify non-transactional queues inside a transaction."
-        (let [msg (if (identical? nil msg) ::nil msg)
-              x (l/with-exclusive-lock lock
+        (let [x (l/with-exclusive-lock lock
+                  (when release-fn
+                    (release-fn))
 
                   ;; check if there are any consumers
                   (if (.isEmpty consumers)
-                    
+                      
                     ;; no consumers, just hold onto the message
                     (if persist?
                       (do
-                        (.add messages msg)
+                        (.add messages (if (nil? msg) ::nil msg))
                         :lamina/enqueued)
                       :lamina/discarded) 
-                    
+                      
                     ;; handle the first consumer specially, since most of the time
                     ;; there will only be one
                     (let [^Consumption c (consumption (.poll consumers) msg)]
                       (if (consumed? c)
                         c
-                        
+                          
                         ;; iterate over the remaining consumers
                         (loop [cs (list c)]
                           (if (.isEmpty consumers)
                             (do
                               (when persist?
-                                (.add messages msg))
+                                (.add messages (if (nil? msg) ::nil msg)))
                               (FailedConsumptions. cs))
                             (let [^Consumption c (consumption (.poll consumers) msg)]
                               (if (consumed? c)
                                 (Consumptions. (cons c cs))
                                 (recur (cons c cs))))))))))]
-          (when release-fn
-            (release-fn))
 
           (cond
             (identical? :lamina/enqueued x)
@@ -313,7 +312,7 @@
           (r/success-result (if (identical? ::nil msg) nil msg))
               
           (if closed?
-            (do (println "already closed") (r/error-result :lamina/drained!))
+            (r/error-result :lamina/drained!)
             (let [result-channel (r/result-channel)]
               (.add consumers (SimpleConsumer. result-channel))
               result-channel))))))
@@ -373,6 +372,14 @@
     (alter q pop)
     x))
 
+(defn persistent-queue
+  ([]
+     PersistentQueue/EMPTY)
+  ([s]
+     (if (empty? s)
+       PersistentQueue/EMPTY
+       (apply conj PersistentQueue/EMPTY s))))
+
 (deftype TransactionalEventQueue
   [messages
    consumers
@@ -426,60 +433,56 @@
 
   ;;
   (append [_ msgs]
-    (dosync
-      (apply alter messages conj msgs)))
+    (when-not (empty? msgs)
+      (dosync
+        (apply alter messages conj msgs))))
 
   ;;
   (enqueue [_ msg persist? release-fn]
-    (if @closed?
-      (do
-        (when release-fn
-          (release-fn))
-        false)
-      (let [x (try
-                (dosync
-                  (let [cs (ensure consumers)]
-                    
-                    (if (empty? cs)
+    (let [release-once (delay (when release-fn (release-fn)))
+          x (dosync
+              @release-once
+              (if (ensure closed?)
+                :lamina/already-closed!
+                (let [cs (ensure consumers)]
                       
-                      ;; no consumers, just hold onto the message
-                      (when persist?
-                        (alter messages conj msg)
-                        :lamina/enqueued) 
-                      
-                      ;; handle the first consumer specially, since most of the time
-                      ;; there will only be one
-                      (let [^Consumption c (consumption (poll-queue consumers) msg)]
-                        (if (consumed? c)
-                          c
-                          
-                          ;; iterate over the remaining consumers
-                          (loop [cs (list c)]
-                            (if (empty? @consumers)
-                              (do
-                                (when persist?
-                                  (alter messages conj msg))
-                                cs)
-                              (let [^Consumption c (consumption (poll-queue consumers) msg)]
-                                (if (consumed? c)
-                                  (cons c cs)
-                                  (recur (cons c cs)))))))))))
-                (finally
-                  (when release-fn
-                    (release-fn))))]
+                  (if (empty? cs)
+                        
+                    ;; no consumers, just hold onto the message
+                    (when persist?
+                      (alter messages conj msg)
+                      :lamina/enqueued) 
+                        
+                    ;; handle the first consumer specially, since most of the time
+                    ;; there will only be one
+                    (let [^Consumption c (consumption (poll-queue consumers) msg)]
+                      (if (consumed? c)
+                        c
+                            
+                        ;; iterate over the remaining consumers
+                        (loop [cs (list c)]
+                          (if (empty? @consumers)
+                            (do
+                              (when persist?
+                                (alter messages conj msg))
+                              cs)
+                            (let [^Consumption c (consumption (poll-queue consumers) msg)]
+                              (if (consumed? c)
+                                (cons c cs)
+                                (recur (cons c cs))))))))))))]
 
-        (cond
-          (identical? :lamina/enqueued x)
-          x
+      (cond
+        (keyword? x)
+        x
           
-          (instance? Consumption x)
-          (dispatch-consumption x)
+        (instance? Consumption x)
+        (dispatch-consumption x)
           
-          :else
-          (do
-            (doseq [c x]
-              (dispatch-consumption c))
-            :lamina/queue-branch)))))
+        :else
+        (do
+          (doseq [c x]
+            (dispatch-consumption c))
+          :lamina/queue-branch))))
 
   ;;
   (receive [_]
@@ -532,10 +535,7 @@
                   cs (remove #(.equals c %) (ensure consumers))]
               (if (not= (count cs) (count @consumers))
                 (do
-                  (ref-set consumers
-                    (if (empty? cs)
-                      PersistentQueue/EMPTY
-                      (apply conj PersistentQueue/EMPTY cs)))
+                  (ref-set consumers (persistent-queue cs))
                   true)
                 false)))]
       (if removed?
@@ -546,14 +546,6 @@
         false))))
 
 ;;;
-
-(defn persistent-queue
-  ([]
-     PersistentQueue/EMPTY)
-  ([s]
-     (if (empty? s)
-       PersistentQueue/EMPTY
-       (apply conj PersistentQueue/EMPTY s))))
 
 (defn queue
   ([]

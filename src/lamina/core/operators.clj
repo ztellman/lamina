@@ -37,73 +37,78 @@
    Valid options are:
 
    :message-predicate - a function that takes a message, and returns true if it should be consumed
-   :while-predicate - a no-arg function that returns true if another message should be read
+   :predicate - a no-arg function that returns true if another message should be read
    :message-transform -
-   :value-transform -
+   :reduce -
    :initial-value -
    :timeout - a no-arg function that returns the maximum time that should be spent waiting for the next message
    :description - a description of the consumption mechanism
    :channel - the destination channel for the messages
 
    If the predicate returns false or the timeout elapses, the consumption will cease."
-  [ch & {:keys [message-predicate
-                while-predicate
+  [ch & {:keys [map
+                predicate
+                initial-value
+                reduce
+                take-while
+                final-message
                 timeout
                 description
-                channel
-                reducer
-                initial-value
-                message-transform] :as m}]
+                channel] :as m}]
   (let [channel? (not (and (contains? m :channel) (nil? channel)))
-        message-predicate? (or channel? message-predicate)]
+        take-while? (or channel? take-while)]
     (unify-gensyms
       `(let [src-channel## ~ch
-             dst# ~(when channel?
-                     (or channel `(mimic src-channel##)))
-             dst-node## (when dst# (receiver-node dst#)) 
+             dst## ~(when channel?
+                      (or channel `(mimic src-channel##)))
+             dst-node## (when dst## (receiver-node dst##)) 
              initial-val# ~initial-value
-             message-predicate## ~message-predicate
-             message-predicate## ~(if message-predicate
-                                    `(fn [~@(when reducer `(val##)) x#]
-                                       (and
-                                         (or
-                                           (nil? dst-node##)
-                                           (not (n/closed? dst-node##)))
-                                         (message-predicate##
-                                           ~@(when reducer `(val##))
-                                           x#)))
-                                    `(fn [~'& _#]
-                                       (or
-                                         (nil? dst-node##)
-                                         (not (n/closed? dst-node##)))))
-             white-predicate## ~while-predicate
-             message-transform## ~message-transform
-             reducer## ~reducer
+             take-while## ~take-while
+             take-while## ~(if take-while
+                             `(fn [~@(when reduce `(val##)) x#]
+                                (and
+                                  (or
+                                    (nil? dst-node##)
+                                    (not (n/closed? dst-node##)))
+                                  (take-while##
+                                    ~@(when reduce `(val##))
+                                    x#)))
+                             `(fn [~'& _#]
+                                (or
+                                  (nil? dst-node##)
+                                  (not (n/closed? dst-node##)))))
+             predicate## ~predicate
+             map## ~map
+             reduce## ~reduce
              timeout## ~timeout]
          (if-let [unconsume# (n/consume
                                (emitter-node src-channel##)
                                (n/edge
                                  ~(or description "consume")
-                                 (if dst#
-                                   (receiver-node dst#)
+                                 (if dst##
+                                   (receiver-node dst##)
                                    (n/terminal-node nil))))]
 
            (let [cleanup#
-                 (fn [val#]
+                 (fn [val##]
                    (unconsume#)
-                   (when dst# (close dst#))
-                   (FinalValue. val#))
+                   ~@(when (and channel? final-message)
+                       `((let [msg# (~final-message val##)]
+                           (when-not (nil? msg#)
+                             (enqueue dst## msg#)))))
+                   (when dst## (close dst##))
+                   (FinalValue. val##))
 
                  result#
                  (p/run-pipeline initial-val#
                    {:error-handler (fn [ex#]
                                      (log/error ex# "error in consume")
-                                     (if dst#
-                                       (error dst# ex#)
+                                     (if dst##
+                                       (error dst## ex#)
                                        (p/redirect (p/pipeline (constantly (r/error-result ex#))) nil)))}
                    (fn [val##]
-                     (if-not ~(if while-predicate
-                                `(white-predicate## ~@(when reducer `(val##)))
+                     (if-not ~(if predicate
+                                `(predicate## ~@(when reduce `(val##)))
                                 true)
                        (cleanup# val##)
                        (p/run-pipeline
@@ -113,35 +118,35 @@
                            :on-drained ::close
                            ~@(when timeout
                                `(:timeout (timeout##)))
-                           ~@(when message-predicate?
+                           ~@(when take-while?
                                `(:predicate
-                                  ~(if reducer
+                                  ~(if reduce
                                      `(fn [msg#]
-                                        (message-predicate## ~@(when reducer `(val##)) msg#))
-                                     `message-predicate##))))
+                                        (take-while## ~@(when reduce `(val##)) msg#))
+                                     `take-while##))))
                          (fn [msg##]
                            (if (identical? ::close msg##)
                              (cleanup# val##)
-                             (let [val## ~(when reducer `(reducer## val## msg##))]
-                               (when dst# 
-                                 (enqueue dst#
-                                   ~(if message-transform
-                                      `(message-transform## ~@(when reducer `(val##)) msg##)
+                             (let [val## ~(when reduce `(reduce## val## msg##))]
+                               (when dst##
+                                 (enqueue dst##
+                                   ~(if map
+                                      `(map## ~@(when reduce `(val##)) msg##)
                                       `msg##)))
                                val##))))))
                    (fn [val#]
                      (if (instance? FinalValue val#)
                        (.val ^FinalValue val#)
                        (p/restart val#))))]
-             (if dst#
-               dst#
+             (if dst##
+               dst##
                result#))
 
            ;; something's already attached to the source
-           (if dst#
+           (if dst##
              (do
-               (error dst# :lamina/already-consumed!)
-               dst#)
+               (error dst## :lamina/already-consumed!)
+               dst##)
              (r/error-result :lamina/already-consumed!)))))))
 
 ;;;
@@ -150,20 +155,20 @@
   (consume ch
     :channel nil
     :initial-value nil
-    :reducer (fn [_ x] x)
+    :reduce (fn [_ x] x)
     :description "last*"))
 
 (defn take* [n ch]
   (consume ch
     :description (str "take* " n)
     :initial-value 0
-    :reducer (fn [n _] (inc n))
-    :while-predicate #(< % n)))
+    :reduce (fn [n _] (inc n))
+    :predicate #(< % n)))
 
 (defn take-while* [f ch]
   (consume ch
     :description "take-while*"
-    :message-predicate f))
+    :take-while f))
 
 (defn reductions*
   ([f ch]
@@ -173,8 +178,8 @@
          :description "reductions*"
          :initial-value (p/run-pipeline (read-channel ch)
                           #(do (enqueue ch* %) %))
-         :reducer f
-         :message-transform (fn [v _] v))))
+         :reduce f
+         :map (fn [v _] v))))
   ([f val ch]
      (consume ch
        :channel (let [ch* (mimic ch)]
@@ -182,8 +187,8 @@
                   ch*)
        :description "reductions*"
        :initial-value val
-       :reducer f
-       :message-transform (fn [v _] v))))
+       :reduce f
+       :map (fn [v _] v))))
 
 (defn reduce*
   ([f ch]
@@ -191,15 +196,42 @@
        :channel nil
        :description "reduce*"
        :initial-value (read-channel ch)
-       :reducer f
-       :message-transform (fn [v _] v)))
+       :reduce f
+       :map (fn [v _] v)))
   ([f val ch]
      (consume ch
        :channel nil
        :description "reduce*"
        :initial-value val
-       :reducer f
-       :message-transform (fn [v _] v))))
+       :reduce f
+       :map (fn [v _] v))))
+
+(defn partition-
+  [n step ch final-message]
+  (remove* nil?
+    (consume ch
+      :description "partition*"
+      :initial-value []
+      :reduce (fn [v msg]
+                (if (= n (count v))
+                  (-> (drop step v) vec (conj msg))
+                  (conj v msg)))
+      :map (fn [v _]
+             (when (= n (count v))
+               v))
+      :final-message final-message)))
+
+(defn partition*
+  ([n ch]
+     (partition* n n ch))
+  ([n step ch]
+     (partition- n step ch (constantly nil))))
+
+(defn partition-all*
+  ([n ch]
+     (partition-all* n n ch))
+  ([n step ch]
+     (partition- n step ch #(when-not (empty? %) %))))
 
 ;;;
 
@@ -214,12 +246,12 @@
 
 (defn lazy-channel-seq
   ([ch]
-     (lazy-channel-seq ch -1))
+     (lazy-channel-seq ch nil))
   ([ch timeout]
-     (let [timeout-fn (if (number? timeout)
-                        (when-not (neg? timeout)
-                          (constantly timeout))
-                        timeout)
+     (let [timeout-fn (when timeout
+                        (if (number? timeout)
+                          (constantly timeout)
+                          timeout))
            e (n/edge "lazy-channel-seq" (n/terminal-node nil))]
        (if-let [unconsume (n/consume (emitter-node ch) e)]
          (lazy-channel-seq-

@@ -26,7 +26,7 @@
        (propagate n m true))))
 
 (defn link* [src dst]
-  (link src dst (edge "link" dst) nil))
+  (link src dst (edge "link" dst) nil nil))
 
 (defn close* [& nodes]
   (doseq [n nodes]

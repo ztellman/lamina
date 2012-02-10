@@ -79,7 +79,7 @@
     "Cancellable call to the queue. Intended for (receive ...).")
 
   ;;
-  (link [_ name ^Edge edge execute-within-lock]
+  (link [_ name ^Edge edge pre-callback post-callback]
     "Adds a downstream node. The link should be cancelled using (cancel this name).")
   (unlink [_ ^Edge edge]
     "Removes a downstream node. Returns true if there was any such downstream node, false
@@ -133,7 +133,9 @@
 
 (defmacro enqueue-and-release [lock state msg persist?]
   `(if-let [q# (.queue ~state)]
-     (q/enqueue q# ~msg true #(l/release ~lock))
+     (do
+       (q/enqueue q# ~msg true #(l/release ~lock))
+       :lamina/enqueued)
      (l/release ~lock)))
 
 (defmacro transform-message [node msg transform?]
@@ -182,8 +184,6 @@
        :mode (if drained?# ::drained ::closed)
        :queue (if drained?# (q/drained-queue) q#))))
 
-
-
 (defmacro read-from-queue [[this lock state watchers cancellations] forward queue-receive]
   (let [state-sym (gensym "state")]
     `(let [x# (l/with-exclusive-lock ~lock
@@ -201,6 +201,16 @@
           (when (instance? SuccessResult result#)
             (check-for-drained ~this ~state ~watchers ~cancellations))
           result#)))))
+
+(defn ground-queue [^NodeState state]
+  (when state
+    (and
+      (case (.mode state)
+        (::open ::drained) true
+        false)
+      (= 1 (.downstream-count state))
+      (.queue state)
+      (q/ground (.queue state)))))
 
 (declare split-node join node?)
 
@@ -251,10 +261,14 @@
               (case (.mode state)
 
                 (::drained ::closed)
-                :lamina/closed!
+                (do
+                  (l/release lock)
+                  :lamina/closed!)
 
                 ::error
-                :lamina/error!
+                (do
+                  (l/release lock)
+                  :lamina/error!)
 
                 ::consumed
                 (enqueue-and-release lock state msg true)
@@ -265,11 +279,11 @@
                   (enqueue-and-release lock state msg (not probe?))
 
                   1
-                  (do
+                  (let [next (.get edges 0)]
                     (enqueue-and-release lock state msg false)
                     
                     ;; walk the chain of nodes until there's a split
-                    (loop [^Edge edge (.get edges 0), msg msg]
+                    (loop [^Edge edge next, msg msg]
                       (let [node (.node edge)]
                         (if-not (node? node)
                           
@@ -291,25 +305,36 @@
                               :lamina/false
                               :lamina/filtered
 
-                              (::drained ::closed)
-                              :lamina/closed
-                              
                               (do
                                 (l/acquire (.lock node))
                                 (let [^NodeState state (.state node)]
-                                  (if (= 1 (.downstream-count state))
-                                    (do
-                                      (enqueue-and-release (.lock node) state msg false)
-                                      (recur
-                                        (.get ^CopyOnWriteArrayList (.edges node) 0)
-                                        msg))
+                                  (case (.mode state)
+
+                                    (::drained ::closed)
                                     (do
                                       (l/release (.lock node))
-                                      (try
-                                        (propagate node msg false)
-                                        (catch Exception e
-                                          (error this e)
-                                          :lamina/error!))))))))))))
+                                      :lamina/closed!)
+                              
+                                    ::error
+                                    (do
+                                      (l/release (.lock node))
+                                      :lamina/error!)
+
+                                    ::consumed
+                                    (enqueue-and-release (.lock node) state msg true)
+
+                                    (::split ::open)
+                                    (if (= 1 (.downstream-count state))
+                                      (let [next (.get ^CopyOnWriteArrayList (.edges node) 0)]
+                                        (enqueue-and-release (.lock node) state msg false)
+                                        (recur next msg))
+                                      (do
+                                        (l/release (.lock node))
+                                        (try
+                                          (propagate node msg false)
+                                          (catch Exception e
+                                            (error this e)
+                                            :lamina/error!)))))))))))))
 
                   ;; more than one node
                   (do
@@ -585,13 +610,13 @@
         n)))
 
   ;;
-  (link [this name edge execute-within-lock]
-    (defer-within-transaction [(link this name edge execute-within-lock) :lamina/deferred]
+  (link [this name edge pre post]
+    (defer-within-transaction [(link this name edge pre post) :lamina/deferred]
       (if-let [^NodeState s
                (l/with-exclusive-lock lock
                  (when-not (.containsKey cancellations name)
                    (let [s state
-                         new-state
+                         ^NodeState new-state
                          (case (.mode s)
 
                            (::open ::split)
@@ -621,26 +646,24 @@
                            (::error ::drained ::consumed)
                            nil)]
 
-                     (when new-state
-                       (when execute-within-lock
-                         (execute-within-lock))
+                     (when pre
+                       (pre (boolean new-state)))
+
+                     ;; if we've gone from ::zero -> ::one or ::closed -> ::drained,
+                     ;; send all queued messages
+                     (when-let [msgs (ground-queue new-state)]
+                       (let [node (.node ^Edge edge)]
+                         (doseq [msg msgs]
+                           (propagate node msg true))))
+
+                     (when post
+                       (post (boolean new-state)))
+                     
+                     (when new-state 
                        (.put cancellations name #(unlink % edge))
                        new-state))))]
 
         (do
-          ;; if we've gone from ::zero -> ::one or ::closed -> ::drained,
-          ;; send all queued messages
-          (when-let [msgs (and
-                            (case (.mode s)
-                              (::open ::drained) true
-                              false)
-                            (= 1 (.downstream-count s))
-                            (.queue s)
-                            (q/ground (.queue s)))]
-            (let [node (.node ^Edge edge)]
-              (doseq [msg msgs]
-                (propagate node msg true))))
-
           ;; notify all state-changed listeners
           (let [^NodeState s s]
             (doseq [l watchers]
@@ -698,29 +721,27 @@
   (on-state-changed [this name callback]
     (defer-within-transaction [(on-state-changed this name callback) :lamina/deferred]
       (let [callback (fn [& args]
-                      (try
-                        (apply callback args)
-                        (catch Exception e
-                          (log/error e "Error in on-state-changed callback."))))
-           s (l/with-exclusive-lock lock
-               (when (or (nil? name) (not (.containsKey cancellations name)))
-                 (let [s state]
-                   (case (.mode s)
+                       (try
+                         (apply callback args)
+                         (catch Exception e
+                           (log/error e "Error in on-state-changed callback."))))
+            s (l/with-exclusive-lock lock
+                (when (or (nil? name) (not (.containsKey cancellations name)))
+                  (let [s state]
+                    (case (.mode s)
 
-                     (::drained ::error)
-                     nil
+                      (::drained ::error)
+                      nil
                     
-                     (do
-                       (.add watchers callback)
-                       (when name
-                         (.put cancellations name
-                           #(.remove ^CopyOnWriteArrayList (.watchers ^Node %) callback)))))
-                   s)))]
-       (if s
-         (let [^NodeState s s]
-           (callback (.mode s) (.downstream-count s) (.error s))
-           true)
-         false))))
+                      (do
+                        (.add watchers callback)
+                        (when name
+                          (.put cancellations name
+                            #(.remove ^CopyOnWriteArrayList (.watchers ^Node %) callback)))))
+                    s)))]
+        (let [^NodeState s s]
+          (callback (.mode s) (.downstream-count s) (.error s))
+          (boolean s)))))
 
   ;;
   (cancel [this name]
@@ -852,93 +873,52 @@
 
 (defn siphon
   ([src dst]
-     (siphon src dst nil))
-  ([src dst execute-in-lock]
+     (siphon src dst nil nil))
+  ([src dst pre post]
      (let [^Edge dst (if (edge? dst)
                        dst
                        (edge "siphon" dst))]
-       (if (link src (.node dst) dst execute-in-lock)
-         (do
-           (when (node? (.node dst))
+       (link src (.node dst) dst
+         pre
+         (fn [success?]
+           (when (and success? (node? (.node dst)))
              (on-state-changed (.node dst) nil (siphon-callback src (.node dst))))
-           true)
-         false))))
+           (when post
+             (post success?)))))))
 
 (defn bridge-siphon [src edge-description node-description callback dsts]
   (let [downstream (CopyOnWriteArrayList. ^objects (to-array (map #(edge nil %) dsts)))
         n (BridgeNode. node-description callback downstream)
         upstream (edge edge-description n)
         dsts (filter node? dsts)]
-    (if (link src n upstream nil)
-      (do
+    (link src n upstream
+      nil
+      (fn []
         (doseq [dst dsts]
-          (on-state-changed dst nil (siphon-callback src n)))
-        true)
-      false)))
+          (on-state-changed dst nil (siphon-callback src n)))))))
 
 (defn join
   ([src dst]
-     (join src dst nil))
-  ([src dst execute-in-lock]
+     (join src dst nil nil))
+  ([src dst pre post]
      (let [^Edge dst (if (edge? dst)
                        dst
                        (edge "join" dst))]
-       (if (siphon src dst execute-in-lock)
-         (do
-           (on-state-changed src nil (join-callback (.node dst)))
-           true)
-         (cond
-           (drained? src)
-           (do
-             (close (.node dst))
-             true)
-           
-           (not (identical? ::none (error-value src ::none)))
-           (do
-             (error (.node dst) (error-value src nil))
-             true)
-           
-           :else
-           false)))))
+       (siphon src dst
+         pre
+         (fn [_]
+           (on-state-changed src nil (join-callback (.node dst))))))))
 
 (defn bridge-join [src edge-description node-description callback dsts]
   (let [downstream (CopyOnWriteArrayList. ^objects (to-array (map #(edge nil %) dsts)))
         n (BridgeNode. node-description callback downstream)
         upstream (edge edge-description n)]
-    (if (link src n upstream nil)
-      (do
+    (link src n upstream
+      nil
+      (fn [_]
         (doseq [dst dsts]
-          (on-state-changed dst nil (siphon-callback src n)))
-        (on-state-changed src nil
-          (fn [state _ err]
-            (case state
-              (::closed ::drained)
-              (enqueue-cleanup
-                #(doseq [dst dsts]
-                   (close dst)))
-
-              ::error
-              (enqueue-cleanup
-                #(doseq [dst dsts]
-                   (error dst err)))
-
-              nil)))
-        true)
-      (cond
-        (drained? src)
-        (do
-          (doseq [dst dsts]
-            (close dst))
-          true)
-        
-        (not (identical? ::none (error-value src ::none)))
-        (let [err (error-value src nil)]
-          (doseq [dst dsts]
-            (error dst err))
-          true)
-        
-        :else
-        false))))
+          (on-state-changed src nil (join-callback src))
+          (on-state-changed dst nil (siphon-callback src n)))))))
 
 ;;;
 

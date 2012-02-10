@@ -11,6 +11,7 @@
     [useful.datatypes :only (assoc-record)]
     [lamina core trace])
   (:require
+    [lamina.core.lock :as lock]
     [clojure.tools.logging :as log]
     [lamina.core.result :as r]))
 
@@ -151,7 +152,8 @@
                         (select-keys options [:name :on-connected]))
            requests (channel)
            responses (channel)
-           close-fn #(close-connection connection)]
+           close-fn #(close-connection connection)
+           lock (lock/lock)]
 
        (receive-all responses
          (fn [^RequestTuple r]
@@ -164,25 +166,25 @@
              read-channel
              #(success (.result r) %))))
 
-       (receive-in-order requests
+       (receive-all requests
          (fn [^RequestTuple r]
-           (when-not (r/result (.result r))
-             (run-pipeline (connection)
-               {:error-handler (pipeline
-                                 (wait-stage 1)
-                                 (fn [ex]
-                                   (if retry?
-                                     (restart)
-                                     (do
-                                       (error (.result r) ex)
-                                       (complete nil)))))
-                }
-               (fn [x]
-                 (if (channel? x)
-                   (do
-                     (enqueue x (.request r))
-                     (enqueue responses (assoc-record r :channel x)))
-                   (error (.result r) x)))))))
+           (lock/with-exclusive-lock lock
+             (when-not (r/result (.result r))
+               (run-pipeline (connection)
+                 {:error-handler (pipeline
+                                   (wait-stage 1)
+                                   (fn [ex]
+                                     (if retry?
+                                       (restart)
+                                       (do
+                                         (error (.result r) ex)
+                                         (complete nil)))))}
+                 (fn [x]
+                   (if (channel? x)
+                     (do
+                       (enqueue x (.request r))
+                       (enqueue responses (assoc-record r :channel x)))
+                     (error (.result r) x))))))))
 
        (try-instrument options
          ^{::close-fn close-fn}
@@ -198,7 +200,28 @@
 
 ;;;
 
+(defn server-generator
+  [f
+   {:keys
+    [name
+     implicit?
+     probes
+     executor]
+    :as options}]
+  (let [f (fn [ch r]
+            (run-pipeline nil
+              (fn [_]
+                (f ch r))
+              (fn [_]
+                ch)))]
+    ))
 
-
-
-
+(defn pipelined-server-generator
+  [f
+   {:keys
+    [name
+     implicit?
+     probes
+     executor]
+    :as options}]
+  )
