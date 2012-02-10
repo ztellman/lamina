@@ -45,7 +45,7 @@
   (print ".")
   (flush))
 
-(def n 10)
+(def n 1)
 
 (defn assert-equivalence [f f* input]
   (let [expected (f input)

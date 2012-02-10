@@ -49,7 +49,7 @@
                      (= Long/MIN_VALUE ~'return)
                      (= Long/MIN_VALUE ~'enter))
                  -1
-                 (unchecked-subtract ~'return ~'enter))
+                 (unchecked-subtract (long ~'return) (long ~'enter)))
      :args ~'args
      :sub-timings (when-not (.isEmpty ~'sub-timers)
                     (map deref ~'sub-timers))
@@ -69,7 +69,7 @@
     (make-timing EnqueuedTiming
       :enqueued-duration (if (= Long/MIN_VALUE enter)
                            -1
-                           (unchecked-subtract enter enqueued))))
+                           (unchecked-subtract (long enter) (long enqueued)))))
   ITimed
   (add-sub-timer [_ timer]
     (.add sub-timers timer))
@@ -89,7 +89,7 @@
         (make-timing EnqueuedTiming
           :enqueued-duration (if (= Long/MIN_VALUE enter)
                                -1
-                               (unchecked-subtract enter enqueued))
+                               (unchecked-subtract (long enter) (long enqueued)))
           :result val)))
     (context/pop-context)))
 

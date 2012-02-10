@@ -27,6 +27,9 @@
 (defmacro repeated-pipeline [n f]
   `(pipeline ~@(repeat n f)))
 
+(defmacro repeated-run-pipeline [n initial-val f]
+  `(run-pipeline ~initial-val ~@(repeat n f)))
+
 ;;;
 
 (deftest test-simple-pipelines
@@ -81,6 +84,8 @@
   (let [p (repeated-pipeline 5 inc)]
     (bench "simple inc"
       (p 0)))
+  (bench "run-pipeline inc"
+    (repeated-run-pipeline 0 5 inc))
   (let [p (repeated-pipeline 5 r/success-result)]
     (bench "simple success-result"
       (p 0)))
@@ -92,6 +97,8 @@
         p (repeated-pipeline 5 (fn [_] r))]
     (bench "simple result-channel"
       (p 0)))
+
+  ;;;
   (let [p (pipeline inc #(if (< % 10) (restart %) %))]
     (bench "simple loop"
       (p 0)))

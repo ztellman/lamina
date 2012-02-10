@@ -57,6 +57,15 @@
           (recur pipeline value value 0))
         val))))
 
+(defn handle-redirect [^Redirect redirect result current-pipeline initial-value]
+  (let [value (if (identical? ::initial (.value redirect))
+                initial-value
+                (.value redirect))
+        pipeline (if (identical? ::current (.pipeline redirect))
+                   current-pipeline
+                   (.pipeline redirect))]
+    (start-pipeline pipeline result value value 0)))
+
 (defn subscribe [pipeline result initial-val val idx]
   (let [result (or result (r/result-channel))]
     (if-let [ctx (context/context)]
@@ -149,14 +158,7 @@
                       (fn [value#]
                         (let [value# (~(last stages) value#)]
                           (if (instance? Redirect value#)
-                            (let [^Redirect redirect# value#
-                                  value# (if (identical? ::initial (.value redirect#))
-                                           initial-value#
-                                           (.value redirect#))
-                                  pipeline# (if (identical? ::current (.pipeline redirect#))
-                                              this#
-                                              (.pipeline redirect#))]
-                              (start-pipeline pipeline# result## value# value# 0))
+                            (handle-redirect value# result## this# initial-value#)
                             (r/error-result ex#)))))]
              (p# ex#)
              result##))))
@@ -165,14 +167,7 @@
     `(error [this# result# initial-value# ex#]
        (let [value# (~error-handler ex#)]
          (if (instance? Redirect value#)
-           (let [^Redirect redirect# value#
-                 value# (if (identical? ::initial (.value redirect#))
-                          initial-value#
-                          (.value redirect#))
-                 pipeline# (if (identical? ::current (.pipeline redirect#))
-                             this#
-                             (.pipeline redirect#))]
-             (start-pipeline pipeline# result# value# value# 0))
+           (handle-redirect value# result# this# initial-value#)
            (if result#
              (r/error result# ex#)
              (r/error-result ex#)))))))
@@ -183,32 +178,35 @@
         len (count stages)
         depth (max-depth len)]
     (unify-gensyms
-      `(reify IPipeline
-         (run [this## result## initial-val## val# step#] 
-           (when (or
-                   (identical? nil result##)
-                   (identical? nil (r/result result##)))
-             (try
-               (loop [val## val# step## (long step#)]
-                 (case (int step##)
-                   ~@(interleave
-                       (iterate inc 0)
-                       (map
-                         #(unwind-stages % (drop % stages) depth)
-                         (range (inc len))))))
-               (catch Exception ex#
-                 (error this## result## initial-val## ex#)))))
-         ~(if error-handler
-            (complex-error-handler error-handler)
-            `(error [_# result# _# ex#]
-               (when-not ~(contains? options :error-handler)
-                 (log/error ex# "Unhandled exception in pipeline"))
-               (if result#
-                 (r/error result# ex#)
-                 (r/error-result ex#))))
-         clojure.lang.IFn
-         (invoke [this# val#]
-           (start-pipeline this# ~result val# val# 0))))))
+      `(let [run#
+             (fn [this## result## initial-val## val# step#]
+               (when (or
+                       (identical? nil result##)
+                       (identical? nil (r/result result##)))
+                 (try
+                   (loop [val## val# step## (long step#)]
+                     (case (int step##)
+                       ~@(interleave
+                           (iterate inc 0)
+                           (map
+                             #(unwind-stages % (drop % stages) depth)
+                             (range (inc len))))))
+                   (catch Exception ex#
+                     (error this## result## initial-val## ex#)))))]
+         (reify IPipeline
+           (run [this# result# initial-val# val# step#] 
+             (run# this# result# initial-val# val# step#))
+          ~(if error-handler
+             (complex-error-handler error-handler)
+             `(error [_# result# _# ex#]
+                (when-not ~(contains? options :error-handler)
+                  (log/error ex# "Unhandled exception in pipeline"))
+                (if result#
+                  (r/error result# ex#)
+                  (r/error-result ex#))))
+          clojure.lang.IFn
+          (invoke [this# val#]
+            (start-pipeline this# ~result val# val# 0)))))))
 
 (defmacro run-pipeline [value & opts+stages]
   `(let [p# (pipeline ~@opts+stages)

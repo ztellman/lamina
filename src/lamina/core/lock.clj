@@ -30,21 +30,13 @@
 (deftype AsymmetricLock [^ReentrantReadWriteLock lock]
   ILock
   (acquire [this]
-    (when-not (-> lock .readLock .tryLock)
-      #_(log/info (str lock) (.getName (Thread/currentThread)))
-      (-> lock .readLock .lock))
-    #_(log/info "acquiring" (.getName (Thread/currentThread))))
+    (-> lock .readLock .lock))
   (release [this]
-    (-> lock .readLock .unlock)
-    #_(log/info "releasing" (.getName (Thread/currentThread))))
+    (-> lock .readLock .unlock))
   (acquire-exclusive [this]
-    (when-not (-> lock .writeLock .tryLock)
-      #_(log/info (str lock) (.getName (Thread/currentThread)))
-      (-> lock .writeLock .lock))
-    #_(log/info "acquiring exclusive" (.getName (Thread/currentThread))))
+    (-> lock .writeLock .lock))
   (release-exclusive [this]
-    (-> lock .writeLock .unlock)
-    #_(log/info "releasing exclusive" (.getName (Thread/currentThread))))
+    (-> lock .writeLock .unlock))
   (try-acquire [_]
     (-> lock .readLock .tryLock))
   (try-acquire-exclusive [_]

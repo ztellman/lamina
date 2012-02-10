@@ -45,9 +45,15 @@
       ([a b c]
          (instrument-task-body nm executor enter-probe return-probe implicit?
            (f a b c) [a b c]))
-      ([a b c & rest]
+      ([a b c d]
          (instrument-task-body nm executor enter-probe return-probe implicit?
-           (apply f a b c rest) (list* a b c rest))))))
+           (f a b c d) [a b c d]))
+      ([a b c d e] 
+         (instrument-task-body nm executor enter-probe return-probe implicit?
+           (f a b c d e) [a b c d e]))
+      ([a b c d e & rest]
+         (instrument-task-body nm executor enter-probe return-probe implicit?
+           (apply f a b c d e rest) (list* a b c d e rest))))))
 
 (defmacro instrument-body [nm enter-probe return-probe implicit? invoke args]
   `(do
@@ -90,9 +96,15 @@
         ([a b c]
            (instrument-body nm enter-probe return-probe implicit?
              (f a b c) [a b c]))
-        ([a b c & rest]
+        ([a b c d]
            (instrument-body nm enter-probe return-probe implicit?
-             (apply f a b c rest) (list* a b c rest)))))))
+             (f a b c d) [a b c d]))
+         ([a b c d e] 
+           (instrument-body nm enter-probe return-probe implicit?
+             (f a b c d e) [a b c d e]))
+        ([a b c d e & rest]
+           (instrument-body nm enter-probe return-probe implicit?
+             (apply f a b c d e rest) (list* a b c d e rest)))))))
 
 ;;;
 
