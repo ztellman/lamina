@@ -39,9 +39,6 @@
 
 ;;;
 
-(defprotocol IDescribed
-  (description [_]))
-
 (deftype Edge [^String description node]
   IDescribed
   (description [_] description))

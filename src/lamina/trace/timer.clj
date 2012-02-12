@@ -1,8 +1,9 @@
 (ns lamina.trace.timer
   (:use
     [useful.datatypes :only (make-record)]
-    [lamina.core :only (error-probe-channel probe-channel probe-enabled? enqueue)])
+    [lamina.core.utils :only (enqueue)])
   (:require
+    [lamina.core.probe :as p]
     [lamina.core.context :as context])
   (:import
     [java.util.concurrent
@@ -16,7 +17,7 @@
   (mark-enter [_])
   (mark-error [_ err])
   (mark-return [_ val])
-  (add-sub-timer [_ timer]))
+  (add-sub-task [_ timer]))
 
 (defn dummy-timer [description]
   (reify
@@ -24,10 +25,10 @@
     (deref [_] {})
     ITimed
     (mark-error [_ err]
-      (enqueue (probe-channel [description :error]) {:error err}))
+      (enqueue (p/probe-channel [description :error]) {:error err}))
     (mark-enter [_])
     (mark-return [_ _])
-    (add-sub-timer [_ _] (assert false))))
+    (add-sub-task [_ _] (assert false))))
 
 ;;;
 
@@ -36,7 +37,7 @@
    ^long timestamp
    ^long duration
    ^long enqueued-duration
-   sub-timings
+   sub-tasks
    args
    result])
 
@@ -51,8 +52,8 @@
                  -1
                  (unchecked-subtract (long ~'return) (long ~'enter)))
      :args ~'args
-     :sub-timings (when-not (.isEmpty ~'sub-timers)
-                    (map deref ~'sub-timers))
+     :sub-tasks (when-not (.isEmpty ~'sub-tasks)
+                  (doall (map deref ~'sub-tasks)))
      ~@extras))
 
 (deftype EnqueuedTimer
@@ -63,7 +64,7 @@
    args
    ^{:volatile-mutable true, :tag long} enter
    ^{:volatile-mutable true, :tag long} return
-   ^ConcurrentLinkedQueue sub-timers]
+   ^ConcurrentLinkedQueue sub-tasks]
   clojure.lang.IDeref
   (deref [_]
     (make-timing EnqueuedTiming
@@ -71,15 +72,15 @@
                            -1
                            (unchecked-subtract (long enter) (long enqueued)))))
   ITimed
-  (add-sub-timer [_ timer]
-    (.add sub-timers timer))
+  (add-sub-task [_ timer]
+    (.add sub-tasks timer))
   (mark-enter [this]
     (set! enter (System/nanoTime))
     (context/push-context :timer this))
   (mark-error [this err]
     (set! return (System/nanoTime))
     (enqueue
-      (error-probe-channel [description :error])
+      (p/error-probe-channel [description :error])
       (assoc @this :error err))
     (context/pop-context))
   (mark-return [this val]
@@ -94,21 +95,21 @@
     (context/pop-context)))
 
 (defn enqueued-timer [description args probe-channel implicit?]
-  (let [enabled? (probe-enabled? probe-channel)
+  (let [enabled? (p/probe-enabled? probe-channel)
         parent (when (or enabled? implicit?)
                  (context/timer))]
     (if (or enabled? parent)
-      (let [timer (make-record EnqueuedTimer
-                    :description description
-                    :probe (when enabled? probe-channel)
-                    :args args
-                    :timestamp (System/currentTimeMillis)
-                    :enqueued (System/nanoTime)
-                    :enter Long/MIN_VALUE
-                    :return Long/MIN_VALUE
-                    :sub-timers (ConcurrentLinkedQueue.))]
+      (let [timer (EnqueuedTimer.
+                    description
+                    (when enabled? probe-channel)
+                    (System/currentTimeMillis)
+                    (System/nanoTime)
+                    args
+                    Long/MIN_VALUE
+                    Long/MIN_VALUE
+                    (ConcurrentLinkedQueue.))]
         (when parent
-          (add-sub-timer parent timer))
+          (add-sub-task parent timer))
         timer)
       (dummy-timer description))))
 
@@ -118,7 +119,7 @@
   [description
    ^long timestamp
    ^long duration
-   sub-timings
+   sub-tasks
    args
    result])
 
@@ -129,19 +130,19 @@
    timestamp
    enter
    ^{:volatile-mutable true, :tag long} return
-   ^ConcurrentLinkedQueue sub-timers]
+   ^ConcurrentLinkedQueue sub-tasks]
   clojure.lang.IDeref
   (deref [_]
     (make-timing Timing))
   ITimed
-  (add-sub-timer [_ timer]
-    (.add sub-timers timer))
+  (add-sub-task [_ timer]
+    (.add sub-tasks timer))
   (mark-enter [_]
     )
   (mark-error [this err]
     (set! return (System/nanoTime))
     (enqueue
-      (error-probe-channel [description :error])
+      (p/error-probe-channel [description :error])
       (assoc @this :error err))
     (context/pop-context))
   (mark-return [this val]
@@ -153,20 +154,20 @@
     (context/pop-context)))
 
 (defn timer [description args probe-channel implicit?]
-  (let [enabled? (probe-enabled? probe-channel)
+  (let [enabled? (p/probe-enabled? probe-channel)
         parent (when (or enabled? implicit?)
                  (context/timer))]
     (if (or enabled? parent)
-      (let [timer (make-record Timer
-                    :description description
-                    :probe (when enabled? probe-channel)
-                    :args args
-                    :timestamp (System/currentTimeMillis)
-                    :enter (System/nanoTime)
-                    :return Long/MIN_VALUE
-                    :sub-timers (ConcurrentLinkedQueue.))]
+      (let [timer (Timer.
+                    description
+                    (when enabled? probe-channel)
+                    args
+                    (System/currentTimeMillis)
+                    (System/nanoTime)
+                    Long/MIN_VALUE
+                    (ConcurrentLinkedQueue.))]
         (when parent
-          (add-sub-timer parent timer))
+          (add-sub-task parent timer))
         (context/push-context :timer timer)
         timer)
       (dummy-timer description))))

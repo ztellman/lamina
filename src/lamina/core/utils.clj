@@ -14,6 +14,9 @@
 (defprotocol IEnqueue
   (enqueue [_ msg]))
 
+(defprotocol IDescribed
+  (description [_]))
+
 (defn in-transaction? []
   (clojure.lang.LockingTransaction/isRunning))
 

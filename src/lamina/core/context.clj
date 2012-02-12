@@ -18,7 +18,8 @@
 ;;;
 
 (deftype Context
-  [timer])
+  [timer
+   pipeline-tracer])
 
 ;;;
 
@@ -59,3 +60,7 @@
 (defn timer []
   (when-let [^Context ctx (context)]
     (.timer ctx)))
+
+(defn pipeline-tracer []
+  (when-let [^Context ctx (context)]
+    (.pipeline-tracer ctx)))

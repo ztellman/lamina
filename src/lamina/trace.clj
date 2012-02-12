@@ -10,7 +10,10 @@
   (:use [potemkin])
   (:require
     [lamina.trace.instrument :as i]
+    [lamina.trace.pipeline :as p]
     [clojure.string :as str]))
 
 (import-fn i/instrument)
 (import-macro i/defn-instrumented)
+
+(import-macro p/trace-pipelines)

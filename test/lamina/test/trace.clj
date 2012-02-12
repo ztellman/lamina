@@ -90,8 +90,8 @@
 
 (defn timing-seq [t]
   (tree-seq
-    (comp seq :sub-timings)
-    :sub-timings
+    (comp seq :sub-tasks)
+    :sub-tasks
     t))
 
 (defn test-capture [f initial-value]
