@@ -110,7 +110,10 @@
     ;; read the nodes
     (let [results (zipmap
                     readable-nodes
-                    (map n/read-node readable-nodes))]
+                    (map n/read-node readable-nodes))
+          queues (zipmap
+                   queue-nodes
+                   (map #(-> % n/queue q/messages count) queue-nodes))]
 
       ;; send the message
       (n/propagate root msg true)
@@ -123,12 +126,15 @@
       (l/release-all true readable-nodes)
 
       ;; merge the read messages with the last message in the queue of the leaf/queue nodes
-      (->> results
-        (filter (fn [[_ r]] (not= ::none (r/success-value r ::none))))
-        (merge (zipmap
-                 queue-nodes
-                 (map #(-> % n/queue q/messages last r/success-result) queue-nodes)))
-        (into {})))))
+      (let [altered-queue-nodes (filter
+                                  #(not= (queues %) (-> % n/queue q/messages count))
+                                  queue-nodes)]
+        (->> results
+          (filter (fn [[_ r]] (not= ::none (r/success-value r ::none))))
+          (merge (zipmap
+                   altered-queue-nodes
+                   (map #(-> % n/queue q/messages last r/success-result) altered-queue-nodes)))
+          (into {}))))))
 
 (defn trace-descriptor [root msg]
   (let [results (sample-graph root msg)
