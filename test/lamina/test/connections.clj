@@ -50,10 +50,42 @@
 
 ;;;
 
+(defn echo-handler [ch r]
+  (enqueue ch r))
+
+(defn setup-client [client-fn server-fn handler]
+  (let [[a b] (channel-pair)]
+    (server-fn handler b {})
+    (client-fn (constantly a))))
+
+(defn run-server-tests [server-fn]
+  (let [c (setup-client client server-fn echo-handler)]
+    (is (= 1 @(c 1)))))
+
+(deftest test-server
+  (run-server-tests server))
+
+(deftest test-pipelined-server
+  (run-server-tests pipelined-server))
+
+;;;
+
 (deftest ^:benchmark benchmark-clients
   (let [c (client (comp first simple-echo-server))]
     (bench "normal client"
       @(c 1)))
   (let [c (pipelined-client (comp first simple-echo-server))]
     (bench "pipelined client"
+      @(c 1)))
+  (let [c (setup-client client server echo-handler)]
+    (bench "normal client, normal server"
+      @(c 1)))
+  (let [c (setup-client client pipelined-server echo-handler)]
+    (bench "normal client, pipelined server"
+      @(c 1)))
+  (let [c (setup-client pipelined-client server echo-handler)]
+    (bench "pipelined client, normal server"
+      @(c 1)))
+  (let [c (setup-client pipelined-client pipelined-server echo-handler)]
+    (bench "pipelined client, pipelined server"
       @(c 1))))

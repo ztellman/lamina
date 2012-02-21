@@ -222,13 +222,13 @@
   (n/join (emitter-node src) (receiver-node dst)))
 
 (defn bridge-join [src description callback & dsts]
-  (n/bridge-join (emitter-node src) description nil callback
+  (n/bridge-join (emitter-node src) nil description callback
     (if (empty? dsts)
       [(n/terminal-node nil)]
       (map receiver-node dsts))))
 
 (defn bridge-siphon [src description callback & dsts]
-  (n/bridge-siphon (emitter-node src) description nil callback
+  (n/bridge-siphon (emitter-node src) nil description callback
     (if (empty? dsts)
       [(n/terminal-node nil)]
       (map receiver-node dsts))))

@@ -3,7 +3,9 @@
     [useful.datatypes :only (make-record)]
     [lamina.core.utils :only (enqueue)])
   (:require
+    [clojure.string :as str]
     [lamina.core.probe :as p]
+    [lamina.core.result :as r]
     [lamina.core.context :as context])
   (:import
     [java.util.concurrent
@@ -25,10 +27,10 @@
     (deref [_] {})
     ITimed
     (mark-error [_ err]
-      (enqueue (p/probe-channel [description :error]) {:error err}))
+      (enqueue (p/error-probe-channel [description :error]) {:error err}))
     (mark-enter [_])
     (mark-return [_ _])
-    (add-sub-task [_ _] (assert false))))
+    (add-sub-task [_ _] )))
 
 ;;;
 
@@ -75,14 +77,12 @@
   (add-sub-task [_ timer]
     (.add sub-tasks timer))
   (mark-enter [this]
-    (set! enter (System/nanoTime))
-    (context/push-context :timer this))
+    (set! enter (System/nanoTime)))
   (mark-error [this err]
     (set! return (System/nanoTime))
     (enqueue
       (p/error-probe-channel [description :error])
-      (assoc @this :error err))
-    (context/pop-context))
+      (assoc @this :error err)))
   (mark-return [this val]
     (set! return (System/nanoTime))
     (when probe
@@ -91,8 +91,7 @@
           :enqueued-duration (if (= Long/MIN_VALUE enter)
                                -1
                                (unchecked-subtract (long enter) (long enqueued)))
-          :result val)))
-    (context/pop-context)))
+          :result val)))))
 
 (defn enqueued-timer [description args probe-channel implicit?]
   (let [enabled? (p/probe-enabled? probe-channel)
@@ -143,18 +142,17 @@
     (set! return (System/nanoTime))
     (enqueue
       (p/error-probe-channel [description :error])
-      (assoc @this :error err))
-    (context/pop-context))
+      (assoc @this :error err)))
   (mark-return [this val]
     (set! return (System/nanoTime))
     (when probe
       (enqueue probe
         (make-timing Timing
-          :result val)))
-    (context/pop-context)))
+          :result val)))))
 
 (defn timer [description args probe-channel implicit?]
-  (let [enabled? (p/probe-enabled? probe-channel)
+  (let [enabled? (and probe-channel
+                   (p/probe-enabled? probe-channel))
         parent (when (or enabled? implicit?)
                  (context/timer))]
     (if (or enabled? parent)
@@ -168,6 +166,57 @@
                     (ConcurrentLinkedQueue.))]
         (when parent
           (add-sub-task parent timer))
-        (context/push-context :timer timer)
         timer)
       (dummy-timer description))))
+
+;;;
+
+(defn indent [n s]
+  (->> s
+    str/split-lines
+    (map #(str "  " %))
+    (interpose "\n")
+    (apply str)))
+
+(def durations
+  {"ns" 0
+   "us" 1e3
+   "ms" 1e6
+   "s" 1e9})
+
+(defn duration [n scale]
+  (str
+    (format "%.1f" (/ n (durations scale)))
+    scale))
+
+(defn format-duration [n]
+  (cond
+    (< n 1e3) (duration n "ns")
+    (< n 1e6) (duration n "us")
+    (< n 1e9) (duration n "ms")
+    :else (duration n "s")))
+
+(defn format-timing [t]
+  (let [desc (:description t)
+        desc (if (instance? clojure.lang.Named desc)
+               (name desc)
+               (str desc))
+        duration (:duration t)
+        enqueued (:enqueued-duration t)]
+    (str/trim
+      (str desc " - "
+        (if duration
+          (str
+            (format-duration duration)
+            (when enqueued
+              (str " (" (format-duration enqueued) " enqueued)")))
+          "still running")
+        "\n"
+        (indent 2
+          (->> t
+            :sub-tasks
+            (map format-timing)
+            (interpose "\n")
+            (apply str)))))))
+
+

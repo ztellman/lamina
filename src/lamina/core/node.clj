@@ -913,8 +913,8 @@
     (link src n upstream
       nil
       (fn [_]
+        (on-state-changed src nil (join-callback n))
         (doseq [dst dsts]
-          (on-state-changed src nil (join-callback src))
           (on-state-changed dst nil (siphon-callback src n)))))))
 
 ;;;

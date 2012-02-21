@@ -16,7 +16,8 @@
                "1.4s" [[org.clojure/clojure "1.4.0-master-SNAPSHOT"]]
                }
   :dev-dependencies [[criterium "0.2.1-SNAPSHOT"]]
-  :jvm-opts ["-server" "-XX:+UseConcMarkSweepGC" "-Xmx1g" "-XX:NewSize=512m"]
+  ;;:jvm-opts ["-server" "-XX:+UseConcMarkSweepGC" "-Xmx16m"]
+  :jvm-opts ["-server" "-XX:+UseConcMarkSweepGC" "-Xmx128m" "-XX:NewSize=64m"]
   :repositories {"sonatype-oss-public" "https://oss.sonatype.org/content/groups/public/"}
   :exclusions [org.clojure/contrib
                org.clojure/clojure-contrib]

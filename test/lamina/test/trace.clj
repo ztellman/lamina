@@ -32,6 +32,14 @@
 
 (def exc (executor :name :test-executor))
 
+(defn-instrumented delay-fn
+  {:executor exc}
+  [f]
+  (f))
+
+(defmacro task [& body]
+  `(delay-fn (fn [] ~@body)))
+
 ;;;
 
 (defn test-probe [f args options probe-type]
@@ -133,3 +141,15 @@
       (f 1 1 1 1 1)))
   (benchmark-active-probe "instrument addition with return probe" :return)
   (benchmark-active-probe "instrument addition with enter probe" :enter))
+
+(deftest ^:benchmark benchmark-pipeline-trace
+  (let [p (pipeline
+            read-channel
+            (constantly (restart)))]
+    (let [ch (channel)]
+      (p ch)
+      (bench "read-channel pipeline loop"
+        (enqueue ch :msg)))))
+
+;;;
+

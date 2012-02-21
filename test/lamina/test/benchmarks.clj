@@ -41,3 +41,20 @@
     (bench "probe check"
       (when (probe-enabled? ch)
         :hello))))
+
+(defn meta-result [n r]
+  (if (zero? n)
+    (enqueue r nil)
+    (let [r* (result-channel)]
+      (enqueue r r*)
+      (meta-result (dec n) r*))))
+
+(deftest ^:stress stress
+  (let [ch (channel)]
+    (run-pipeline ch
+      read-channel
+      (fn [x] (restart)))
+    (dotimes* [i 1e8]
+      (let [r (result-channel)]
+        (enqueue ch r)
+        (meta-result 6 r)))))

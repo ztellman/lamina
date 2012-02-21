@@ -157,9 +157,22 @@
    :default-edge {:fontname :helvetica}})
 
 (defn view-graph [& nodes]
-  (let [descriptor (->> nodes
+  (let [descriptor-merge (fn [a b]
+                           (if (map? a)
+                             (merge a b)
+                             (concat a b)))
+        ;; merge all the nodes
+        descriptor (->> nodes
                      (map graph-descriptor)
-                     (apply merge-with merge))
+                     (apply merge-with descriptor-merge))
+        ;; make sure we have only one of each edge
+        descriptor (update-in descriptor [:edges]
+                     (fn [edges]
+                       (->> edges
+                         (map #(select-keys % [:src :dst]))
+                         (map (comp vec reverse list) edges)
+                         (into {})
+                         vals)))
         dot-string (digraph (merge default-settings descriptor))]
     (view-dot-string node-frame dot-string)))
 

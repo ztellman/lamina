@@ -19,9 +19,8 @@
   (:import
     [lamina.core.lock
      Lock]
-    [java.util.concurrent.atomic
-     AtomicInteger
-     AtomicBoolean]))
+    [java.util.concurrent
+     ConcurrentLinkedQueue])) 
 
 (set! *warn-on-reflection* true)
 
@@ -63,6 +62,8 @@
                       (or channel `(mimic src-channel##)))
              dst-node## (when dst## (receiver-node dst##)) 
              initial-val# ~initial-value
+
+             ;; message predicate
              take-while## ~take-while
              take-while## ~(if take-while
                              `(fn [~@(when reduce `(val##)) x#]
@@ -77,10 +78,14 @@
                                 (or
                                   (nil? dst-node##)
                                   (not (n/closed? dst-node##)))))
+
+             ;; general predicate
              predicate## ~predicate
              map## ~map
              reduce## ~reduce
              timeout## ~timeout]
+
+         ;; if we're able to consume, take the unconsume function
          (if-let [unconsume# (n/consume
                                (emitter-node src-channel##)
                                (n/edge
@@ -89,6 +94,7 @@
                                    (receiver-node dst##)
                                    (n/terminal-node nil))))]
 
+           ;; and define a more comprehensive cleanup function
            (let [cleanup#
                  (fn [val##]
                    (unconsume#)
@@ -107,10 +113,13 @@
                                        (error dst## ex#)
                                        (p/redirect (p/pipeline (constantly (r/error-result ex#))) nil)))}
                    (fn [val##]
+                     ;; if we shouldn't even try to read a message, clean up
                      (if-not ~(if predicate
                                 `(predicate## ~@(when reduce `(val##)))
                                 true)
                        (cleanup# val##)
+
+                       ;; if we should, call read-channel*
                        (p/run-pipeline
                          (read-channel* src-channel##
                            :on-false ::close
@@ -124,17 +133,30 @@
                                      `(fn [msg#]
                                         (take-while## ~@(when reduce `(val##)) msg#))
                                      `take-while##))))
+
+                         {:error-handler (fn [_#])}
+
                          (fn [msg##]
+                           ;; if we didn't read a message, clean up
                            (if (identical? ::close msg##)
                              (cleanup# val##)
-                             (let [val## ~(when reduce `(reduce## val## msg##))]
-                               (when dst##
-                                 (enqueue dst##
-                                   ~(if map
-                                      `(map## ~@(when reduce `(val##)) msg##)
-                                      `msg##)))
-                               val##))))))
+
+                             ;; update the reduce value
+                             (p/run-pipeline ~(when reduce `(reduce## val## msg##))
+
+                               {:error-handler (fn [_#])}
+
+                               ;; once the value's realized, emit the next message
+                               (fn [val##]
+                                 (when dst##
+                                   (enqueue dst##
+                                     ~(if map
+                                        `(map## ~@(when reduce `(val##)) msg##)
+                                        `msg##)))
+                                 val##)))))))
+
                    (fn [val#]
+                     ;; if this isn't a terminal message from cleanup, restart
                      (if (instance? FinalValue val#)
                        (.val ^FinalValue val#)
                        (p/restart val#))))]
@@ -150,6 +172,13 @@
              (r/error-result :lamina/already-consumed!)))))))
 
 ;;;
+
+(defn receive-in-order [ch f]
+  (consume ch
+    :channel nil
+    :initial-value nil
+    :reduce (fn [_ x] (f x))
+    :description "receive-in-order"))
 
 (defn last* [ch]
   (consume ch
@@ -177,6 +206,7 @@
          :channel ch*
          :description "reductions*"
          :initial-value (p/run-pipeline (read-channel ch)
+                          {:error-handler (fn [_])}
                           #(do (enqueue ch* %) %))
          :reduce f
          :map (fn [v _] v))))
@@ -270,3 +300,62 @@
        (concat s
          (lazy-channel-seq ch
            #(max 0 (- timeout (- (System/currentTimeMillis) start))))))))
+
+;;;
+
+(defn concat* [ch]
+  (let [ch* (mimic ch)]
+    (bridge-join ch "concat*"
+      #(doseq [msg %] (enqueue ch* msg))
+      ch*)
+    ch*))
+
+(defn mapcat* [f ch]
+  (->> ch (map* f) concat*))
+
+(defn periodically [interval f]
+  (let [ch (channel* :description (str "periodically " (describe-fn f)))]
+    (p/run-pipeline (System/currentTimeMillis)
+
+      ;; figure out how long to sleep, given the previous target timestamp
+      (fn [timestamp]
+        (let [target-timestamp (+ timestamp interval)]
+          (r/timed-result
+            (max 0.1 (- target-timestamp (System/currentTimeMillis)))
+            target-timestamp)))
+
+       ;; run the callback, and repeat
+      (fn [timestamp]
+        (let [result (enqueue ch (f))]
+          (when-not (or (= :lamina/error! result)
+                      (= :lamina/closed! result))
+           (p/restart timestamp)))))
+    ch))
+
+(defn sample-every [interval ch]
+  (let [val (atom ::none)
+        ch* (mimic ch)]
+    (bridge-join ch (str "sample-every " interval)
+      #(reset! val %)
+      ch*)
+    (siphon
+      (->> #(deref val) (periodically interval) (remove* #(= ::none %)))
+      ch*)
+    ch*))
+
+(defn partition-every [interval ch]
+  (let [q (ConcurrentLinkedQueue.)
+        drain (fn []
+                (loop [msgs []]
+                  (if (.isEmpty q)
+                    msgs
+                    (recur (conj msgs (.remove q))))))
+        ch* (mimic ch)]
+    (bridge-join ch (str "partition-every " interval)
+      #(.add q %)
+      ch*)
+    (siphon (periodically interval drain) ch*)
+    ch*))
+
+
+

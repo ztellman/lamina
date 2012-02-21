@@ -93,7 +93,7 @@
       (dotimes [_ 1e3]
         (enqueue ch 1))
       (channel-seq ch))
-    (bench "enqueue 1e6"
+    #_(bench "enqueue 1e6"
       (dotimes [_ 1e6]
         (enqueue ch 1))
       (channel-seq ch))))

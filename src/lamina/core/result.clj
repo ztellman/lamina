@@ -361,15 +361,26 @@
   dst)
 
 (defn with-timeout [interval result]
-  (if (zero? interval)
-    (error result :lamina/timeout!)
-    (t/delay-invoke interval #(error result :lamina/timeout!)))
-  result)
+  (let [result* (siphon-result result (result-channel))]
+    (if (zero? interval)
+      (error result* :lamina/timeout!)
+      (t/delay-invoke interval #(error result* :lamina/timeout!)))
+    result*))
 
-(defn timed-result [interval]
-  (let [result (result-channel)]
-    (t/delay-invoke interval #(success result nil))
-    result))
+(defn expiring-result [interval]
+  (if (zero? interval)
+    (error-result :lamina/timeout!)
+    (let [result (result-channel)]
+      (t/delay-invoke interval #(error result :lamina/timeout!))
+      result)))
+
+(defn timed-result
+  ([interval]
+     (timed-result interval nil))
+  ([interval value]
+     (let [result (result-channel)]
+       (t/delay-invoke interval #(success result value))
+       result)))
 
 ;;;
 

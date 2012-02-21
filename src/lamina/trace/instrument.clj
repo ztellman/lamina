@@ -60,15 +60,16 @@
      (when (probe-enabled? ~enter-probe)
        (enqueue ~enter-probe (Enter. (System/currentTimeMillis) ~args)))
      (let [timer# (t/timer ~nm ~args ~return-probe ~implicit?)]
-       (try
-         (let [result# ~invoke]
-           (run-pipeline result#
-             {:error-handler (fn [err#] (t/mark-error timer# err#))}
-             (fn [x#] (t/mark-return timer# x#)))
-           result#)
-         (catch Exception e#
-           (t/mark-error timer# e#)
-           (throw e#))))))
+       (context/with-context (context/assoc-context :timer timer#)
+         (try
+           (let [result# ~invoke]
+             (run-pipeline result#
+               {:error-handler (fn [err#] (t/mark-error timer# err#))}
+               (fn [x#] (t/mark-return timer# x#)))
+             result#)
+           (catch Exception e#
+             (t/mark-error timer# e#)
+             (throw e#)))))))
 
 (defn instrument [f & {:keys [executor timeout implicit?]
                        :as options

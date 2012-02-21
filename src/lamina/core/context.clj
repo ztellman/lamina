@@ -19,7 +19,8 @@
 
 (deftype Context
   [timer
-   pipeline-tracer])
+   pipeline-tracer
+   pipeline-tracer-channel])
 
 ;;;
 
@@ -29,17 +30,11 @@
   (when-let [^LinkedList stack (.get stacks)]
     (.peek stack)))
 
-(defmacro push-context [& args]
-  `(if-let [^LinkedList stack# (.get stacks)]
-     (if-let [^Context context# (.peek stack#)]
-       (.addFirst stack# (assoc-record context# ~@args))
-       (.addFirst stack# (make-record Context ~@args)))
-     (let [^LinkedList stack# (LinkedList.)]
-       (.addFirst stack# (make-record Context ~@args))
-       (.set stacks stack#))))
-
-(defn pop-context []
-  (.removeFirst ^LinkedList (.get stacks)))
+(defmacro assoc-context [& args]
+  `(let [^Context context# (context)]
+     (if-not context#
+       (make-record Context ~@args)
+       (assoc-record context# ~@args))))
 
 (defmacro with-context [context & body]
   `(let [^LinkedList stack# (if-let [stack# (.get stacks)]
@@ -52,10 +47,10 @@
      (try
        ~@body
        (finally
-         (when (identical? context# (.peek stack#))
-           (.removeFirst stack#))))))
+         (.removeFirst stack#)))))
 
 ;;;
+
 
 (defn timer []
   (when-let [^Context ctx (context)]
@@ -64,3 +59,7 @@
 (defn pipeline-tracer []
   (when-let [^Context ctx (context)]
     (.pipeline-tracer ctx)))
+
+(defn pipeline-tracer-channel []
+  (when-let [^Context ctx (context)]
+    (.pipeline-tracer-channel ctx)))

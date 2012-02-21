@@ -33,6 +33,7 @@
 (import-fn pr/error-probe-channel)
 (import-fn pr/sympathetic-probe-channel)
 (import-fn pr/probe-enabled?)
+(import-fn pr/probe-result)
 
 (defn channel-pair []
   (let [a (channel)
@@ -42,6 +43,7 @@
 (import-fn r/result-channel)
 (import-fn r/result-channel?)
 (import-fn r/with-timeout)
+(import-fn r/expiring-result)
 (import-fn r/success)
 (import-fn r/success-result)
 (import-fn r/error-result)
@@ -75,6 +77,8 @@
   (if (result-channel? channel)
     (on-success channel callback)
     (ch/receive-all channel callback)))
+
+(import-fn op/receive-in-order)
 
 (defn error [channel err]
   (if (result-channel? channel)
@@ -126,18 +130,6 @@
 (import-fn p/read-merge)
 (import-macro p/wait-stage)
 
-(defn receive-in-order [ch f]
-  (run-pipeline ch
-    {:error-handler (fn [ex]
-                      (log/error ex "Error in receive-in-order loop.")
-                      (restart))}
-    #(read-channel* % :on-drained ::drained)
-    #(if (= ::drained %)
-       nil
-       (do
-         (f %)
-         (restart)))))
-
 (import-macro op/consume)
 (import-fn ch/map*)
 (import-fn ch/filter*)
@@ -152,6 +144,9 @@
 
 (defn remove* [f ch]
   (filter* (complement f) ch))
+
+(import-fn op/sample-every)
+(import-fn op/periodically)
 
 (import-fn op/channel-seq)
 (import-fn op/lazy-channel-seq)

@@ -41,68 +41,66 @@
           {:error (.error s)})))))
 
 (defprotocol IPipelineTracer
-  (mark-stage [_ step value])
+  (current-stage [_])
   (mark-enter [_ step])
   (mark-return [_ step value])
   (mark-error [_ step error])
   (mark-redirect [_ timer])
-  (mark-complete [_ value])
   (add-sub-task [_ task]))
 
 (deftype PipelineTracer
-  [parent
-   description
+  [description
    channel
-   initial-value
+   timestamp
    ^objects stages
    ^ConcurrentLinkedQueue sub-tasks
-   ^{:volatile-mutable true} error
-   ^{:volatile-mutable true} value
+   ^long parent-stage
+   ^{:volatile-mutable true, :tag long} current-stage
    ^{:volatile-mutable true} next]
 
   clojure.lang.IDeref
   (deref [_]
     (merge
       {:description description
-       :initial-value initial-value
+       :timestamp timestamp
        :stages (doall (map describe-stage-trace stages))
        :sub-tasks (doall (map deref sub-tasks))
        :next (when next @next)}
-      (when-not (= ::none value)
-        {:value value})
-      (when-not (= ::none error)
-        {:error error})))
+      (when (pos? parent-stage)
+        {:parent-stage parent-stage})))
   
   IPipelineTracer
+
+  (current-stage [_]
+    current-stage)
   
-  (mark-stage [this step value]
+  (mark-enter [this step]
     (when-not (aget stages step)
       (aset stages step
         (make-record StageTrace
           :timestamp (System/currentTimeMillis)
-          :enter Long/MIN_VALUE
-          :return Long/MIN_VALUE
-          :value value
-          :error ::none))
-      (enqueue channel this)))
-
-  (mark-enter [this step]
-    (aset stages step
-      (make-record StageTrace
-        :timestamp (System/currentTimeMillis)
-        :enter (System/nanoTime)
-        :value ::none
-        :error ::none
-        :return Long/MIN_VALUE))
-    (enqueue channel this))
+          :enter (System/nanoTime)
+          :value ::none
+          :error ::none
+          :return Long/MIN_VALUE))
+      (when channel
+        (enqueue channel this))))
 
   (mark-return [this step value]
-    (let [^StageTrace trace (aget stages step)]
+    (set! current-stage (long step))
+    (let [^StageTrace trace (or (aget stages step)
+                              (make-record StageTrace
+                                :timestamp (System/currentTimeMillis)
+                                :enter Long/MIN_VALUE
+                                :return Long/MIN_VALUE
+                                :value ::none
+                                :error ::none))]
       (aset stages step
         (assoc-record trace
           :return (System/nanoTime)
           :value value)))
-    (enqueue channel this))
+    (when channel
+      (enqueue channel this)))
 
   (mark-error [this step err]
     (let [^StageTrace trace (or (aget stages step)
@@ -115,57 +113,39 @@
          :error err
          :return (System/nanoTime)
          :value ::none)))
-    (set! error err)
-    (enqueue channel this))
+    (when channel
+      (enqueue channel this)))
 
   (mark-redirect [_ timer]
     (set! next timer))
   
-  (mark-complete [this val]
-    (set! value val)
-    (enqueue channel this))
-
   (add-sub-task [_ task]
     (.add sub-tasks task)))
 
 (defn root-pipeline-tracer [description channel]
   (PipelineTracer.
-    nil
     description
     channel
-    nil
+    (System/currentTimeMillis)
     nil
     (ConcurrentLinkedQueue.)
-    ::none
-    ::none
+    0
+    0
     nil))
 
-(defn pipeline-tracer [description num-steps initial-value ^PipelineTracer parent]
+(defn pipeline-tracer
+  [description num-steps parent]
   (let [tracer (PipelineTracer.
-                 parent
                  description
-                 (.channel parent)
-                 initial-value
-                 (object-array num-steps)
+                 (context/pipeline-tracer-channel)
+                 (System/currentTimeMillis)
+                 (object-array (inc num-steps))
                  (ConcurrentLinkedQueue.)
-                 ::none
-                 ::none
+                 (if parent
+                   (current-stage parent)
+                   0)
+                 0
                  nil)]
-    (add-sub-task parent tracer)
+    (when parent
+      (add-sub-task parent tracer))
     tracer))
-
-;;;
-
-(def dummy-channel
-  (reify IEnqueue
-    (enqueue [_ _])))
-
-(defmacro trace-pipelines [& body]
-  `(let [tracer# (root-pipeline-tracer nil dummy-channel)]
-     (context/push-context :pipeline-tracer tracer#)
-     (try
-       ~@body
-       (finally
-         (context/pop-context)))
-     (:sub-tasks @tracer#)))
-

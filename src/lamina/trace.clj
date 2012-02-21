@@ -11,9 +11,14 @@
   (:require
     [lamina.trace.instrument :as i]
     [lamina.trace.pipeline :as p]
-    [clojure.string :as str]))
+    [lamina.trace.timer :as t]
+    [lamina.trace.utils :as u]))
 
 (import-fn i/instrument)
 (import-macro i/defn-instrumented)
 
-(import-macro p/trace-pipelines)
+(import-fn t/format-timing)
+
+(import-macro u/time*)
+(import-macro u/trace-pipelines)
+

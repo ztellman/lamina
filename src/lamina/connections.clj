@@ -37,29 +37,41 @@
                         (error @connection err)
                         (swap! delay incr-delay)
                         (restart))}
+
+      ;; check if we want to try to reconnect
       (fn [_]
         (if @done?
           (do
             (reset! connection :lamina/deactivated)
             (complete nil))
+          ;; if so, reset the connection to a fresh result-channel
           (reset! connection (result-channel)))
         nil)
+
+      ;; wait the proscribed duration
       (wait-stage @delay)
+
+      ;; attempt to connect
       (fn [_]
         (trace {:state :connecting})
         (connection-generator))
+
+      ;; handle the new connection, and wait for it to close
       (fn [conn]
         (when on-connected
           (on-connected conn))
         (reset! connection conn)
         (trace {:state :connected})
         (closed-result conn))
+
+      ;; handle the lost connection, and restart
       (fn [_]
         (trace {:state :disconnected})
         (reset! delay 0)
         (restart)))
     connection))
 
+;; TODO: make the connection lazy
 (defn persistent-connection
   ([connection-generator]
      (persistent-connection connection-generator nil))
@@ -105,23 +117,34 @@
                         (select-keys options [:name :on-connected]))
            requests (channel)
            close-fn #(close-connection connection)]
-       (receive-in-order requests
+
+       ;; consume the requests, one at a time
+       (run-pipeline requests
+         {:error-handler (fn [_] (restart))}
+         read-channel
          (fn [^RequestTuple r]
            (run-pipeline nil
+             ;; if we have a request error, wait a bit so we don't starve
+             ;; the connect loop, then resend the request if :retry? is true
              {:error-handler (pipeline
-                               (wait-stage 1)
+                               (wait-stage 0.1)
                                (fn [_]
                                  (when retry?
                                    (restart))))
               :result (.result r)}
+             ;; connect
              (fn [_]
                (connection))
+             ;; enqueue the request, then wait for the response
              (fn [x]
                (if (channel? x)
                  (do
                    (enqueue x (.request r))
                    (read-channel x))
-                 (error-result x))))))
+                 (error-result x)))))
+         ;; rinse, repeat
+         (fn [_]
+           (restart)))
        (try-instrument options
          ^{::close-fn close-fn}
          (fn
@@ -130,7 +153,7 @@
                 (enqueue requests (RequestTuple. request result nil))
                 result))
            ([request timeout]
-              (let [result (with-timeout timeout (result-channel))]
+              (let [result (expiring-result timeout)]
                 (enqueue requests (RequestTuple. request result nil))
                 result)))))))
 
@@ -155,9 +178,12 @@
            close-fn #(close-connection connection)
            lock (lock/lock)]
 
+       ;; consume the responses from the channel, and pair them with
+       ;; the result-channels in the RequestTuple
        (receive-all responses
          (fn [^RequestTuple r]
            (run-pipeline (.channel r)
+             ;; if we fail and :retry? is true, resend the request
              {:error-handler (fn [ex]
                                (if retry?
                                  (enqueue requests r)
@@ -166,13 +192,16 @@
              read-channel
              #(success (.result r) %))))
 
+       ;; send the request, and enqueue the result and connection onto
+       ;; the response channel
        (receive-all requests
          (fn [^RequestTuple r]
            (lock/with-exclusive-lock lock
              (when-not (r/result (.result r))
                (run-pipeline (connection)
+                 ;; if we fail and :retry? is true, restart the pipeline
                  {:error-handler (pipeline
-                                   (wait-stage 1)
+                                   (wait-stage 0.1)
                                    (fn [ex]
                                      (if retry?
                                        (restart)
@@ -194,34 +223,126 @@
                 (enqueue requests (RequestTuple. request result nil))
                 result))
            ([request timeout]
-              (let [result (with-timeout timeout (result-channel))]
+              (let [result (expiring-result timeout)]
                 (enqueue requests (RequestTuple. request result nil))
                 result)))))))
 
 ;;;
 
+(defn server-generator-
+  [handler-fn
+   {:keys
+    [result-channel-generator
+     error-response
+     timeout]
+    :or {result-channel-generator result-channel}
+    :as options}
+   server-fn]
+  (let [f (fn this
+            ([request]
+               (this (result-channel-generator) request))
+            ([ch request]
+               (let [ch (if timeout
+                          (with-timeout (timeout request) ch)
+                          ch)]
+                 (run-pipeline nil
+                   {:error-handler (fn [ex]
+                                     (if error-response
+                                       (success ch (error-response ex))
+                                       (error ch ex)))}
+                   (fn [_]
+                     (handler-fn ch request)))
+                 ch)))
+        f (try-instrument options f)]
+    (fn [ch]
+      (server-fn f ch))))
+
+;;
+
 (defn server-generator
-  [f
+  [handler
    {:keys
     [name
      implicit?
      probes
-     executor]
+     executor
+     result-channel-generator
+     timeout
+     error-response]
     :as options}]
-  (let [f (fn [ch r]
-            (run-pipeline nil
-              (fn [_]
-                (f ch r))
-              (fn [_]
-                ch)))]
-    ))
+  (server-generator- handler options
+    (fn [handler ch]
+      (run-pipeline ch
+        {:error-handler (fn [ex]
+                          (when-not (or (drained? ch) (closed? ch))
+                            (enqueue ch ex)
+                            (restart)))}
+        read-channel
+        handler
+        (fn [response]
+          (enqueue ch response)
+          (when-not (or (drained? ch) (closed? ch))
+            (restart)))))))
+
+(defn server
+  [handler
+   ch
+   {:keys
+    [name
+     implicit?
+     probes
+     executor
+     result-channel-generator
+     error-response]
+    :as options}]
+  ((server-generator handler options) ch))
+
+;;
 
 (defn pipelined-server-generator
-  [f
+  [handler
    {:keys
     [name
      implicit?
      probes
-     executor]
+     executor
+     result-channel-generator
+     timeout
+     error-response]
+    :or {result-channel-generator result-channel}
     :as options}]
-  )
+  (server-generator- handler options
+    (fn [handler ch]
+      (let [responses (channel)
+            r (result-channel)]
+
+        ;; wait for the responses, returning them in-order
+        (run-pipeline responses
+          {:error-handler #(enqueue ch %)
+           :result r}
+          read-channel
+          (fn [response]
+            (enqueue ch response)
+            (when-not (or (drained? ch) (closed? ch))
+              (restart))))
+
+        ;; handle the requests as quickly as we can, enqueuing
+        ;; the result onto the responses channel
+        (receive-all ch
+          (fn [request]
+            (let [result (result-channel-generator)]
+              (enqueue responses result)
+              (handler result request))))))))
+
+(defn pipelined-server
+  [handler
+   ch
+   {:keys
+    [name
+     implicit?
+     probes
+     executor
+     result-channel-generator
+     error-response]
+    :as options}]
+  ((pipelined-server-generator handler options) ch))

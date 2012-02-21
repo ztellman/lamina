@@ -9,7 +9,8 @@
 (ns lamina.viz
   (:require
     [lamina.core.channel :as c]
-    [lamina.viz.node :as n]))
+    [lamina.viz.node :as n]
+    [lamina.trace :as trace]))
 
 (defn view-graph [& channels]
   (->> channels
@@ -18,5 +19,5 @@
     distinct
     (apply n/view-graph)))
 
-(defn trace-message [channel message]
+(defn view-propagation [channel message]
   (n/trace-message (c/receiver-node channel) message))

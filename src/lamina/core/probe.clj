@@ -12,6 +12,7 @@
   (:require
     [lamina.core.channel :as c]
     [lamina.core.node :as n]
+    [lamina.core.result :as r]
     [clojure.tools.logging :as log])
   (:import
     [java.io
@@ -74,6 +75,17 @@
 (def probe-channel (probe-channel-generator #(probe-channel- % false)))
 
 (def error-probe-channel (probe-channel-generator #(probe-channel- % true)))
+
+(defn probe-result [result]
+  (when-not (r/result-channel? result)
+    (throw (IllegalArgumentException. "probe-result must be given a result-channel")))
+  (reify
+    IEnqueue
+    (enqueue [_ msg]
+      (enqueue result msg))
+    IProbe
+    (probe-enabled? [_]
+      (not (r/result result)))))
 
 ;;;
 

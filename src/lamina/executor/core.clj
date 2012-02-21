@@ -10,7 +10,8 @@
   (:use
     [lamina.core])
   (:require
-    [lamina.trace.timer :as t])
+    [lamina.trace.timer :as t]
+    [lamina.core.context :as context])
   (:import
     [java.util.concurrent
      LinkedBlockingQueue
@@ -64,13 +65,14 @@
                       (.setCorePoolSize pool (min max-thread-count (inc active)))
                       (.setCorePoolSize pool (max min-thread-count (inc active)))))
                   (t/mark-enter timer)
-                   (run-pipeline nil
-                     {:error-handler #(t/mark-error timer %)
-                      :result result}
-                     (fn [_]
-                       (f))
-                     (fn [x]
-                       (t/mark-return timer x) 
-                       x)))]
+                  (context/with-context (context/assoc-context :timer timer)
+                    (run-pipeline nil
+                      {:error-handler #(t/mark-error timer %)
+                       :result result}
+                      (fn [_]
+                        (f))
+                      (fn [x]
+                        (t/mark-return timer x) 
+                        x))))]
           (.execute pool f)
           result)))))
