@@ -9,21 +9,15 @@
 (ns lamina.stats
   (:use
     [lamina.core]
-    [lamina.core.channel :only (bridge-join)])
+    [lamina.core.channel :only (bridge-join)]
+    [lamina.stats.utils :only (update)])
   (:require
-    [lamina.time :as t])
+    [lamina.time :as t]
+    [lamina.stats.moving-average :as avg])
   (:import
     [com.yammer.metrics.stats
-     EWMA
      ExponentiallyDecayingSample
-     Sample
-     Snapshot]
-    [com.yammer.metrics.core
-     Histogram]
-    [java.util.concurrent
-     TimeUnit]
-    [java.util.concurrent.atomic
-     AtomicLong]))
+     Snapshot]))
 
 (set! *warn-on-reflection* true)
 
@@ -51,23 +45,11 @@
   ([interval ch]
      (average interval (t/minutes 5) ch))
   ([interval window ch]
-     (let [alpha (- 1 (Math/exp (/ (- interval) window)))
-           emwa (EWMA. alpha interval TimeUnit/MILLISECONDS)
-           cnt (AtomicLong. 0)
+     (let [avg (avg/moving-average interval window)
            ch* (channel)]
-       (bridge-join ch "average"
-         #(do
-            (.incrementAndGet cnt)
-            (.update emwa (long %)))
-         ch*)
+       (bridge-join ch "average" #(update avg (long %)) ch*)
        (siphon
-         (periodically interval
-           (fn []
-             (let [rate (.getAndSet cnt 0)]
-               (.tick emwa)
-               (if (zero? rate)
-                 0
-                 (/ (* interval (.rate emwa TimeUnit/MILLISECONDS)) rate)))))
+         (periodically interval #(deref avg))
          ch*)
        ch*)))
 
@@ -75,21 +57,19 @@
   ([ch]
      (quantiles (t/seconds 5) ch))
   ([interval ch]
-     (quantiles interval (t/minutes 5) ch))
-  ([interval window ch]
+     (quantiles interval [50 75 95 99 99.9] ch))
+  ([interval quantiles ch]
      (let [sample (ExponentiallyDecayingSample. 1028 0.015)
-           ch* (channel)]
+           ch* (channel)
+           scaled-quantiles (map #(/ % 100) quantiles)]
        (bridge-join ch "quantiles" #(.update sample (long %)) ch*)
        (siphon
          (periodically interval
            (fn []
              (let [snapshot (.getSnapshot sample)]
-               {50 (.getMedian snapshot)
-                75 (.get75thPercentile snapshot)
-                95 (.get95thPercentile snapshot)
-                98 (.get98thPercentile snapshot)
-                99 (.get99thPercentile snapshot)
-                999 (.get999thPercentile snapshot)})))
+               (zipmap
+                 quantiles
+                 (map #(.getValue snapshot %) scaled-quantiles)))))
          ch*)
        ch*)))
 
