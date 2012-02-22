@@ -29,7 +29,7 @@
         (enqueue ch :msg))))
   (let [ch (channel)]
     (->
-      (take 1e3 (map-seq ch inc))
+      (take 1e3 (map-seq ch unchecked-inc))
       last
       (receive-all (fn [_])))
     (bench "map* chain"

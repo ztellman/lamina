@@ -17,7 +17,7 @@
                }
   :dev-dependencies [[criterium "0.2.1-SNAPSHOT"]]
   ;;:jvm-opts ["-server" "-XX:+UseConcMarkSweepGC" "-Xmx16m"]
-  :jvm-opts ["-server" "-XX:+UseConcMarkSweepGC" "-Xmx256m" "-XX:NewSize=216m"]
+  :jvm-opts ["-server" "-XX:+UseConcMarkSweepGC" "-Xmx2g" "-XX:NewSize=1g"]
   :repositories {"sonatype-oss-public" "https://oss.sonatype.org/content/groups/public/"}
   :exclusions [org.clojure/contrib
                org.clojure/clojure-contrib]
