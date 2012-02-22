@@ -4,9 +4,9 @@
                  [org.clojure/tools.logging "0.2.3"]
                  [useful "0.7.3"]
                  [potemkin "0.1.2-SNAPSHOT"]
-                 [com.yammer.metrics/metrics-core "2.0.0-RC0"
+                 [com.yammer.metrics/metrics-core "2.0.2"
                   :exclusions [org.slf4j/slf4j-api]]]
-  :multi-deps {:all [[com.yammer.metrics/metrics-core "2.0.0-RC0"
+  :multi-deps {:all [[com.yammer.metrics/metrics-core "2.0.2"
                       :exclusions [org.slf4j/slf4j-api]]
                      [org.clojure/tools.logging "0.2.3"]
                      [useful "0.7.3"]

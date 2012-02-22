@@ -29,7 +29,7 @@
         (enqueue ch :msg))))
   (let [ch (channel)]
     (->
-      (take 1e3 (map-seq ch unchecked-inc))
+      (take 1e3 (map-seq ch identity))
       last
       (receive-all (fn [_])))
     (bench "map* chain"
@@ -38,6 +38,7 @@
     (bench "inactive probe channel"
       (enqueue ch :msg)))
   (let [ch (probe-channel :abc)]
+    (receive-all ch (fn [_]))
     (bench "probe check"
       (when (probe-enabled? ch)
         :hello))))
