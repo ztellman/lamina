@@ -15,7 +15,7 @@
     (defmacro bench [name & body]
       `(do
          (println "\n-----\n" ~name "\n-----\n")
-         (criterium.core/bench
+         (criterium.core/quick-bench
            (do ~@body)
            :reduce-with #(and %1 %2))))))
 

@@ -8,24 +8,25 @@
 
 (ns lamina.test.pipeline
   (:use
-    [lamina.core pipeline]
+    [lamina core executor]
     [clojure test]
-    [lamina.test utils])
-  (:require
-    [lamina.core.node :as n]
-    [lamina.core.result :as r]))
+    [lamina.test utils]))
 
 (defn defer [f]
-  (fn [x]
-    (let [r (r/result-channel)]
-      (future (Thread/sleep 10) (r/success r (f x)))
-      r)))
+  #(run-pipeline %
+     (wait-stage 10)
+     f))
 
 (defn boom [_]
   (throw (Exception. "boom")))
 
+(def exc (executor :name :test-pipeline))
+
 (defmacro repeated-pipeline [n f]
   `(pipeline ~@(repeat n f)))
+
+(defmacro repeated-executor-pipeline [n f]
+  `(pipeline {:executor exc} ~@(repeat n f)))
 
 (defmacro repeated-run-pipeline [n initial-val f]
   `(run-pipeline ~initial-val ~@(repeat n f)))
@@ -38,7 +39,9 @@
       `(do
          (is (= ~i @((repeated-pipeline ~i inc) 0)))
          (is (= ~i @((repeated-pipeline ~i (defer inc)) 0)))
-         (is (= ~i @((repeated-pipeline ~i (fn [i#] (-> i# inc r/success-result r/success-result))) 0)))))))
+         (is (= ~i @((repeated-executor-pipeline ~i inc) 0)))
+         (is (= ~i @((repeated-executor-pipeline ~i (defer inc)) 0)))
+         (is (= ~i @((repeated-pipeline ~i (fn [i#] (-> i# inc success-result success-result))) 0)))))))
 
 (deftest test-restart
   (is (= 10 @(run-pipeline 0
@@ -63,9 +66,16 @@
   (is (thrown? Exception @(run-pipeline nil
                             {:error-handler (fn [_])}
                             boom)))
+  (is (thrown? Exception @(run-pipeline nil
+                            {:timeout 1}
+                            (wait-stage 100))))
   (is (= 1 @(run-pipeline nil
               {:error-handler (fn [_] (complete 1))}
               boom)))
+  (is (thrown? Exception @(run-pipeline nil
+                            {:timeout 1
+                             :error-handler (fn [_] (complete 2))}
+                            (wait-stage 100))))
   (is (= 1 @(run-pipeline nil
               {:error-handler (pipeline
                                 (wait-stage 100)
@@ -86,14 +96,14 @@
       (p 0)))
   (bench "run-pipeline inc"
     (repeated-run-pipeline 0 5 inc))
-  (let [p (repeated-pipeline 5 r/success-result)]
+  (let [p (repeated-pipeline 5 success-result)]
     (bench "simple success-result"
       (p 0)))
-  (let [p (repeated-pipeline 5 #(-> % inc r/success-result r/success-result))]
+  (let [p (repeated-pipeline 5 #(-> % inc success-result success-result))]
     (bench "nested success-result"
       (p 0)))
-  (let [r (r/result-channel)
-        _ (r/success r 1)
+  (let [r (result-channel)
+        _ (success r 1)
         p (repeated-pipeline 5 (fn [_] r))]
     (bench "simple result-channel"
       (p 0)))

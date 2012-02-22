@@ -32,14 +32,6 @@
 
 (def exc (executor :name :test-executor))
 
-(defn-instrumented delay-fn
-  {:executor exc}
-  [f]
-  (f))
-
-(defmacro task [& body]
-  `(delay-fn (fn [] ~@body)))
-
 ;;;
 
 (defn test-probe [f args options probe-type]

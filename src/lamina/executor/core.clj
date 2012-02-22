@@ -8,8 +8,10 @@
 
 (ns lamina.executor.core
   (:use
-    [lamina.core])
+    [lamina.executor.utils])
   (:require
+    [lamina.core.pipeline :as p]
+    [lamina.core.result :as r]
     [lamina.trace.timer :as t]
     [lamina.core.context :as context])
   (:import
@@ -20,10 +22,6 @@
      TimeUnit]))
 
 (set! *warn-on-reflection* true)
-
-(defprotocol IExecutor
-  (execute [_ timer f] [_ timer f timeout])
-  (shutdown [_] "Shuts down the thread pool, making it impossible for any further tasks to be enqueued."))
 
 (defn executor [& {:keys [idle-timeout
                           min-thread-count
@@ -57,22 +55,34 @@
       IExecutor
       (shutdown [_]
         (.shutdown pool))
-      (execute [this timer f]
-        (let [result (result-channel)
+      (execute [this timer f timeout]
+        (let [result (if timeout
+                       (r/expiring-result timeout)
+                       (r/result-channel))
               f (fn []
-                  (let [active (.getActiveCount pool)]
-                    (if (= (.getPoolSize pool) active)
-                      (.setCorePoolSize pool (min max-thread-count (inc active)))
-                      (.setCorePoolSize pool (max min-thread-count (inc active)))))
-                  (t/mark-enter timer)
+                  (when timeout
+                    (let [thread (Thread/currentThread)]
+                      (r/subscribe result
+                        (r/result-callback
+                          (fn [_])
+                          (fn [ex]
+                            (when (= :lamina/timeout! ex)
+                              (.interrupt thread)))))))
+                  (when timer (t/mark-enter timer))
                   (context/with-context (context/assoc-context :timer timer)
-                    (run-pipeline nil
-                      {:error-handler #(t/mark-error timer %)
+                    (p/run-pipeline nil
+                      {:error-handler #(when timer (t/mark-error timer %))
                        :result result}
                       (fn [_]
                         (f))
                       (fn [x]
-                        (t/mark-return timer x) 
+                        (when timer (t/mark-return timer x)) 
                         x))))]
           (.execute pool f)
+          (let [active (.getActiveCount pool)]
+            (if (= (.getPoolSize pool) active)
+              (.setCorePoolSize pool (min max-thread-count (inc active)))
+              (.setCorePoolSize pool (max min-thread-count (inc active)))))
           result)))))
+
+(def default-executor (executor :name "lamina-default-executor"))

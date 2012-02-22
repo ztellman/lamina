@@ -12,17 +12,18 @@
     [lamina core])
   (:require
     [lamina.core.context :as context]
-    [lamina.executor.core :as c]
+    [lamina.executor.utils :as ex]
     [lamina.trace.timer :as t]))
 
 (defrecord Enter [^long timestamp args])
 
-(defmacro instrument-task-body [nm executor enter-probe return-probe implicit? invoke args]
+(defmacro instrument-task-body
+  [nm executor enter-probe return-probe implicit? timeout invoke args]
   `(do
      (when (probe-enabled? ~enter-probe)
        (enqueue ~enter-probe (Enter. (System/currentTimeMillis) ~args)))
      (let [timer# (t/enqueued-timer ~nm ~args ~return-probe ~implicit?)]
-       (c/execute ~executor timer# (fn [] ~invoke)))))
+       (ex/execute ~executor timer# (fn [] ~invoke) ~(when timeout `(when ~timeout (~timeout ~args)))))))
 
 (defn instrument-task
   [f & {:keys [executor timeout implicit?]
@@ -34,25 +35,25 @@
         error-probe (probe-channel [nm :error])]
     (fn
       ([]
-        (instrument-task-body nm executor enter-probe return-probe implicit?
-          (f) [])) 
+         (instrument-task-body nm executor enter-probe return-probe implicit? timeout
+           (f) [])) 
       ([a]
-         (instrument-task-body nm executor enter-probe return-probe implicit?
+         (instrument-task-body nm executor enter-probe return-probe implicit? timeout
            (f a) [a]))
       ([a b]
-         (instrument-task-body nm executor enter-probe return-probe implicit?
+         (instrument-task-body nm executor enter-probe return-probe implicit? timeout
            (f a b) [a b]))
       ([a b c]
-         (instrument-task-body nm executor enter-probe return-probe implicit?
+         (instrument-task-body nm executor enter-probe return-probe implicit? timeout
            (f a b c) [a b c]))
       ([a b c d]
-         (instrument-task-body nm executor enter-probe return-probe implicit?
+         (instrument-task-body nm executor enter-probe return-probe implicit? timeout
            (f a b c d) [a b c d]))
       ([a b c d e] 
-         (instrument-task-body nm executor enter-probe return-probe implicit?
+         (instrument-task-body nm executor enter-probe return-probe implicit? timeout
            (f a b c d e) [a b c d e]))
       ([a b c d e & rest]
-         (instrument-task-body nm executor enter-probe return-probe implicit?
+         (instrument-task-body nm executor enter-probe return-probe implicit? timeout
            (apply f a b c d e rest) (list* a b c d e rest))))))
 
 (defmacro instrument-body [nm enter-probe return-probe implicit? invoke args]
@@ -118,7 +119,8 @@
         nm (or (:name mta)
              (str (-> (ns-name *ns*) str (.replace \. \:)) ":" (name fn-name)))
         executor? (contains? mta :executor)
-        implicit? (:implicit? mta)]
+        implicit? (:implicit? mta)
+        timeout (:timeout mta)]
     (unify-gensyms
       `(let [enter-probe## (probe-channel [~nm :enter])
              return-probe## (probe-channel [~nm :return])
@@ -130,7 +132,7 @@
          ~(transform-defn-bodies
             (fn [args body]
               (if executor?
-                `((instrument-task-body ~nm executor## enter-probe## return-probe## ~implicit?
+                `((instrument-task-body ~nm executor## enter-probe## return-probe## ~implicit? ~timeout
                     (do ~@body) ~args))
                 `((instrument-body ~nm enter-probe## return-probe## ~implicit?
                     (do ~@body) ~args))))

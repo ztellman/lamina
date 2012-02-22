@@ -6,18 +6,8 @@
 ;;   the terms of this license.
 ;;   You must not remove this notice, or any other, from this software.
 
-(ns lamina.executor
-  (:use
-    [potemkin]
-    [lamina.core])
-  (:require
-    [lamina.executor.core :as c]
-    [lamina.executor.utils :as u]
-    [lamina.trace.timer :as t]))
+(ns lamina.executor.utils)
 
-(import-fn c/executor)
-(import-fn c/default-executor)
-(import-fn u/shutdown)
-
-(defmacro task [& body]
-  `(u/execute default-executor nil (fn [] ~@body) nil))
+(defprotocol IExecutor
+  (execute [_ timer f timeout])
+  (shutdown [_] "Shuts down the thread pool, making it impossible for any further tasks to be enqueued."))
