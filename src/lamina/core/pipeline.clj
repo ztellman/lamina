@@ -214,7 +214,7 @@
         `(error [this# result## initial-value# ex# tracer#]
            (let [result## (or result## (r/result-channel))
                  p# (pipeline
-                      ~(merge opts {:result `result##})
+                      ~(merge {:error-handler `(fn [_#])} opts {:result `result##})
                       ~@(butlast stages)
                       (fn [value#]
                         (let [value# (~(last stages) value#)]
@@ -238,14 +238,15 @@
         {:keys [result error-handler timeout executor]} options
         len (count stages)
         depth (max-depth len)
-        executor-fn-sym (gensym "executor-fn")
-        expand-subscribe (fn [idx] `(subscribe this## result## initial-val## val## ~executor-fn-sym ~idx))
-        expand-trace-subscribe (fn [idx] `(trace-subscribe this## result## initial-val## val## tracer## ~executor-fn-sym ~idx))]
+        location (str (ns-name *ns*) ", line " (:line (meta &form)))
+        executor-fn (gensym "executor-fn")
+        expand-subscribe (fn [idx] `(subscribe this## result## initial-val## val## ~executor-fn ~idx))
+        expand-trace-subscribe (fn [idx] `(trace-subscribe this## result## initial-val## val## tracer## ~executor-fn ~idx))]
 
     `(let [executor# ~executor
-           ~executor-fn-sym (if executor#
-                              (fn [f#] (ex/execute executor# nil f# nil))
-                              (fn [f#] (f#)))]
+           ~executor-fn (if executor#
+                          (fn [f#] (ex/execute executor# nil f# nil))
+                          (fn [f#] (f#)))]
        (reify IPipeline
          
          (gen-tracer [_ parent#]
@@ -310,7 +311,7 @@
            (complex-error-handler error-handler)
            `(error [_# result# _# ex# _#]
               (when-not ~(contains? options :error-handler)
-                (log/error ex# "Unhandled exception in pipeline"))
+                (log/error ex# (str "Unhandled exception in pipeline at " ~location)))
               (if result#
                 (r/error result# ex#)
                 (r/error-result ex#))))
@@ -336,7 +337,7 @@
                 `(start-pipeline this## nil val## nil))))))))
 
 (defmacro run-pipeline [value & opts+stages]
-  `(let [p# (pipeline ~@opts+stages)
+  `(let [p# ~(with-meta `(pipeline ~@opts+stages) (meta &form))
          value# ~value]
      (p# value#)))
 

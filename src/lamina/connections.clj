@@ -42,11 +42,12 @@
       (fn [_]
         (if @done?
           (do
-            (reset! connection :lamina/deactivated)
+            (reset! connection :lamina/deactivated!)
             (complete nil))
           ;; if so, reset the connection to a fresh result-channel
-          (reset! connection (result-channel)))
-        nil)
+          (do
+            (reset! connection (result-channel))
+            nil)))
 
       ;; wait the proscribed duration
       (wait-stage @delay)
@@ -71,17 +72,22 @@
         (restart)))
     connection))
 
-;; TODO: make the connection lazy
 (defn persistent-connection
   ([connection-generator]
      (persistent-connection connection-generator nil))
   ([connection-generator {:keys [name on-connected]}]
      (let [latch (atom false)
-           connection (connection-loop name connection-generator latch on-connected)
+           connection (delay (connection-loop name connection-generator latch on-connected))
+           reset-fn (fn []
+                      (when-let [ch @@connection]
+                        (when (channel? ch)
+                          (close ch))))
            close-fn (fn []
-                      (reset! latch false)
-                      (close @connection))]
-       ^{::close-fn close-fn} (fn [] @connection))))
+                      (reset! latch true)
+                      (reset-fn))]
+       ^{::close-fn close-fn
+         ::reset-fn reset-fn}
+       (fn [] @@connection))))
 
 (defn close-connection
   "Takes a client function, and closes the connection."
@@ -90,11 +96,51 @@
     (close-fn)
     (f ::close)))
 
+(defn reset-connection
+  "Takes a client function, and resets the connection."
+  [f]
+  (if-let [reset-fn (-> f meta ::reset-fn)]
+    (reset-fn)
+    (f ::reset)))
+
 ;;;
+
+(defn try-heartbeat [options connection f]
+  (when (contains? options :heartbeat)
+    (let [{:keys [timeout
+                  request
+                  on-failure
+                  response-validator
+                  interval]
+          :or {timeout 5000
+               interval 10000}
+           :as heartbeat} (:heartbeat options)]
+      
+      (when-not (contains? heartbeat :request)
+        (throw (IllegalArgumentException. "heartbeat must specify :request")))
+
+      (run-pipeline nil
+        {:error-handler (fn [err]
+                          (if (= :lamina/deactivated! err)
+                            (complete nil)
+                            (do
+                              (when on-failure (on-failure err))
+                              (reset-connection connection)
+                              (restart))))}
+        (wait-stage 0.1)
+        (fn [_] (connection))
+        (wait-stage interval)
+        (fn [_] (f request timeout))
+        (fn [response]
+          (when (and response-validator
+                  (not (response-validator response)))
+            (throw (IllegalStateException. (str "invalid hearbeat response: " (pr-str response)))))
+          (restart)))))
+  f)
 
 (defn try-instrument [options f]
   (if (contains? options :name)
-    (instrument f options)
+    (with-meta (instrument f options) (meta f))
     f))
 
 (deftype RequestTuple [request result channel])
@@ -104,19 +150,21 @@
      (client connection-generator nil))
   ([connection-generator
     {:keys [name
+            heartbeat
             on-connected
             probes
             executor
             implicit?
             retry?]
-     :or {retry? true}
+     :or {retry? false}
      :as options}]
 
      (let [connection (persistent-connection
                         connection-generator
                         (select-keys options [:name :on-connected]))
            requests (channel)
-           close-fn #(close-connection connection)]
+           close-fn #(close-connection connection)
+           reset-fn #(reset-connection connection)]
 
        ;; consume the requests, one at a time
        (run-pipeline requests
@@ -145,29 +193,32 @@
          ;; rinse, repeat
          (fn [_]
            (restart)))
-       (try-instrument options
-         ^{::close-fn close-fn}
-         (fn
-           ([request]
-              (let [result (result-channel)]
-                (enqueue requests (RequestTuple. request result nil))
-                result))
-           ([request timeout]
-              (let [result (expiring-result timeout)]
-                (enqueue requests (RequestTuple. request result nil))
-                result)))))))
+       (try-heartbeat options connection
+         (try-instrument options
+           ^{::close-fn close-fn
+             ::reset-fn reset-fn}
+           (fn
+             ([request]
+                (let [result (result-channel)]
+                  (enqueue requests (RequestTuple. request result nil))
+                  result))
+             ([request timeout]
+                (let [result (expiring-result timeout)]
+                  (enqueue requests (RequestTuple. request result nil))
+                  result))))))))
 
 (defn pipelined-client
   ([connection-generator]
      (pipelined-client connection-generator nil))
   ([connection-generator
     {:keys [name
+            heartbeat
             on-connected
             probes
             executor
             implicit?
             retry?]
-     :or {retry? true}
+     :or {retry? false}
      :as options}]
 
      (let [connection (persistent-connection
@@ -176,6 +227,7 @@
            requests (channel)
            responses (channel)
            close-fn #(close-connection connection)
+           reset-fn #(reset-connection connection)
            lock (lock/lock)]
 
        ;; consume the responses from the channel, and pair them with
@@ -215,17 +267,19 @@
                        (enqueue responses (assoc-record r :channel x)))
                      (error (.result r) x))))))))
 
-       (try-instrument options
-         ^{::close-fn close-fn}
-         (fn
-           ([request]
-              (let [result (result-channel)]
-                (enqueue requests (RequestTuple. request result nil))
-                result))
-           ([request timeout]
-              (let [result (expiring-result timeout)]
-                (enqueue requests (RequestTuple. request result nil))
-                result)))))))
+       (try-heartbeat options connection
+         (try-instrument options
+           ^{::close-fn close-fn
+             ::reset-fn reset-fn}
+           (fn
+             ([request]
+                (let [result (result-channel)]
+                  (enqueue requests (RequestTuple. request result nil))
+                  result))
+             ([request timeout]
+                (let [result (expiring-result timeout)]
+                  (enqueue requests (RequestTuple. request result nil))
+                  result))))))))
 
 ;;;
 
