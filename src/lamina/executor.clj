@@ -9,11 +9,12 @@
 (ns lamina.executor
   (:use
     [potemkin]
-    [lamina.core])
+    [lamina core api])
   (:require
     [lamina.executor.core :as c]
     [lamina.executor.utils :as u]
-    [lamina.trace.timer :as t]))
+    [lamina.trace.timer :as t]
+    [lamina.trace :as trace]))
 
 (import-fn c/executor)
 (import-fn c/default-executor)
@@ -21,3 +22,12 @@
 
 (defmacro task [& body]
   `(u/execute default-executor nil (fn [] ~@body) nil))
+
+(defn executor-channel [& {:keys [name executor probes] :as options}]
+  (when-not (and name executor)
+    (throw (IllegalArgumentException. "executor-channel must be given a :name and :executor")))
+  (let [receiver (channel)
+        emitter (channel)
+        callback (apply trace/instrument #(enqueue emitter %) (apply concat options))]
+    (bridge-join receiver name callback emitter)
+    (splice emitter receiver)))

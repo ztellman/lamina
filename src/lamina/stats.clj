@@ -8,8 +8,7 @@
 
 (ns lamina.stats
   (:use
-    [lamina.core]
-    [lamina.core.channel :only (bridge-join)]
+    [lamina core api]
     [lamina.stats.utils :only (update)])
   (:require
     [lamina.time :as t]

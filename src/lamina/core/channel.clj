@@ -123,12 +123,12 @@
    consumed from 'emitter'."
   [emitter receiver]
   (SplicedChannel.
-    (if (instance? SplicedChannel emitter)
-      (.emitter ^SplicedChannel emitter)
-      emitter)
     (if (instance? SplicedChannel receiver)
       (.receiver ^SplicedChannel receiver)
-      receiver)))
+      receiver)
+    (if (instance? SplicedChannel emitter)
+      (.emitter ^SplicedChannel emitter)
+      emitter)))
 
 (defn channel? [x]
   (or
