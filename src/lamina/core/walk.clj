@@ -38,6 +38,7 @@
          :consumed? (consumed? n)
          :closed? (closed? n)
          :drained? (drained? n)
+         :grounded? (grounded? n)
          :error (error-value n nil)}))))
 
 ;;;

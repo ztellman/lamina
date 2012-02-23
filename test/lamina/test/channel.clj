@@ -17,7 +17,7 @@
 
 ;;;
 
-(defn sink []
+(defn capture []
   (let [a (atom [])]
     [a
      #(do
@@ -27,7 +27,7 @@
 ;;;
 
 (deftest test-map*
-  (let [[v callback] (sink)
+  (let [[v callback] (capture)
         a (channel 0 1 2)
         b (map* inc a)]
     (receive-all b callback)
@@ -36,7 +36,7 @@
     (is (= (range 1 6) @v))))
 
 (deftest test-filter*
-  (let [[v callback] (sink)
+  (let [[v callback] (capture)
         a (channel 0 1 2)
         b (->> a (map* inc) (filter* even?))]
     (receive-all b callback)

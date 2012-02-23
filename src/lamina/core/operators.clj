@@ -293,10 +293,10 @@
 
 (defn channel-seq
   ([ch]
-     (n/ground (emitter-node ch)))
+     (n/drain (emitter-node ch)))
   ([ch timeout]
      (let [start (System/currentTimeMillis)
-           s (n/ground (emitter-node ch))]
+           s (n/drain (emitter-node ch))]
        (concat s
          (lazy-channel-seq ch
            #(max 0 (- timeout (- (System/currentTimeMillis) start))))))))

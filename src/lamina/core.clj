@@ -22,9 +22,11 @@
 
 (import-fn ch/channel)
 (import-fn ch/closed-channel)
+(import-fn ch/grounded-channel)
 (import-macro ch/channel*)
 (import-fn ch/splice)
 (import-fn ch/channel?)
+(import-fn ch/ground)
 
 (defn permanent-channel []
   (channel* :permanent? true))
@@ -77,6 +79,8 @@
   (if (result-channel? channel)
     (on-success channel callback)
     (ch/receive-all channel callback)))
+
+(import-fn ch/sink)
 
 (import-fn op/receive-in-order)
 
@@ -161,8 +165,6 @@
 (import-fn #'channel/poll)
 
 ;; channel variants
-(import-fn #'channel/timed-channel)
-
 (def nil-channel channel/nil-channel)
 
 ;; channel utility functions
@@ -170,17 +172,6 @@
 
 (defmacro siphon->> [& forms]
 )
-
-(defn sink [& callbacks]
-  (let [ch (channel)]
-    (apply receive-all ch callbacks)
-    ch))
-
-(import-fn #'seq/receive-in-order)
-(import-fn #'seq/partition*)
-(import-fn #'seq/partition-all*)
-
-(import-fn #'op/sample-every)
 
 ;; named channels
 (import-fn #'named/named-channel)
@@ -192,8 +183,6 @@
 
 ;;;; PIPELINES
 
-(import-fn #'pipeline/wait-stage)
-
 ;; pipeline result hooks
 (import-fn #'pipeline/wait-for-result)
-(import-fn #'pipeline/siphon-result))
+)

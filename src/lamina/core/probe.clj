@@ -33,7 +33,7 @@
   IEnqueue
   (enqueue [_ msg]
     (let [result (n/propagate (c/receiver-node channel) msg true)]
-      (when (and log-on-disabled? (identical? :lamina/inactive-probe result))
+      (when (and log-on-disabled? (identical? :lamina/grounded result))
         (log/error msg (str "error on inactive probe: " description)))
       result))
   IProbe
@@ -47,7 +47,7 @@
 
 (defn probe-channel- [description log-on-disabled?]
   (let [flag (AtomicBoolean. false)
-        ch (c/channel* :probe? true :description (name description))]
+        ch (c/channel* :grounded? true :description (name description))]
 
     ;; set the flag whenever the downstream count changes
     (n/on-state-changed (c/emitter-node ch) nil
@@ -112,7 +112,7 @@
 (defn sympathetic-probe-channel
   "A channel that only lets messages through if 'ch' has downstream nodes."
   [ch]
-  (let [upstream (c/channel* :probe? true)
+  (let [upstream (c/channel* :grounded? true)
         downstream (n/node* :permanent? true)
         enabled? (AtomicBoolean. false)]
 

@@ -99,7 +99,7 @@
   (on-state-changed [_ name callback]
     "Adds a callback which takes two paramters: [state downstream-node-count error].
      Possible states are ::open, ::consumed, ::split, ::closed, ::drained, ::error.")
-  (ground [_]
+  (drain [_]
     "Consumes and returns all messages currently in the queue."))
 
 ;; The possible modes:
@@ -199,7 +199,7 @@
             (check-for-drained ~this ~state ~watchers ~cancellations))
           result#)))))
 
-(defn ground-queue [^NodeState state]
+(defn drain-queue [^NodeState state]
   (when state
     (and
       (case (.mode state)
@@ -207,7 +207,7 @@
         false)
       (= 1 (.downstream-count state))
       (.queue state)
-      (q/ground (.queue state)))))
+      (q/drain (.queue state)))))
 
 (declare split-node join node?)
 
@@ -215,7 +215,7 @@
   [^AsymmetricLock lock
    operator
    description
-   probe?
+   grounded?
    ^{:volatile-mutable true :tag NodeState} state
    ^Map cancellations
    ^CopyOnWriteArrayList edges
@@ -240,8 +240,8 @@
 
   ;;
   (propagate [this msg transform?]
-    (if (and probe? (= 0 (.downstream-count state)))
-      :lamina/inactive-probe
+    (if (and grounded? (= 0 (.downstream-count state)))
+      :lamina/grounded
       (let [msg (transform-message this msg transform?)]
         (case msg
 
@@ -273,7 +273,7 @@
                 (::split ::open)
                 (case (int (.downstream-count state))
                   0
-                  (enqueue-and-release lock state msg (not probe?))
+                  (enqueue-and-release lock state msg (not grounded?))
 
                   1
                   (let [next (.get edges 0)]
@@ -388,16 +388,16 @@
     state)
 
   ;;
-  (ground [this]
+  (drain [this]
     (let [x (l/with-exclusive-lock lock
               (let [s state]
                 (if (identical? ::split (.mode s))
                   ::split
                   (.queue s))))]
       (if (identical? ::split x)
-        (ground (.split state))
+        (drain (.split state))
         (when x
-          (let [msgs (q/ground x)]
+          (let [msgs (q/drain x)]
             (check-for-drained this state watchers cancellations)
             msgs)))))
 
@@ -648,7 +648,7 @@
 
                      ;; if we've gone from ::zero -> ::one or ::closed -> ::drained,
                      ;; send all queued messages
-                     (when-let [msgs (ground-queue new-state)]
+                     (when-let [msgs (drain-queue new-state)]
                        (let [node (.node ^Edge edge)]
                          (doseq [msg msgs]
                            (propagate node msg true))))
@@ -787,8 +787,8 @@
 (defn permanent? [node]
   (.permanent? (state node)))
 
-(defn probe? [node]
-  (.probe? ^Node node))
+(defn grounded? [node]
+  (.grounded? ^Node node))
 
 (defn error-value [node default-value]
   (let [s (state node)]
@@ -855,6 +855,10 @@
 
 ;;;
 
+(defn ground [n]
+  (let [e (edge "" (terminal-node "\u23DA"))]
+    (link n ::ground e nil nil)))
+
 (defn siphon-callback [src dst]
   (fn [state _ _]
     (case state
@@ -920,11 +924,11 @@
 ;;;
 
 (defmacro node*
-  [& {:keys [permanent? probe? transactional? description operator messages]
+  [& {:keys [permanent? grounded? transactional? description operator messages]
       :or {operator identity
            description nil
            permanent? false
-           probe? false
+           grounded? false
            transactional? false
            messages nil}}]
   `(let [operator# ~operator]
@@ -934,7 +938,7 @@
        (l/asymmetric-lock)
        ~operator
        ~description
-       ~probe?
+       ~grounded?
        (make-record NodeState
          :mode ::open
          :downstream-count 0
@@ -942,7 +946,7 @@
                   (if ~transactional?
                     (q/transactional-queue messages#)
                     (q/queue messages#)))
-         :permanent? (or ~permanent? ~probe?)
+         :permanent? (or ~permanent? ~grounded?)
          :transactional? ~transactional?)
        (Collections/synchronizedMap (HashMap.))
        (CopyOnWriteArrayList.)
@@ -952,7 +956,7 @@
   (node*
     :transactional? (transactional? node)
     :permanent? (permanent? node)
-    :probe? (probe? node)))
+    :grounded? (grounded? node)))
 
 (defn node
   ([operator]
@@ -970,7 +974,7 @@
       (l/asymmetric-lock)
       identity
       nil
-      (.probe? node)
+      (.grounded? node)
       (assoc-record s :permanent? false)
       (Collections/synchronizedMap (HashMap. ^Map (.cancellations node)))
       (CopyOnWriteArrayList. ^CopyOnWriteArrayList (.edges node))

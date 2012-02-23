@@ -108,6 +108,16 @@
     (n/close (receiver-node ch))
     ch))
 
+(defn grounded-channel
+  "Returns a channel that cannot accumulate messages."
+  []
+  (channel* :grounded? true))
+
+(defn ground
+  "Ensures that messages will not accumulate in the channel's queue."
+  [ch]
+  (n/ground (emitter-node ch)))
+
 (defn splice
   "Returns a channel where all messages are enqueud into 'receiver', and
    consumed from 'emitter'."
@@ -166,6 +176,9 @@
     (n/edge "receive-all" (n/callback-node callback))
     nil
     nil))
+
+(defn sink [callback channel]
+  (receive-all channel callback))
 
 (defn cancel-callback
   ([channel callback]

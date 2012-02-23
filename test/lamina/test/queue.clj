@@ -36,11 +36,11 @@
 
 (defn test-queue [q-fn]
 
-  ;; test ground
+  ;; test drain
   (let [q (q-fn)]
     (enqueue q nil)
     (enqueue q :a)
-    (is (= [nil :a] (q/ground q))))
+    (is (= [nil :a] (q/drain q))))
   
   ;; enqueue, then receive
   (let [q (q-fn)]
@@ -48,11 +48,11 @@
     (enqueue q nil)
     (is (= nil @(receive q))))
 
-  ;; multi-enqueue, then ground
+  ;; multi-enqueue, then drain
   (let [q (q-fn)]
     (enqueue q 0)
     (enqueue q 1)
-    (is (= [0 1] (q/ground q))))
+    (is (= [0 1] (q/drain q))))
 
   ;; multi-receive, then enqueue
   (let [q (q-fn)

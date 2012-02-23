@@ -14,7 +14,7 @@
 
 ;;;
 
-(defn sink []
+(defn capture []
   (let [a (atom [])]
     [a
      #(do
@@ -37,7 +37,7 @@
 (defn test-probe [f args options probe-type]
   (let [nm (gensym "name")
         probe (probe-channel [nm probe-type])
-        [val callback] (sink)
+        [val callback] (capture)
         f (apply instrument f (apply concat (assoc options :name nm)))]
     (receive-all probe callback)
     (try

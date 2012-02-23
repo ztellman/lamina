@@ -216,7 +216,7 @@
            b (node identity)]
        (% a b)
        (enqueue a 1 2 3)
-       (is (= [1 2 3] (ground b)))
+       (is (= [1 2 3] (drain b)))
        (close b)
        (wait-for-drained b)
        (wait-for-drained a)))

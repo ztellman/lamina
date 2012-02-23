@@ -119,7 +119,7 @@
     )
   (drained? [_]
     "Returns true if the queue is closed and empty.")
-  (ground [_]
+  (drain [_]
     "Clears and returns all messages currently in the queue.")
   (messages [_]
     "Returns all messages currently in the queue.")
@@ -144,7 +144,7 @@
   (close [_] false)
   (drained? [_] false)
   (closed? [_] false)
-  (ground [_] nil)
+  (drain [_] nil)
   (messages [_] nil)
   (enqueue [_ _ _ _] false)
   (receive [_ _ _ result-channel]
@@ -163,7 +163,7 @@
   (close [_] false)
   (drained? [_] true)
   (closed? [_] true)
-  (ground [_] nil)
+  (drain [_] nil)
   (messages [_] nil)
   (enqueue [_ _ _ _] false)
   (receive [_ _ _ result-channel]
@@ -223,7 +223,7 @@
     closed?)
 
   ;;
-  (ground [_]
+  (drain [_]
     (io! "Cannot modify non-transactional queues inside a transaction."
       (l/with-exclusive-lock lock
         (when-not (.isEmpty messages)
@@ -421,7 +421,7 @@
     @closed?)
 
   ;;
-  (ground [_]
+  (drain [_]
     (dosync
       (let [msgs (ensure messages)]
         (ref-set messages PersistentQueue/EMPTY)

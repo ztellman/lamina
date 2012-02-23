@@ -18,10 +18,11 @@
 
 ;;;
 
-(defn show-queue? [{:keys [error downstream-count consumed? node?]}]
+(defn show-queue? [{:keys [error downstream-count consumed? node? grounded?]}]
   (and
     node?
     (not error)
+    (not grounded?)
     (or consumed? (zero? downstream-count))))
 
 (defn message-string [messages]
@@ -50,9 +51,16 @@
                 "}")})))
 
 (defn node-descriptor [n]
-  (let [{:keys [description operator predicate? closed? error]} (node-data n)
-        label (if error
+  (let [{:keys [description operator grounded? predicate? closed? error]} (node-data n)
+        label (cond
+
+                error
                 (str error)
+
+                grounded?
+                "\u23DA"
+                
+                :else
                 (or description
                   (when-not (instance? (class identity) operator)
                     (describe-fn operator))
