@@ -2,13 +2,16 @@
   (:use
     [lamina.core])
   (:require
+    [lamina.trace.probe :as pr]
     [lamina.trace.pipeline :as p]
     [lamina.trace.timer :as t]
     [lamina.core.context :as context])
   (:import
     [java.io Writer]))
 
-(defmacro trace-pipelines [& body]
+(defmacro with-instrumented-pipelines
+  "Returns detailed data for all pipelines executed within the scope."
+  [& body]
   `(let [tracer# (p/root-pipeline-tracer nil nil)]
      (context/with-context (context/assoc-context :pipeline-tracer tracer#)
        @(run-pipeline nil
@@ -26,9 +29,9 @@
          (.write out "\n")
          (.flush out)))))
 
-(defn capture-timing
-  [probe-channel f]
-  (let [timer (t/timer "time*" nil probe-channel false)
+(defn capture-timings
+  [description probe-channel f]
+  (let [timer (t/timer description nil probe-channel probe-channel false)
         unwrap? (atom true)
         result (context/with-context (context/assoc-context :timer timer)
                  (run-pipeline nil
@@ -44,10 +47,20 @@
       @result
       result)))
 
+(defmacro with-instrumentation
+  "Returns the full timing data for all code called within the scope."
+  [& body]
+  `(let [result# (result-channel)]
+     (capture-timings "with-instrumentation" (pr/probe-result result#)
+       (fn [] ~@body))
+     @result#))
+
 (defmacro time*
+  "A somewhat more useful variant of (time ...), which captures the sub-timings of all instrumented functions
+   called within the scope.  If the body returns an unrealized value, time* will wait for it to become realized."
   [& body]
   `(let [result# (result-channel)]
      (print-timing-result result#)
-     (capture-timing (probe-result result#)
+     (capture-timings "time" (pr/probe-result result#)
        (fn [] ~@body))))
 

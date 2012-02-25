@@ -9,7 +9,7 @@
 (ns lamina.test.benchmarks
   (:use
     [clojure test]
-    [lamina core]
+    [lamina core trace]
     [lamina.test utils]))
 
 (defn map-seq [ch f]
@@ -41,7 +41,9 @@
     (receive-all ch (fn [_]))
     (bench "probe check"
       (when (probe-enabled? ch)
-        :hello))))
+        :hello)))
+  (bench "inactive trace"
+    (trace :foo 1)))
 
 (defn meta-result [n r]
   (if (zero? n)

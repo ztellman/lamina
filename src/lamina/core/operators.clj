@@ -32,19 +32,7 @@
 (deftype FinalValue [val])
 
 (defmacro consume
-  "Consumes messages one-by-one from the source channel, per the read-channel* style parameters.
-   Valid options are:
-
-   :message-predicate - a function that takes a message, and returns true if it should be consumed
-   :predicate - a no-arg function that returns true if another message should be read
-   :message-transform -
-   :reduce -
-   :initial-value -
-   :timeout - a no-arg function that returns the maximum time that should be spent waiting for the next message
-   :description - a description of the consumption mechanism
-   :channel - the destination channel for the messages
-
-   If the predicate returns false or the timeout elapses, the consumption will cease."
+  "something goes here"
   [ch & {:keys [map
                 predicate
                 initial-value
@@ -173,33 +161,58 @@
 
 ;;;
 
-(defn receive-in-order [ch f]
+(defn receive-in-order
+  "Consumes messages from the source channel, passing them to 'f' one at a time.  If 'f' returns
+   a result-channel, consumption of the next message is deferred until it's realized.
+
+   If an exception is thrown or the return result is realized as an error, the source channel is put
+   into an error state."
+  [ch f]
   (consume ch
     :channel nil
     :initial-value nil
-    :reduce (fn [_ x] (f x))
+    :reduce (fn [_ x]
+              (p/run-pipeline
+                {:error-handler #(error ch %)}
+                (f x)))
     :description "receive-in-order"))
 
-(defn last* [ch]
+(defn last*
+  "A dual to last.  Returns a result-channel that emits the final message from the source channel
+   before it was closed.
+
+   (last* (closed-channel 3 2 1)) => 1"
+  [ch]
   (consume ch
     :channel nil
     :initial-value nil
     :reduce (fn [_ x] x)
     :description "last*"))
 
-(defn take* [n ch]
+(defn take*
+  "A dual to take.
+
+   (take* 2 (channel 1 2 3)) => [1 2]"
+  [n ch]
   (consume ch
     :description (str "take* " n)
     :initial-value 0
     :reduce (fn [n _] (inc n))
     :predicate #(< % n)))
 
-(defn take-while* [f ch]
+(defn take-while*
+  "A dual to take-while.
+
+   (take-while* pos? (channel 1 2 0 4)) => [1 2]"
+  [f ch]
   (consume ch
     :description "take-while*"
     :take-while f))
 
 (defn reductions*
+  "A dual to reductions.
+
+   (reductions* max (channel 1 3 2)) => [1 3 3]"
   ([f ch]
      (let [ch* (mimic ch)]
        (consume ch
@@ -221,6 +234,10 @@
        :map (fn [v _] v))))
 
 (defn reduce*
+  "A dual to reduce.  Returns a result-channel that emits the final reduced value when the source
+   channel has been drained.
+
+   (reduce* max (channel 1 3 2)) => 3"
   ([f ch]
      (consume ch
        :channel nil
@@ -252,12 +269,18 @@
       :final-message final-message)))
 
 (defn partition*
+  "A dual to partition.
+
+   (partition* 2 (channel 1 2 3)) => [[1 2]]"
   ([n ch]
      (partition* n n ch))
   ([n step ch]
      (partition- n step ch (constantly nil))))
 
 (defn partition-all*
+  "A dual to partition-all.
+
+   (partition-all* 2 (closed-channel 1 2 3)) => [[1 2] [3]]"
   ([n ch]
      (partition-all* n n ch))
   ([n step ch]
@@ -275,6 +298,13 @@
       (cons msg (lazy-seq (lazy-channel-seq- read-fn cleanup-fn))))))
 
 (defn lazy-channel-seq
+  "Returns a sequence.  As elements of the sequence are realized, messages from the source
+   channel are consumed.  If there are no messages are available to be consumed, execution will
+   block until one is available.
+
+   A 'timeout' can be defined, either as a number or a no-arg function that returns a number.  Each
+   time the seq must wait for a message to consume, it will only wait that many milliseconds before
+   giving up and ending the sequence."
   ([ch]
      (lazy-channel-seq ch nil))
   ([ch timeout]
@@ -292,28 +322,42 @@
          (throw (IllegalStateException. "Can't consume, channel already in use."))))))
 
 (defn channel-seq
+  "An eager variant of lazy-channel-seq.  Blocks until the channel has been drained, or until 'timeout'
+   milliseconds have elapsed."
   ([ch]
      (n/drain (emitter-node ch)))
   ([ch timeout]
      (let [start (System/currentTimeMillis)
            s (n/drain (emitter-node ch))]
-       (concat s
-         (lazy-channel-seq ch
-           #(max 0 (- timeout (- (System/currentTimeMillis) start))))))))
+       (doall
+         (concat s
+           (lazy-channel-seq ch
+             #(max 0 (- timeout (- (System/currentTimeMillis) start)))))))))
 
 ;;;
 
-(defn concat* [ch]
+(defn concat*
+  "A dual to concat.
+
+   (concat* (channel [1 2] [2 3])) => [1 2 3 4]"
+  [ch]
   (let [ch* (mimic ch)]
     (bridge-join ch "concat*"
       #(doseq [msg %] (enqueue ch* msg))
       ch*)
     ch*))
 
-(defn mapcat* [f ch]
+(defn mapcat*
+  "A dual to mapcat.
+
+   (mapcat* reverse (channel [1 2] [3 4])) => [2 1 4 3]"
+  [f ch]
   (->> ch (map* f) concat*))
 
-(defn periodically [interval f]
+(defn periodically
+  "Returns a channel.  Every 'interval' milliseconds, 'f' is invoked with no arguments and the value is emitted
+   as a message."
+  [interval f]
   (let [ch (channel* :description (str "periodically " (describe-fn f)))]
     (p/run-pipeline (System/currentTimeMillis)
 
@@ -332,7 +376,10 @@
            (p/restart timestamp)))))
     ch))
 
-(defn sample-every [interval ch]
+(defn sample-every
+  "Takes a source channel, and returns a channel that emits the most recent message from the source channel every
+   'interval' milliseconds."
+  [interval ch]
   (let [val (atom ::none)
         ch* (mimic ch)]
     (bridge-join ch (str "sample-every " interval)
@@ -343,7 +390,10 @@
       ch*)
     ch*))
 
-(defn partition-every [interval ch]
+(defn partition-every
+  "Takes a source channel, and returns a channel that repeatedly emits a collection of all messages from the source
+   channel in the last 'interval' milliseconds."
+  [interval ch]
   (let [q (ConcurrentLinkedQueue.)
         drain (fn []
                 (loop [msgs []]

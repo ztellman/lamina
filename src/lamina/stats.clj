@@ -14,23 +14,29 @@
     [lamina.time :as t]
     [lamina.stats.moving-average :as avg])
   (:import
+    [java.util.concurrent.atomic
+     AtomicLong]
     [com.yammer.metrics.stats
      ExponentiallyDecayingSample
      Snapshot]))
 
-(set! *warn-on-reflection* true)
-
 (defn sum
+  "Returns a channel that will periodically emit the sum of all messages emitted by the source channel over the
+   last 'interval' milliseconds.
+
+   It is assumed that all numbers emitted by the source channel are integral values."
   ([ch]
      (sum 1000 ch))
   ([interval ch]
      (let [ch* (channel)
            cnt (AtomicLong. 0)]
-       (bridge-join ch "sum" #(.addAndGet cnt %) ch*)
+       (bridge-join ch "sum" #(.addAndGet cnt (long %)) ch*)
        (siphon (periodically interval #(.getAndSet cnt 0)) ch*)
        ch*)))
 
 (defn rate
+  "Returns a channel that will periodically emit the number of messages emitted by the source channel over the
+   last 'interval' milliseconds."
   ([ch]
      (rate 1000 ch))
   ([interval ch]
@@ -39,6 +45,11 @@
        (sum interval))))
 
 (defn average
+  "Returns a channel that will periodically emit the moving average over all messages emitted by the source
+   channel every 'interval' milliseconds, defaulting to once every five seconds.  This moving average is
+   exponentially weighted to the last 'window' milliseconds, defaulting to the last five minutes.
+
+   It is assumed that all numbers emitted by the source channel are integral values."
   ([ch]
      (average (t/seconds 5) ch))
   ([interval ch]
@@ -53,6 +64,18 @@
        ch*)))
 
 (defn quantiles
+  "Returns a channel that will periodically emit a map of quantile values every 'interval' millseconds, which
+   represent the statistical distribution of values emitted by the source channel over the last five minutes.
+
+   The map will be of quantile onto quantile value, so for a uniform distribution of values from 1..1000, it
+   would emit
+
+     {50 500, 75 750, 95 950, 99 990, 99.9 999}
+
+   By default, the above quantiles will be used, these can be specified as a sequence of quantiles of the form
+   [50 98 99.9 99.99].
+
+   It is assumed that all values emitted by the source channel are integral values."
   ([ch]
      (quantiles (t/seconds 5) ch))
   ([interval ch]

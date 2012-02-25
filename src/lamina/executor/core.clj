@@ -8,7 +8,8 @@
 
 (ns lamina.executor.core
   (:use
-    [lamina.executor.utils])
+    [lamina.executor.utils]
+    [lamina.core.threads :only (delay-invoke)])
   (:require
     [lamina.core.pipeline :as p]
     [lamina.core.result :as r]
@@ -23,13 +24,34 @@
 
 (set! *warn-on-reflection* true)
 
-(defn executor [& {:keys [idle-timeout
-                          min-thread-count
-                          max-thread-count]
-                   :or {idle-timeout 60
-                        min-thread-count 0
-                        max-thread-count Integer/MAX_VALUE}
-                   :as options}]
+(defn contract-pool-size [^ThreadPoolExecutor pool]
+  (let [active (.getActiveCount pool)
+        pool-size (.getPoolSize pool)]
+    (if (< active pool-size)
+      (.setCorePoolSize pool (dec pool-size)))))
+
+(defn expand-pool-size [^ThreadPoolExecutor pool max-thread-count]
+  (let [active (.getActiveCount pool)
+        pool-size (.getPoolSize pool)]
+    (when (= pool-size active)
+      (.setCorePoolSize pool (min max-thread-count (inc active))))))
+
+(defn periodically-contract-pool-size [^ThreadPoolExecutor pool interval]
+  (when-not (.isShutdown pool)
+    (contract-pool-size pool)
+    (delay-invoke interval #(periodically-contract-pool-size pool))))
+
+(defn executor
+  "Defines a thread pool that can be used with instrument and defn-instrumented.
+
+   more goes here"
+  [& {:keys [idle-timeout
+             min-thread-count
+             max-thread-count]
+      :or {idle-timeout 60000
+           min-thread-count 1
+           max-thread-count Integer/MAX_VALUE}
+      :as options}]
   (when-not (contains? options :name)
     (throw (IllegalArgumentException. "Every executor must have a :name specified.")))
   (let [nm (name (:name options))
@@ -38,13 +60,14 @@
                 1
                 1
                 (long idle-timeout)
-                TimeUnit/SECONDS
+                TimeUnit/MILLISECONDS
                 (LinkedBlockingQueue.)
                 (reify ThreadFactory
                   (newThread [_ f]
                     (doto
                       (Thread. f)
                       (.setName (str nm "-" (swap! cnt inc)))))))]
+    (periodically-contract-pool-size pool (* idle-timeout 1000))
     (reify
       clojure.lang.IDeref
       (deref [_]
@@ -78,11 +101,12 @@
                       (fn [x]
                         (when timer (t/mark-return timer x)) 
                         x))))]
+          (expand-pool-size pool max-thread-count)
           (.execute pool f)
-          (let [active (.getActiveCount pool)]
-            (if (= (.getPoolSize pool) active)
-              (.setCorePoolSize pool (min max-thread-count (inc active)))
-              (.setCorePoolSize pool (max min-thread-count (inc active)))))
           result)))))
 
-(def default-executor (executor :name "lamina-default-executor"))
+(def
+  ^{:doc "A default executor with an unbounded maximum thread count."}
+  default-executor (executor
+                     :name "lamina-default-executor"
+                     :idle-timeout 15000))

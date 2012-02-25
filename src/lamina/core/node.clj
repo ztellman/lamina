@@ -946,7 +946,7 @@
                   (if ~transactional?
                     (q/transactional-queue messages#)
                     (q/queue messages#)))
-         :permanent? (or ~permanent? ~grounded?)
+         :permanent? ~permanent?
          :transactional? ~transactional?)
        (Collections/synchronizedMap (HashMap.))
        (CopyOnWriteArrayList.)

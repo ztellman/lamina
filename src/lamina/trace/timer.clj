@@ -4,7 +4,7 @@
     [lamina.core.utils :only (enqueue)])
   (:require
     [clojure.string :as str]
-    [lamina.core.probe :as p]
+    [lamina.trace.probe :as p]
     [lamina.core.result :as r]
     [lamina.core.context :as context])
   (:import
@@ -61,6 +61,7 @@
 (deftype EnqueuedTimer
   [description
    probe
+   error-probe
    timestamp
    enqueued
    args
@@ -81,7 +82,7 @@
   (mark-error [this err]
     (set! return (System/nanoTime))
     (enqueue
-      (p/error-probe-channel [description :error])
+      (or error-probe (p/error-probe-channel [description :error]))
       (assoc @this :error err)))
   (mark-return [this val]
     (set! return (System/nanoTime))
@@ -93,14 +94,15 @@
                                (unchecked-subtract (long enter) (long enqueued)))
           :result val)))))
 
-(defn enqueued-timer [description args probe-channel implicit?]
-  (let [enabled? (p/probe-enabled? probe-channel)
+(defn enqueued-timer [description args return-probe error-probe implicit?]
+  (let [enabled? (and return-probe (p/probe-enabled? return-probe))
         parent (when (or enabled? implicit?)
                  (context/timer))]
     (if (or enabled? parent)
       (let [timer (EnqueuedTimer.
                     description
-                    (when enabled? probe-channel)
+                    (when enabled? return-probe)
+                    error-probe
                     (System/currentTimeMillis)
                     (System/nanoTime)
                     args
@@ -124,7 +126,8 @@
 
 (deftype Timer
   [description
-   probe
+   return-probe
+   error-probe
    args
    timestamp
    enter
@@ -141,24 +144,24 @@
   (mark-error [this err]
     (set! return (System/nanoTime))
     (enqueue
-      (p/error-probe-channel [description :error])
+      (or error-probe (p/error-probe-channel [description :error]))
       (assoc @this :error err)))
   (mark-return [this val]
     (set! return (System/nanoTime))
-    (when probe
-      (enqueue probe
+    (when return-probe
+      (enqueue return-probe
         (make-timing Timing
           :result val)))))
 
-(defn timer [description args probe-channel implicit?]
-  (let [enabled? (and probe-channel
-                   (p/probe-enabled? probe-channel))
+(defn timer [description args return-probe error-probe implicit?]
+  (let [enabled? (and return-probe (p/probe-enabled? return-probe))
         parent (when (or enabled? implicit?)
                  (context/timer))]
     (if (or enabled? parent)
       (let [timer (Timer.
                     description
-                    (when enabled? probe-channel)
+                    (when enabled? return-probe)
+                    error-probe
                     args
                     (System/currentTimeMillis)
                     (System/nanoTime)

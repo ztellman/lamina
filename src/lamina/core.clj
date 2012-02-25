@@ -13,7 +13,6 @@
     [lamina.core.utils :as u]
     [lamina.core.channel :as ch]
     [lamina.core.pipeline :as p]
-    [lamina.core.probe :as pr]
     [lamina.core.result :as r]
     [lamina.core.operators :as op]
     [clojure.tools.logging :as log]))
@@ -28,16 +27,15 @@
 (import-fn ch/channel?)
 (import-fn ch/ground)
 
-(defn permanent-channel []
+(defn permanent-channel
+  "Returns a channel which cannot be closed or put into an error state."
+  []
   (channel* :permanent? true))
 
-(import-fn pr/probe-channel)
-(import-fn pr/error-probe-channel)
-(import-fn pr/sympathetic-probe-channel)
-(import-fn pr/probe-enabled?)
-(import-fn pr/probe-result)
-
-(defn channel-pair []
+(defn channel-pair
+  "Returns a pair of channels, where all messages enqueued into one channel can be received by the other,
+   and vice-versa."
+  []
   (let [a (channel)
         b (channel)]
     [(splice a b) (splice b a)]))
@@ -52,49 +50,60 @@
 
 ;;;
 
-(defn on-result [result-channel on-success on-error]
+(defn on-result
+  "Allows two callbacks to be registered on a result-channel, one in the case of a result, the other in case of
+   an error.
+
+   This is usually preferable to just using on-success or on-error in isolation, but often can and should be replaced
+   by a pipeline."
+  [result-channel on-success on-error]
   (r/subscribe result-channel (r/result-callback on-success on-error)))
 
-(defn on-success [result-channel callback]
+(defn on-success
+  "Allows a callback to be registered on a result-channel which will be invoked with the result when it is realized.
+   If the result-channel emits an error, the callback will not be called.
+
+   This almost always can and should be replaced by a pipeline."
+  [result-channel callback]
   (r/subscribe result-channel (r/result-callback callback (fn [_]))))
 
-(defn on-error [channel callback]
+(defn on-error
+  "Allows a callback to be registered on a result-channel which will be invoked with the error if it is realized
+   as an error.
+
+   This often can and should be replaced by a pipeline."
+  [channel callback]
   (if (result-channel? channel)
     (r/subscribe channel (r/result-callback (fn [_]) callback))
     (ch/on-error channel callback)))
 
 ;;;
 
-(defn receive [channel callback]
-  (if (result-channel? channel)
-    (on-success channel callback)
-    (ch/receive channel callback)))
-
-(defn read-channel [channel]
-  (if (result-channel? channel)
-    channel
-    (ch/read-channel channel)))
-
-(defn receive-all [channel callback]
-  (if (result-channel? channel)
-    (on-success channel callback)
-    (ch/receive-all channel callback)))
+(import-fn ch/receive)
+(import-fn ch/receive-all)
+(import-fn ch/read-channel)
 
 (import-fn ch/sink)
 
 (import-fn op/receive-in-order)
 
-(defn error [channel err]
+(defn error
+  "Puts the channel or result-channel into an error state."
+  [channel err]
   (if (result-channel? channel)
     (r/error channel err)
     (ch/error channel err)))
 
-(defn siphon [src dst]
+(defn siphon
+  "something goes here"
+  [src dst]
   (if (result-channel? src)
     (r/siphon-result src dst)
     (ch/siphon src dst)))
 
-(defn join [src dst]
+(defn join
+  "something goes here"
+  [src dst]
   (if (result-channel? src)
     (do
       (r/siphon-result src dst)
@@ -112,8 +121,6 @@
 
 (import-macro ch/read-channel*)
 
-(import-fn ch/siphon)
-(import-fn ch/join)
 (import-fn ch/fork)
 
 (import-fn ch/close)
@@ -146,15 +153,56 @@
 (import-fn op/partition*)
 (import-fn op/partition-all*)
 
-(defn remove* [f ch]
-  (filter* (complement f) ch))
-
 (import-fn op/sample-every)
+(import-fn op/partition-every)
 (import-fn op/periodically)
+
+(defmacro split->> [& downstream-channels]
+  `(let [ch# (channel)]
+     (doseq [x# ~downstream-channels]
+       (siphon ch## x#))
+     ch#))
+
+(defmacro siphon->> [& transforms+downstream-channel]
+  (let [transforms (butlast transforms+downstream-channel)
+        ch (last transforms+downstream-channel)]
+    (unify-gensyms
+      `(let [ch## (channel)]
+         (siphon
+           ~(if (empty? transforms)
+              `ch##
+              `(->> ch## ~@transforms))
+           ~ch)
+         ch##))))
+
+(defmacro join->> [& transforms+downstream-channel]
+  (let [transforms (butlast transforms+downstream-channel)
+        ch (last transforms+downstream-channel)]
+    (unify-gensyms
+      `(let [ch## (channel)]
+         (join
+           ~(if (empty? transforms)
+              `ch##
+              `(->> ch## ~@transforms))
+           ~ch)
+         ch##))))
+
+;;;
 
 (import-fn op/channel-seq)
 (import-fn op/lazy-channel-seq)
 
+(defn wait-for-message
+  ([ch]
+     @(read-channel ch))
+  ([ch timeout]
+     @(read-channel* ch :timeout timeout)))
+
+(defn wait-for-result
+  ([result-channel]
+     @result-channel)
+  ([result-channel timeout]
+     @(with-timeout timeout result-channel)))
 
 
 ;; what we had in previous version of lamina.core
@@ -162,27 +210,10 @@
 (comment
   ;; core channel functions
 
-(import-fn #'channel/poll)
-
 ;; channel variants
-(def nil-channel channel/nil-channel)
-
-;; channel utility functions
-
-
-(defmacro siphon->> [& forms]
-)
 
 ;; named channels
 (import-fn #'named/named-channel)
 (import-fn #'named/release-named-channel)
 
-;; synchronous channel functions
-(import-fn #'seq/wait-for-message)
-
-
-;;;; PIPELINES
-
-;; pipeline result hooks
-(import-fn #'pipeline/wait-for-result)
 )

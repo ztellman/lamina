@@ -50,7 +50,7 @@
               (f)
               (catch Exception e
                 (log/error e "Error in delayed invocation."))))]
-      (.schedule scheduled-executor f (long (* 1e3 interval)) TimeUnit/MICROSECONDS)
+      (.schedule scheduled-executor f (long (* 1e6 interval)) TimeUnit/NANOSECONDS)
       nil)))
 
 ;;;

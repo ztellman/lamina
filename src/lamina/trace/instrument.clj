@@ -9,7 +9,8 @@
 (ns lamina.trace.instrument
   (:use
     [potemkin]
-    [lamina core])
+    [lamina core]
+    [lamina.trace.probe :only (probe-channel probe-enabled?)])
   (:require
     [lamina.core.context :as context]
     [lamina.executor.utils :as ex]
@@ -22,7 +23,7 @@
   `(do
      (when (probe-enabled? ~enter-probe)
        (enqueue ~enter-probe (Enter. (System/currentTimeMillis) ~args)))
-     (let [timer# (t/enqueued-timer ~nm ~args ~return-probe ~implicit?)]
+     (let [timer# (t/enqueued-timer ~nm ~args ~return-probe nil ~implicit?)]
        (ex/execute ~executor timer# (fn [] ~invoke) ~(when timeout `(when ~timeout (~timeout ~args)))))))
 
 (defn instrument-task
@@ -60,7 +61,7 @@
   `(do
      (when (probe-enabled? ~enter-probe)
        (enqueue ~enter-probe (Enter. (System/currentTimeMillis) ~args)))
-     (let [timer# (t/timer ~nm ~args ~return-probe ~implicit?)]
+     (let [timer# (t/timer ~nm ~args ~return-probe nil ~implicit?)]
        (context/with-context (context/assoc-context :timer timer#)
          (try
            (let [result# ~invoke]
@@ -72,9 +73,68 @@
              (t/mark-error timer# e#)
              (throw e#)))))))
 
-(defn instrument [f & {:keys [executor timeout implicit?]
-                       :as options
-                       :or {implicit? true}}]
+(defn instrument
+  "A general purpose transform for functions, allowing for tracing their execution, defining timeouts, and
+   deferring their execution onto a thread pool.  Instrumented functions always return result-channels.
+
+   ---------
+   OVERHEAD
+
+   Instrumenting adds some overhead to a function, equivalent to the performance difference between calling
+
+     (+ 1 2 3)
+
+   and
+
+     (apply + [1 2 3])
+
+   If you'd happily call 'apply' on the function being instrumented, chances are you won't notice the difference.
+
+   ---------
+   PROBES
+
+   Instrumenting a function creates 'enter', 'return', and 'error' probes.  A :name must be specified,
+   and probes will be of the structure name:enter, name:return, etc.  Data emitted by these probes may be
+   captured by other functions if :implicit? is set to true, which is the default.
+
+   When the function is invoked, the 'enter' probe emits a hash of the form
+
+     :description - the :name specified in the options
+     :timestamp   - time of invocation in milliseconds since the epoch
+     :args        - a list of arguments passed to the function
+
+   When the function completes and the value is realized, the 'return' probe
+   will emit the data above, and also:
+
+     :duration    - the time elapsed since the invocation, in nanoseconds
+     :result      - the value returned by the function
+     :sub-tasks   - 'return' probe data, less :result, for all implicit instrumented sub-functions
+     
+   If an error is thrown, or the value is realized as an error, :result is replaced by
+
+     :error       - the exception thrown or realized error
+
+   A :probes option may be defined, giving a hash of probe names onto channels that will consume their data:
+
+     {:error (siphon->> (sink #(println \"ERROR:\" %)))
+      :return (siphon->> (sink #(println \"Called with\" (:args %) \"and returned\" (:result %))))}
+
+  ----------
+  TIMEOUTS
+
+  A :timeout option may be specified, which should be a function that takes the arguments passed to the
+  function, and returns the timeout in milliseconds or nil for no timeout.  If the timeout elapses without
+  any result, the returned result-channel will resolve as an error of type :lamina/timeout!
+
+  ----------
+  EXECUTORS
+
+  If an :executor is specified, the function will be executed on that thread pool.  In this case, :timeout
+  will also interrupt the thread if it is still actively computing the result, and the 'return' probe will
+  include an :enqueued-duration parameter that describes the time, in nanoseconds, spent waiting to be executed."
+  [f & {:keys [executor timeout implicit? probes]
+        :as options
+        :or {implicit? true}}]
   (when-not (contains? options :name)
     (throw (IllegalArgumentException. "Instrumented functions must have a :name defined.")))
   (if executor
@@ -83,7 +143,7 @@
           enter-probe (probe-channel [nm :enter])
           return-probe (probe-channel [nm :return])
           error-probe (probe-channel [nm :error])]
-      (doseq [[k v] (:probes options)]
+      (doseq [[k v] probes]
         (siphon (probe-channel [~nm k]) v))
       (fn
         ([]
@@ -110,7 +170,22 @@
 
 ;;;
 
-(defmacro defn-instrumented [fn-name & body]
+(defmacro defn-instrumented
+  "A def form of (instrument...). Options can be defined in the function metadata:
+
+   (defn-instrumented foo
+     {:implicit? false
+      :timeout (constantly 1000)}
+     \"Here's a doc-string\"
+     [x]
+     ...)
+
+   The :name can be explicitly defined, but will default to
+
+     the:function:namespace:the-function-name
+
+   "
+  [fn-name & body]
   (let [form `(defn ~fn-name ~@body)
         form (macroexpand form)
         mta (merge

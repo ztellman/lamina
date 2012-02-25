@@ -6,15 +6,18 @@
 ;;   the terms of this license.
 ;;   You must not remove this notice, or any other, from this software.
 
-(ns lamina.core.probe
+(ns lamina.trace.probe
   (:use
     [lamina.core.utils])
   (:require
+    [clojure.string :as str]
     [lamina.core.channel :as c]
     [lamina.core.node :as n]
     [lamina.core.result :as r]
     [clojure.tools.logging :as log])
   (:import
+    [java.util.regex
+     Pattern]
     [java.io
      Writer]
     [java.util.concurrent
@@ -47,7 +50,10 @@
 
 (defn probe-channel- [description log-on-disabled?]
   (let [flag (AtomicBoolean. false)
-        ch (c/channel* :grounded? true :description (name description))]
+        ch (c/channel*
+             :grounded? true
+             :permanent? true
+             :description (name description))]
 
     ;; set the flag whenever the downstream count changes
     (n/on-state-changed (c/emitter-node ch) nil
@@ -63,6 +69,7 @@
     (sequential? x) (->> x (map name) (interpose ":") (apply str))))
 
 (def ^ConcurrentHashMap probes (ConcurrentHashMap.))
+(def new-probe-broadcaster (c/channel* :grounded? true, :permanent? true))
 
 (defn probe-channel-generator [f]
   (fn [id]
@@ -70,11 +77,31 @@
       (if-let [ch (.get probes id)]
         ch
         (let [ch (f id)]
-          (or (.putIfAbsent probes id ch) ch))))))
+          (if-let [existing-probe (.putIfAbsent probes id ch)]
+            existing-probe
+            (do
+              (enqueue new-probe-broadcaster id)
+              ch)))))))
 
 (def probe-channel (probe-channel-generator #(probe-channel- % false)))
 
 (def error-probe-channel (probe-channel-generator #(probe-channel- % true)))
+
+(defn select-probes [wildcard-string-or-regex]
+  (let [ch (c/channel)
+        regex (if (string? wildcard-string-or-regex)
+                (-> wildcard-string-or-regex (str/replace "*" ".*") Pattern/compile)
+                wildcard-string-or-regex)
+        callback (fn [id]
+                   (when (re-matches regex id)
+                     (c/siphon (probe-channel id) ch)))]
+    (c/receive-all new-probe-broadcaster callback)
+    (c/on-closed ch #(c/cancel-callback new-probe-broadcaster callback))
+    (doseq [id (keys probes)]
+      (callback id))
+    ch))
+
+;;;
 
 (defn probe-result [result]
   (when-not (r/result-channel? result)
@@ -91,29 +118,30 @@
 
 (deftype SympatheticProbeChannel
   [^AtomicBoolean enabled?
-   upstream
-   downstream]
+   receiver
+   emitter]
   IEnqueue
   (enqueue [_ msg]
-    (n/propagate (c/receiver-node upstream) msg true))
+    (n/propagate (c/receiver-node receiver) msg true))
   IProbe
   (probe-enabled? [_]
     (.get enabled?))
   c/IChannel
   (receiver-node [_]
-    (c/receiver-node upstream))
+    (c/receiver-node receiver))
   (emitter-node [_]
-    downstream)
+    emitter)
   (split-receiver [_]
-    (c/split-receiver upstream))
+    (c/split-receiver emitter))
   (toString [_]
-    (str upstream)))
+    (str emitter)))
 
 (defn sympathetic-probe-channel
   "A channel that only lets messages through if 'ch' has downstream nodes."
   [ch]
-  (let [upstream (c/channel* :grounded? true)
-        downstream (n/node* :permanent? true)
+  (let [receiver-channel (c/channel* :grounded? true)
+        receiver (c/receiver-node receiver-channel)
+        emitter (n/node* :permanent? true)
         enabled? (AtomicBoolean. false)]
 
     ;; bridge the upstream and downstream nodes whenever the source channel is active
@@ -121,11 +149,11 @@
       (fn [_ downstream _]
         (if (zero? downstream)
           (when (.compareAndSet enabled? true false)
-            (n/link upstream downstream downstream nil nil))
+            (n/link receiver emitter emitter nil nil))
           (when (.compareAndSet enabled? false true)
-            (n/cancel upstream downstream)))))
+            (n/cancel receiver emitter)))))
 
-    (SympatheticProbeChannel. enabled? upstream downstream)))
+    (SympatheticProbeChannel. enabled? receiver-channel emitter)))
 
 ;;;
 

@@ -333,14 +333,17 @@
 ;;;
 
 (defn success-result
+  "Returns a result-channel already realized with a value."
   [value]
   (SuccessResult. value))
 
 (defn error-result
+  "Returns a result-channel already realized with an error."
   [error]
   (ErrorResult. error))
 
 (defn result-channel
+  "Returns a result-channel, representing an unrealized value or error."
   []
   (ResultChannel.
     (l/lock)
@@ -350,24 +353,33 @@
 (defn result-callback [on-success on-error]
   (ResultCallback. on-success on-error))
 
-(defn result-channel? [x]
+(defn result-channel?
+  "Returns true if 'x' is a result-channel."
+  [x]
   (or
     (instance? ResultChannel x)
     (instance? SuccessResult x)
     (instance? ErrorResult x)))
 
-(defn siphon-result [src dst]
+(defn siphon-result
+  "When the source result-channel is realized, that value or error is forwarded to the destination result-channel."
+  [src dst]
   (subscribe src (result-callback #(success dst %) #(error dst %)))
   dst)
 
-(defn with-timeout [interval result]
+(defn with-timeout
+  "Returns a new result-channel that will be realized with the error :lamina/timeout! if the source result-channel
+   is not realized in 'interval' milliseconds."
+  [interval result]
   (let [result* (siphon-result result (result-channel))]
     (if (zero? interval)
       (error result* :lamina/timeout!)
       (t/delay-invoke interval #(error result* :lamina/timeout!)))
     result*))
 
-(defn expiring-result [interval]
+(defn expiring-result
+  "Returns a result-channel that will emit a :lamina/timeout! error if it is not realized within 'interval' milliseconds."
+  [interval]
   (if (zero? interval)
     (error-result :lamina/timeout!)
     (let [result (result-channel)]
@@ -375,6 +387,8 @@
       result)))
 
 (defn timed-result
+  "Returns a result-channel that will emit the given 'value' in 'interval' milliseconds.  If a 'value' is not given, it
+   defaults to nil."
   ([interval]
      (timed-result interval nil))
   ([interval value]

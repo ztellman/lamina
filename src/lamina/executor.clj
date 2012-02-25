@@ -20,10 +20,16 @@
 (import-fn c/default-executor)
 (import-fn u/shutdown)
 
-(defmacro task [& body]
+(defmacro task
+  "Executes the body on a separate thread, returning a result-channel representing the eventual
+   result or error."
+  [& body]
   `(u/execute default-executor nil (fn [] ~@body) nil))
 
-(defn executor-channel [& {:keys [name executor probes] :as options}]
+(defn executor-channel
+  "Creates a channel that ensures all downstream channels will receive messages on the thread-pool
+   specified by :executor.  This can be useful for both rate-limiting and parallelization."
+  [& {:keys [name executor probes] :as options}]
   (when-not (and name executor)
     (throw (IllegalArgumentException. "executor-channel must be given a :name and :executor")))
   (let [receiver (channel)

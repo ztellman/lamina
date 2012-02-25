@@ -15,7 +15,15 @@
                "1.4a" [[org.clojure/clojure "1.4.0-alpha4"]]
                "1.4s" [[org.clojure/clojure "1.4.0-master-SNAPSHOT"]]
                }
-  :dev-dependencies [[criterium "0.2.1-SNAPSHOT"]]
+  :dev-dependencies [[criterium "0.2.1-SNAPSHOT"]
+                     [codox "0.4.1"]]
+  :codox {:include [lamina.core
+                    lamina.trace
+                    lamina.viz
+                    lamina.executor
+                    lamina.stats
+                    lamina.api
+                    lamina.time]}
   ;;:jvm-opts ["-server" "-XX:+UseConcMarkSweepGC" "-Xmx16m"]
   :jvm-opts ["-server" "-XX:+UseConcMarkSweepGC" "-Xmx2g" "-XX:NewSize=1g"]
   :repositories {"sonatype-oss-public" "https://oss.sonatype.org/content/groups/public/"}
