@@ -170,6 +170,8 @@
       #(partition-all* n step %)
       s)
 
+    4 2 (range 10)
+    3 1 (range 10)
     10 8 (range 20)
     5 4 (range 10)
     5 5 (range 4)
@@ -183,6 +185,14 @@
       (let [ch (channel)]
         (async-enqueue false ch s)
         (is (= (partition 2 1 s) (lazy-channel-seq (partition* 2 1 ch))))))))
+
+(deftest ^:stress stress-test-partition-all
+  (dotimes* [i 1e5]
+    (let [s (seq (range 4))]
+      (let [ch (channel* :transactional? true)]
+        (async-enqueue true ch s)
+        (is (= (partition-all 5 5 s)
+              (lazy-channel-seq (partition-all* 5 5 ch))))))))
 
 (defn identity-chain [ch]
   (lazy-seq

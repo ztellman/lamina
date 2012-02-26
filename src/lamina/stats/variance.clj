@@ -6,4 +6,45 @@
 ;;   the terms of this license.
 ;;   You must not remove this notice, or any other, from this software.
 
-(ns lamina.stats.variance)
+(ns lamina.stats.variance
+  (:use
+    [lamina.stats.utils])
+  (:import
+    [java.util.concurrent.atomic
+     AtomicLong]))
+
+(defprotocol IVariance
+  (std-dev [_])
+  (variance [_])
+  (mean [_]))
+
+;; http://en.wikipedia.org/wiki/Algorithms_for_calculating_variance
+
+(deftype Variance
+  [^double mean
+   ^double m2
+   ^long count]
+  IUpdatable
+  (update [_ value]
+    (let [count (inc count)
+          delta (- value mean)
+          mean  (+ mean (/ delta count))
+          m2    (if (> count 1)
+                  (+ m2 (* delta (- value mean)))
+                  0)]
+      (Variance. mean m2 count)))
+  IVariance
+  (variance [_]
+    (if (> count 1)
+      (/ m2 (dec count))
+      0))
+  (std-dev [this]
+    (Math/sqrt (variance this)))
+  (mean [_]
+    mean))
+
+(defn create-variance []
+  (Variance. 0 0 0))
+
+
+

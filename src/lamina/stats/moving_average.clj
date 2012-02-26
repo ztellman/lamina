@@ -38,7 +38,7 @@
     (let [val (.getAndSet acc 0)
           sum (acc-sum val)
           cnt (acc-count val)
-          r* (/ sum interval (max 1 cnt))]
+          r*  (/ sum interval (max 1 cnt))]
       (if initialized?
         (let [r rate]
           (set! rate (+ r (* alpha (- r* r)))))

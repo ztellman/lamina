@@ -38,7 +38,7 @@
                 initial-value
                 reduce
                 take-while
-                final-message
+                final-messages
                 timeout
                 description
                 channel] :as m}]
@@ -85,11 +85,11 @@
            ;; and define a more comprehensive cleanup function
            (let [cleanup#
                  (fn [val##]
-                   (unconsume#)
-                   ~@(when (and channel? final-message)
-                       `((let [msg# (~final-message val##)]
-                           (when-not (nil? msg#)
+                   ~@(when (and channel? final-messages)
+                       `((let [msgs# (~final-messages val##)]
+                           (doseq [msg# msgs#]
                              (enqueue dst## msg#)))))
+                   (unconsume#)
                    (when dst## (close dst##))
                    (FinalValue. val##))
 
@@ -254,7 +254,7 @@
        :map (fn [v _] v))))
 
 (defn partition-
-  [n step ch final-message]
+  [n step ch final-messages]
   (remove* nil?
     (consume ch
       :description "partition*"
@@ -266,7 +266,7 @@
       :map (fn [v _]
              (when (= n (count v))
                v))
-      :final-message final-message)))
+      :final-messages final-messages)))
 
 (defn partition*
   "A dual to partition.
@@ -284,7 +284,10 @@
   ([n ch]
      (partition-all* n n ch))
   ([n step ch]
-     (partition- n step ch #(when-not (empty? %) %))))
+     (partition- n step ch
+       #(if (= n (count %))
+          (partition-all n step (drop step %))
+          (partition-all n step %)))))
 
 ;;;
 
