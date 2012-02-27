@@ -11,11 +11,18 @@
     [lamina.core.graph.core]
     [lamina.core.utils])
   (:require
+    [lamina.core.lock :as l]
     [lamina.core.graph.node :as n]
     [clojure.tools.logging :as log])
   (:import
+    [lamina.core.lock
+     AsymmetricLock]
     [lamina.core.graph.core
-     Edge]))
+     Edge]
+    [java.util.concurrent.atomic
+     AtomicBoolean]
+    [java.util.concurrent
+     ConcurrentHashMap]))
 
 (deftype CallbackPropagator [callback]
   IDescribed
@@ -62,6 +69,62 @@
 
 (defn terminal-propagator [description]
   (TerminalPropagator. description))
+
+;;;
+
+(defn close-and-clear [lock ^AtomicBoolean closed? ^ConcurrentHashMap downstream]
+  (l/with-exclusive-lock lock
+    (.set closed? true)
+    (let [downstream (vals downstream)]
+      (.clear downstream)
+      downstream)))
+
+(deftype MultiplexingPropagator
+  [facet
+   generator
+   ^AsymmetricLock lock
+   ^AtomicBoolean closed?
+   ^AtomicBoolean transactional?
+   ^ConcurrentHashMap downstream]
+  IDescribed
+  (description [_] "multiplexer")
+  IPropagator
+  (close [_]
+    (doseq [n (close-and-clear lock closed? downstream)]
+      (close n)))
+  (error [_ err]
+    (doseq [n (close-and-clear lock closed? downstream)]
+      (error n err)))
+  (transactional [_]
+    (let [downstream
+          (l/with-exclusive-lock
+            (when (.compareAndSet transactional? false true)
+              (vals downstream)))]
+      (doseq [n downstream]
+        (transactional n))))
+  (downstream [_]
+    (map #(edge nil %) (vals downstream)))
+  (propagate [_ msg _]
+    (if-let [n (l/with-lock lock
+                 (when-not (.get closed?)
+                   (let [id (facet msg)]
+                     (if-let [n (.get downstream id)]
+                       n
+                       (let [n (generator id)]
+                         (when (.get transactional?)
+                           (transactional n))
+                         (or (.putIfAbsent downstream id n) n))))))]
+      (propagate n msg true)
+      :lamina/closed!)))
+
+(defn multiplexing-propagator [facet generator]
+  (MultiplexingPropagator.
+    facet
+    generator
+    (l/asymmetric-lock)
+    (AtomicBoolean. false)
+    (AtomicBoolean. false)
+    (ConcurrentHashMap.)))
 
 ;;;
 

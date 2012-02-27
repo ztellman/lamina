@@ -410,5 +410,3 @@
     (siphon (periodically interval drain) ch*)
     ch*))
 
-
-

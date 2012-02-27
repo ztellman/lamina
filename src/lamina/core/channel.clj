@@ -319,6 +319,17 @@
   [f channel]
   (filter* (complement f) channel))
 
+(defn multiplexer [facet generator]
+  (let [receiver (g/node identity)
+        propagator (g/multiplexing-propagator facet
+                     (fn [id]
+                       (let [ch (channel* :description (pr-str id))
+                             ch* (generator id)]
+                         (join ch ch*)
+                         (receiver-node ch))))]
+    (g/link receiver propagator (g/edge nil propagator) nil nil)
+    (Channel. receiver receiver)))
+
 ;;;
 
 (defmethod print-method Channel [o ^Writer w]

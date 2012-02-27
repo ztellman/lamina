@@ -9,7 +9,7 @@
 (ns lamina.viz
   (:require
     [lamina.core.channel :as c]
-    [lamina.viz.node :as n]
+    [lamina.viz.graph :as g]
     [lamina.trace :as trace]))
 
 (defn view-graph
@@ -20,10 +20,10 @@
     (map #(vector (c/receiver-node %) (c/emitter-node %)))
     (apply concat)
     distinct
-    (apply n/view-graph)))
+    (apply g/view-graph)))
 
 (defn view-propagation
   "Given a channel and a message, opens a window displaying the value of the message as it is
    propagated downstream.  This is safe to do while other threads are using the channel."
   [channel message]
-  (n/trace-message (c/receiver-node channel) message))
+  (g/trace-message (c/receiver-node channel) message))

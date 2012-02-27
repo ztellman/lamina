@@ -141,6 +141,7 @@
 (import-fn p/read-merge)
 (import-macro p/wait-stage)
 
+(import-fn ch/multiplexer)
 (import-macro op/consume)
 (import-fn ch/map*)
 (import-fn ch/filter*)
