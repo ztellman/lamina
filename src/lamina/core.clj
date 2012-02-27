@@ -68,8 +68,8 @@
   (r/subscribe result-channel (r/result-callback callback (fn [_]))))
 
 (defn on-error
-  "Allows a callback to be registered on a result-channel which will be invoked with the error if it is realized
-   as an error.
+  "Allows a callback to be registered on a result-channel which will be invoked with the error if
+   it is realized as an error.
 
    This often can and should be replaced by a pipeline."
   [channel callback]

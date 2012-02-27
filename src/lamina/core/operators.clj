@@ -11,7 +11,7 @@
     [potemkin :only (unify-gensyms)]
     [lamina.core channel utils])
   (:require
-    [lamina.core.node :as n]
+    [lamina.core.graph :as g]
     [lamina.core.lock :as l]
     [lamina.core.result :as r]
     [lamina.core.pipeline :as p]
@@ -58,14 +58,14 @@
                                 (and
                                   (or
                                     (nil? dst-node##)
-                                    (not (n/closed? dst-node##)))
+                                    (not (g/closed? dst-node##)))
                                   (take-while##
                                     ~@(when reduce `(val##))
                                     x#)))
                              `(fn [~'& _#]
                                 (or
                                   (nil? dst-node##)
-                                  (not (n/closed? dst-node##)))))
+                                  (not (g/closed? dst-node##)))))
 
              ;; general predicate
              predicate## ~predicate
@@ -74,13 +74,13 @@
              timeout## ~timeout]
 
          ;; if we're able to consume, take the unconsume function
-         (if-let [unconsume# (n/consume
+         (if-let [unconsume# (g/consume
                                (emitter-node src-channel##)
-                               (n/edge
+                               (g/edge
                                  ~(or description "consume")
                                  (if dst##
                                    (receiver-node dst##)
-                                   (n/terminal-node nil))))]
+                                   (g/terminal-propagator nil))))]
 
            ;; and define a more comprehensive cleanup function
            (let [cleanup#
@@ -315,8 +315,8 @@
                         (if (number? timeout)
                           (constantly timeout)
                           timeout))
-           e (n/edge "lazy-channel-seq" (n/terminal-node nil))]
-       (if-let [unconsume (n/consume (emitter-node ch) e)]
+           e (g/edge "lazy-channel-seq" (g/terminal-propagator nil))]
+       (if-let [unconsume (g/consume (emitter-node ch) e)]
          (lazy-channel-seq-
            (if timeout-fn
              #(read-channel* ch :timeout (timeout-fn) :on-timeout ::end :on-drained ::end)
@@ -328,10 +328,10 @@
   "An eager variant of lazy-channel-seq.  Blocks until the channel has been drained, or until 'timeout'
    milliseconds have elapsed."
   ([ch]
-     (n/drain (emitter-node ch)))
+     (g/drain (emitter-node ch)))
   ([ch timeout]
      (let [start (System/currentTimeMillis)
-           s (n/drain (emitter-node ch))]
+           s (g/drain (emitter-node ch))]
        (doall
          (concat s
            (lazy-channel-seq ch

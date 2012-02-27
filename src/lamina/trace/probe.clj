@@ -12,7 +12,7 @@
   (:require
     [clojure.string :as str]
     [lamina.core.channel :as c]
-    [lamina.core.node :as n]
+    [lamina.core.graph :as g]
     [lamina.core.result :as r]
     [clojure.tools.logging :as log])
   (:import
@@ -35,7 +35,7 @@
    description]
   IEnqueue
   (enqueue [_ msg]
-    (let [result (n/propagate (c/receiver-node channel) msg true)]
+    (let [result (g/propagate (c/receiver-node channel) msg true)]
       (when (and log-on-disabled? (identical? :lamina/grounded result))
         (log/error msg (str "error on inactive probe: " description)))
       result))
@@ -56,7 +56,7 @@
              :description (name description))]
 
     ;; set the flag whenever the downstream count changes
-    (n/on-state-changed (c/emitter-node ch) nil
+    (g/on-state-changed (c/emitter-node ch) nil
       (fn [_ downstream _]
         (.set flag (pos? downstream))))
 
@@ -122,7 +122,7 @@
    emitter]
   IEnqueue
   (enqueue [_ msg]
-    (n/propagate (c/receiver-node receiver) msg true))
+    (g/propagate (c/receiver-node receiver) msg true))
   IProbe
   (probe-enabled? [_]
     (.get enabled?))
@@ -141,17 +141,17 @@
   [ch]
   (let [receiver-channel (c/channel* :grounded? true)
         receiver (c/receiver-node receiver-channel)
-        emitter (n/node* :permanent? true)
+        emitter (g/node* :permanent? true)
         enabled? (AtomicBoolean. false)]
 
     ;; bridge the upstream and downstream nodes whenever the source channel is active
-    (n/on-state-changed (c/emitter-node ch) nil
+    (g/on-state-changed (c/emitter-node ch) nil
       (fn [_ downstream _]
         (if (zero? downstream)
           (when (.compareAndSet enabled? true false)
-            (n/link receiver emitter emitter nil nil))
+            (g/link receiver emitter emitter nil nil))
           (when (.compareAndSet enabled? false true)
-            (n/cancel receiver emitter)))))
+            (g/cancel receiver emitter)))))
 
     (SympatheticProbeChannel. enabled? receiver-channel emitter)))
 

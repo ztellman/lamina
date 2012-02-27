@@ -6,12 +6,12 @@
 ;;   the terms of this license.
 ;;   You must not remove this notice, or any other, from this software.
 
-(ns lamina.test.node
+(ns lamina.test.graph
   (:use
     [clojure test]
     [lamina.test utils]
     [lamina.core.utils :only (predicate-operator)]
-    [lamina.core node walk])
+    [lamina.core graph walk])
   (:require
     [lamina.core.queue :as q]))
 
@@ -40,7 +40,7 @@
      (construct-nodes link* tree))
   ([connect-fn [operator & downstream-operators]]
      (if (empty? downstream-operators)
-       (callback-node operator)
+       (callback-propagator operator)
        (let [n (node operator)]
          (doseq [d (map #(construct-nodes connect-fn %) downstream-operators)]
            (connect-fn n d))
@@ -52,12 +52,12 @@
       (if b
         (siphon a b)
         (when final-callback
-          (link* a (callback-node final-callback)))))
+          (link* a (callback-propagator final-callback)))))
     (first s)))
 
 (defn node-tree [depth branches leaf-callback]
   (if (zero? depth)
-    (callback-node leaf-callback)
+    (callback-propagator leaf-callback)
     (let [root (node identity)]
       (doseq [c (repeatedly branches
                   #(node-tree (dec depth) branches leaf-callback))]
@@ -134,7 +134,7 @@
         [v f] (sink)]
     (is (= :lamina/enqueued (enqueue n nil)))
     (is (= :lamina/enqueued (enqueue n 1)))
-    (link* n (callback-node f))
+    (link* n (callback-propagator f))
     (is (= [nil 1] @v)))
   
   ;; test with closed node
@@ -145,7 +145,7 @@
     (close n)
     (is (closed? n))
     (is (not (drained? n)))
-    (link* n (callback-node f))
+    (link* n (callback-propagator f))
     (is (drained? n))
     (is (= [nil 1] @v))))
 

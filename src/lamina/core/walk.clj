@@ -8,23 +8,25 @@
 
 (ns lamina.core.walk
   (use
-    [lamina.core node utils])
+    [lamina.core graph utils])
   (:require
     [lamina.core.lock :as l]
     [lamina.core.queue :as q]
     [clojure.string :as str])
   (:import
-    [lamina.core.node
-     Edge
-     Node
-     CallbackNode]))
+    [lamina.core.graph.node
+     Node]
+    [lamina.core.graph.core
+     Edge]
+    [lamina.core.graph.propagator
+     CallbackPropagator]))
 
 ;;;
 
 (defn node-data [n]
   (let [f (cond
             (node? n) (.operator ^Node n)
-            (callback-node? n) (.callback ^CallbackNode n)
+            (instance? CallbackPropagator n) (.callback ^CallbackPropagator n)
             :else nil)]
     (merge
       {:node n

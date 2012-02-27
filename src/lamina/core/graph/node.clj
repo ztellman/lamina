@@ -6,10 +6,11 @@
 ;;   the terms of this license.
 ;;   You must not remove this notice, or any other, from this software.
 
-(ns lamina.core.node
+(ns lamina.core.graph.node
   (:use
     [useful.datatypes :only (make-record assoc-record)]
     [lamina.core.threads :only (enqueue-cleanup)]
+    [lamina.core.graph.core]
     [lamina.core utils])
   (:require
     [lamina.core.result :as r]
@@ -20,52 +21,21 @@
   (:import
     [lamina.core.lock
      AsymmetricLock]
+    [lamina.core.graph.core
+     Edge]
     [lamina.core.result
      SuccessResult
      ErrorResult
      ResultChannel]
     [java.util
-     Collection
      Collections
      HashMap
      Map]
     [java.util.concurrent.atomic
      AtomicBoolean]
     [java.util.concurrent
-     CopyOnWriteArrayList
-     ConcurrentHashMap]))
+     CopyOnWriteArrayList]))
 
-(set! *warn-on-reflection* true)
-
-;;;
-
-(deftype Edge [^String description node]
-  IDescribed
-  (description [_] description))
-
-(defn edge [description node]
-  (Edge. description node))
-
-(defn edge? [x]
-  (instance? Edge x))
-
-;;;
-
-(defprotocol IPropagator
-  (downstream [_]
-    "Returns a list of nodes which are downstream of this node.")
-  (transactional [_]
-    "Makes this node and all downstream nodes transactional.")
-  (propagate [_ msg transform?]
-    "Sends a message downstream through the node. If 'transform?' is false, the node
-     should treat the message as pre-transformed.")
-  (close [_])
-  (error [_ err]))
-
-(defn downstream-nodes [n]
-  (map #(.node ^Edge %) (downstream n)))
-
-;;;
 
 (defprotocol INode
   
@@ -101,6 +71,8 @@
      Possible states are ::open, ::consumed, ::split, ::closed, ::drained, ::error.")
   (drain [_]
     "Consumes and returns all messages currently in the queue."))
+
+;;;
 
 ;; The possible modes:
 ;; open         messages can freely pass through
@@ -208,6 +180,8 @@
       (= 1 (.downstream-count state))
       (.queue state)
       (q/drain (.queue state)))))
+
+;;;
 
 (declare split-node join node?)
 
@@ -763,7 +737,8 @@
        ;; no such thing
        false))))
 
-;;;
+(defn node? [x]
+  (instance? Node x))
 
 (defn closed? [node]
   (let [s (state node)]
@@ -772,156 +747,18 @@
       (::closed ::drained) true
       false)))
 
-(defn drained? [node]
-  (identical? ::drained (.mode (state node))))
-
-(defn split? [node]
-  (identical? ::split (.mode (state node))))
-
-(defn consumed? [node]
-  (identical? ::consumed (.mode (state node))))
-
-(defn transactional? [node]
-  (.transactional? (state node)))
-
-(defn permanent? [node]
-  (.permanent? (state node)))
-
-(defn grounded? [node]
-  (.grounded? ^Node node))
-
-(defn error-value [node default-value]
-  (let [s (state node)]
-    (if (identical? ::error (.mode s))
-      (.error s)
-      default-value)))
-
-(defn queue [node]
-  (.queue (state node)))
-
-;;;
-
-(deftype CallbackNode [callback]
-  IDescribed
-  (description [_] (describe-fn callback))
-  IPropagator
-  (close [_])
-  (error [_ _])
-  (transactional [_] false)
-  (downstream [_] nil)
-  (propagate [_ msg _]
-    (try
-      (callback msg)
-      (catch Exception e
-        (log/error e "Error in permanent callback.")))))
-
-(defn callback-node [callback]
-  (CallbackNode. callback))
-
-(defn callback-node? [n]
-  (instance? CallbackNode n))
-
-(deftype BridgeNode [description callback downstream]
-  IDescribed
-  (description [_] description)
-  IPropagator
-  (close [_]
-    (doseq [^Edge e downstream]
-      (close (.node e))))
-  (error [_ err]
-    (doseq [^Edge e downstream]
-      (error (.node e) err)))
-  (downstream [_] downstream)
-  (propagate [_ msg _] (callback msg))
-  (transactional [this]
-    (doseq [n (downstream-nodes this)]
-      (transactional n))))
-
-(defn bridge-node? [n]
-  (instance? BridgeNode n))
-
-(deftype TerminalNode [description]
-  IDescribed
-  (description [_] description)
-  IPropagator
-  (close [_])
-  (error [_ err])
-  (downstream [_] nil)
-  (propagate [_ _ _] nil)
-  (transactional [_] nil))
-
-(defn terminal-node [description]
-  (TerminalNode. description))
-
-;;;
-
-(defn ground [n]
-  (let [e (edge "" (terminal-node "\u23DA"))]
-    (link n ::ground e nil nil)))
-
-(defn siphon-callback [src dst]
-  (fn [state _ _]
-    (case state
-      (::closed ::drained ::error) (enqueue-cleanup #(cancel src dst))
-      nil)))
-
-(defn join-callback [dst]
-  (fn [state _ err]
-    (case state
-      (::closed ::drained) (enqueue-cleanup #(close dst))
-      ::error (enqueue-cleanup #(error dst err))
-      nil)))
-
-(defn siphon
-  ([src dst]
-     (siphon src dst nil nil))
-  ([src dst pre post]
-     (let [^Edge dst (if (edge? dst)
-                       dst
-                       (edge "siphon" dst))]
-       (link src (.node dst) dst
-         pre
-         (fn [success?]
-           (when (and success? (node? (.node dst)))
-             (on-state-changed (.node dst) nil (siphon-callback src (.node dst))))
-           (when post
-             (post success?)))))))
-
-(defn bridge-siphon [src edge-description node-description callback dsts]
-  (let [downstream (CopyOnWriteArrayList. ^objects (to-array (map #(edge nil %) dsts)))
-        n (BridgeNode. node-description callback downstream)
-        upstream (edge edge-description n)
-        dsts (filter node? dsts)]
-    (link src n upstream
+(defn split-node
+  [^Node node]
+  (let [^NodeState s (.state node)]
+    (Node.
+      (l/asymmetric-lock)
+      identity
       nil
-      (fn []
-        (doseq [dst dsts]
-          (on-state-changed dst nil (siphon-callback src n)))))))
-
-(defn join
-  ([src dst]
-     (join src dst nil nil))
-  ([src dst pre post]
-     (let [^Edge dst (if (edge? dst)
-                       dst
-                       (edge "join" dst))]
-       (siphon src dst
-         pre
-         (fn [_]
-           (on-state-changed src nil (join-callback (.node dst))))))))
-
-(defn bridge-join [src edge-description node-description callback dsts]
-  (let [downstream (CopyOnWriteArrayList. ^objects (to-array (map #(edge nil %) dsts)))
-        n (BridgeNode. node-description callback downstream)
-        upstream (edge edge-description n)]
-    (link src n upstream
-      nil
-      (fn [_]
-        (on-state-changed src nil (join-callback n))
-        (doseq [dst dsts]
-          (on-state-changed dst nil (siphon-callback src n)))))))
-
-;;;
+      (.grounded? node)
+      (assoc-record s :permanent? false)
+      (Collections/synchronizedMap (HashMap. ^Map (.cancellations node)))
+      (CopyOnWriteArrayList. ^CopyOnWriteArrayList (.edges node))
+      (CopyOnWriteArrayList. ^CopyOnWriteArrayList (.watchers node)))))
 
 (defmacro node*
   [& {:keys [permanent? grounded? transactional? description operator messages]
@@ -952,12 +789,6 @@
        (CopyOnWriteArrayList.)
        (CopyOnWriteArrayList.))))
 
-(defn mimic [node]
-  (node*
-    :transactional? (transactional? node)
-    :permanent? (permanent? node)
-    :grounded? (grounded? node)))
-
 (defn node
   ([operator]
      (node*
@@ -967,27 +798,6 @@
        :operator operator
        :messages messages)))
 
-(defn split-node
-  [^Node node]
-  (let [^NodeState s (.state node)]
-    (Node.
-      (l/asymmetric-lock)
-      identity
-      nil
-      (.grounded? node)
-      (assoc-record s :permanent? false)
-      (Collections/synchronizedMap (HashMap. ^Map (.cancellations node)))
-      (CopyOnWriteArrayList. ^CopyOnWriteArrayList (.edges node))
-      (CopyOnWriteArrayList. ^CopyOnWriteArrayList (.watchers node)))))
-
-(defn downstream-node [operator ^Node upstream-node]
-  (let [^Node n (node operator)]
-    (join upstream-node n)
-    n))
-
-(defn node? [x]
-  (instance? Node x))
-
 ;;;
 
 (defn closed-result [node]
@@ -996,9 +806,8 @@
       (fn [state _ err]
         (case state
           ::consumed
-          (when-let [q (queue node)]
-            (when (q/closed? q)
-              (r/success result true)))
+          (when (closed? node)
+            (r/success result true))
           
           (::closed ::drained)
           (r/success result true)
@@ -1034,56 +843,71 @@
           nil)))
     result))
 
-(defn on-event [result-fn]
-  (fn [node callback]
-    (r/subscribe (result-fn node)
-      (r/result-callback
-        (fn [_] (callback))
-        (fn [_] )))))
+(defn error-value [node default-value]
+  (let [s (state node)]
+    (if (identical? ::error (.mode s))
+      (.error s)
+      default-value)))
 
-(def on-closed (on-event closed-result))
-(def on-drained (on-event drained-result))
+(defn drained? [node]
+  (identical? ::drained (.mode (state node))))
 
-(defn on-error [node callback]
-  (r/subscribe (error-result node)
-    (r/result-callback
-      (fn [_])
-      (fn [err] (callback err)))))
+(defn split? [node]
+  (identical? ::split (.mode (state node))))
+
+(defn consumed? [node]
+  (identical? ::consumed (.mode (state node))))
+
+(defn transactional? [node]
+  (.transactional? (state node)))
+
+(defn permanent? [node]
+  (.permanent? (state node)))
+
+(defn grounded? [node]
+  (.grounded? ^Node node))
+
+(defn queue [node]
+  (.queue (state node)))
 
 ;;;
 
-(defmacro read-node*
-  [n & {:keys [predicate
-               timeout
-               result
-               on-timeout
-               on-false
-               on-drained
-               ]}]
-  (let [result-sym (gensym "result")]
-    `(let [~result-sym (read-node ~n
-                         ~predicate
-                         ~(when predicate
-                            (or on-false :lamina/false))
-                         ~result)]
-       ~@(when timeout
-           `((let [timeout# ~timeout]
-               (when (and timeout# (instance? ResultChannel ~result-sym))
-                 (t/delay-invoke timeout#
-                   (fn []
-                     ~(if on-timeout
-                        `(r/success ~result-sym ~on-timeout)
-                        `(r/error ~result-sym :lamina/timeout!))))))))
-       ~(if-not on-drained
-          result-sym
-          `(if (instance? SuccessResult ~result-sym)
-             ~result-sym
-             (let [result# (r/result-channel)]
-               (r/subscribe ~result-sym
-                 (r/result-callback
-                   (fn [x#] (r/success result# x#))
-                   (fn [err#]
-                     (if (identical? :lamina/drained! err#)
-                       (r/success result# ~on-drained)
-                       (r/error result# err#)))))
-               result#))))))
+(defn siphon-callback [src dst]
+  (fn [state _ _]
+    (case state
+      (::closed ::drained ::error) (enqueue-cleanup #(cancel src dst))
+      nil)))
+
+(defn join-callback [dst]
+  (fn [state _ err]
+    (case state
+      (::closed ::drained) (enqueue-cleanup #(close dst))
+      ::error (enqueue-cleanup #(error dst err))
+      nil)))
+
+(defn siphon
+  ([src dst]
+     (siphon src dst nil nil))
+  ([src dst pre post]
+     (let [^Edge dst (if (edge? dst)
+                       dst
+                       (edge "siphon" dst))]
+       (link src (.node dst) dst
+         pre
+         (fn [success?]
+           (when (and success? (node? (.node dst)))
+             (on-state-changed (.node dst) nil (siphon-callback src (.node dst))))
+           (when post
+             (post success?)))))))
+
+(defn join
+  ([src dst]
+     (join src dst nil nil))
+  ([src dst pre post]
+     (let [^Edge dst (if (edge? dst)
+                       dst
+                       (edge "join" dst))]
+       (siphon src dst
+         pre
+         (fn [_]
+           (on-state-changed src nil (join-callback (.node dst))))))))

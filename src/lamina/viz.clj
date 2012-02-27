@@ -13,7 +13,8 @@
     [lamina.trace :as trace]))
 
 (defn view-graph
-  "Given one or more channels, opens a window displaying those channels and all downstream channels."
+  "Given one or more channels, opens a window displaying those channels and all downstream
+   channels."
   [& channels]
   (->> channels
     (map #(vector (c/receiver-node %) (c/emitter-node %)))
@@ -22,7 +23,7 @@
     (apply n/view-graph)))
 
 (defn view-propagation
-  "Given a channel and a message, opens a window displaying the value of the message as it is propagated
-   downstream.  This is safe to do while other threads are using the channel."
+  "Given a channel and a message, opens a window displaying the value of the message as it is
+   propagated downstream.  This is safe to do while other threads are using the channel."
   [channel message]
   (n/trace-message (c/receiver-node channel) message))

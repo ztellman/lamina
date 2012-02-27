@@ -74,13 +74,15 @@
              (throw e#)))))))
 
 (defn instrument
-  "A general purpose transform for functions, allowing for tracing their execution, defining timeouts, and
-   deferring their execution onto a thread pool.  Instrumented functions always return result-channels.
+  "A general purpose transform for functions, allowing for tracing their execution, defining
+   timeouts, and deferring their execution onto a thread pool.  Instrumented functions always
+   return result-channels.
 
    ---------
    OVERHEAD
 
-   Instrumenting adds some overhead to a function, equivalent to the performance difference between calling
+   Instrumenting adds some overhead to a function, equivalent to the performance difference
+   between calling
 
      (+ 1 2 3)
 
@@ -88,14 +90,16 @@
 
      (apply + [1 2 3])
 
-   If you'd happily call 'apply' on the function being instrumented, chances are you won't notice the difference.
+   If you'd happily call 'apply' on the function being instrumented, chances are you won't
+   notice the difference.
 
    ---------
    PROBES
 
-   Instrumenting a function creates 'enter', 'return', and 'error' probes.  A :name must be specified,
-   and probes will be of the structure name:enter, name:return, etc.  Data emitted by these probes may be
-   captured by other functions if :implicit? is set to true, which is the default.
+   Instrumenting a function creates 'enter', 'return', and 'error' probes.  A :name must be
+   specified, and probes will be of the structure name:enter, name:return, etc.  Data emitted by
+   these probes may be captured by other functions if :implicit? is set to true, which is the
+   default.
 
    When the function is invoked, the 'enter' probe emits a hash of the form
 
@@ -114,7 +118,8 @@
 
      :error       - the exception thrown or realized error
 
-   A :probes option may be defined, giving a hash of probe names onto channels that will consume their data:
+   A :probes option may be defined, giving a hash of probe names onto channels that will consume
+   their data:
 
      {:error (siphon->> (sink #(println \"ERROR:\" %)))
       :return (siphon->> (sink #(println \"Called with\" (:args %) \"and returned\" (:result %))))}
@@ -122,16 +127,18 @@
   ----------
   TIMEOUTS
 
-  A :timeout option may be specified, which should be a function that takes the arguments passed to the
-  function, and returns the timeout in milliseconds or nil for no timeout.  If the timeout elapses without
-  any result, the returned result-channel will resolve as an error of type :lamina/timeout!
+  A :timeout option may be specified, which should be a function that takes the arguments passed
+  to the function, and returns the timeout in milliseconds or nil for no timeout.  If the timeout
+  elapses without any result, the returned result-channel will resolve as an error of type
+  :lamina/timeout!
 
   ----------
   EXECUTORS
 
-  If an :executor is specified, the function will be executed on that thread pool.  In this case, :timeout
-  will also interrupt the thread if it is still actively computing the result, and the 'return' probe will
-  include an :enqueued-duration parameter that describes the time, in nanoseconds, spent waiting to be executed."
+  If an :executor is specified, the function will be executed on that thread pool.  In this case,
+  :timeout will also interrupt the thread if it is still actively computing the result, and the
+  'return' probe will include an :enqueued-duration parameter that describes the time, in
+  nanoseconds, spent waiting to be executed."
   [f & {:keys [executor timeout implicit? probes]
         :as options
         :or {implicit? true}}]

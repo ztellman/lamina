@@ -22,8 +22,8 @@
      Snapshot]))
 
 (defn sum
-  "Returns a channel that will periodically emit the sum of all messages emitted by the source channel over the
-   last 'interval' milliseconds.
+  "Returns a channel that will periodically emit the sum of all messages emitted by the source
+   channel over the last 'interval' milliseconds.
 
    It is assumed that all numbers emitted by the source channel are integral values."
   ([ch]
@@ -36,8 +36,8 @@
        ch*)))
 
 (defn rate
-  "Returns a channel that will periodically emit the number of messages emitted by the source channel over the
-   last 'interval' milliseconds."
+  "Returns a channel that will periodically emit the number of messages emitted by the source
+   channel over the last 'interval' milliseconds."
   ([ch]
      (rate 1000 ch))
   ([interval ch]
@@ -46,9 +46,10 @@
        (sum interval))))
 
 (defn average
-  "Returns a channel that will periodically emit the moving average over all messages emitted by the source
-   channel every 'interval' milliseconds, defaulting to once every five seconds.  This moving average is
-   exponentially weighted to the last 'window' milliseconds, defaulting to the last five minutes.
+  "Returns a channel that will periodically emit the moving average over all messages emitted by
+   the source channel every 'interval' milliseconds, defaulting to once every five seconds.  This
+   moving average is exponentially weighted to the last 'window' milliseconds, defaulting to the
+   last five minutes.
 
    It is assumed that all numbers emitted by the source channel are integral values."
   ([ch]
@@ -65,16 +66,17 @@
        ch*)))
 
 (defn quantiles
-  "Returns a channel that will periodically emit a map of quantile values every 'interval' millseconds, which
-   represent the statistical distribution of values emitted by the source channel over the last five minutes.
+  "Returns a channel that will periodically emit a map of quantile values every 'interval'
+   millseconds, which represent the statistical distribution of values emitted by the source
+   channel over the last five minutes.
 
-   The map will be of quantile onto quantile value, so for a uniform distribution of values from 1..1000, it
-   would emit
+   The map will be of quantile onto quantile value, so for a uniform distribution of values from
+   1..1000, it would emit
 
      {50 500, 75 750, 95 950, 99 990, 99.9 999}
 
-   By default, the above quantiles will be used, these can be specified as a sequence of quantiles of the form
-   [50 98 99.9 99.99].
+   By default, the above quantiles will be used, these can be specified as a sequence of quantiles
+   of the form [50 98 99.9 99.99].
 
    It is assumed that all values emitted by the source channel are integral values."
   ([ch]
@@ -97,8 +99,8 @@
        ch*)))
 
 (defn variance
-  "Returns a channel that will periodically emit the variance of all values emitted by the source channel every
-   'interval' milliseconds."
+  "Returns a channel that will periodically emit the variance of all values emitted by the source
+   channel every 'interval' milliseconds."
   ([ch]
      (variance (t/seconds 5) ch))
   ([interval ch]
@@ -111,12 +113,14 @@
        ch*)))
 
 (defn outliers
-  "Returns a channel that will emit outliers from the source channel, as measured by the standard deviations from
-   the mean value of (accessor msg).  Outlier status is determined by 'deviation-predicate', which is given the
-   standard deviations from the mean, and returns true or false.  By default, it will return true for any value where
-   the absolute value is greater than three.
+  "Returns a channel that will emit outliers from the source channel, as measured by the standard
+   deviations from the mean value of (facet msg).  Outlier status is determined by
+   'deviation-predicate', which is given the standard deviations from the mean, and returns true
+   or false.  By default, it will return true for any value where the absolute value is greater
+   than three.
 
-   For instance, to monitor function calls that take an unsually long time via a 'return' probe:
+   For instance, to monitor function calls that take an unusually long or short via a 'return'
+   probe:
 
      (outliers :duration (probe-channel :name:return))
 
@@ -124,13 +128,13 @@
 
      (outliers :duration (lamina.time/minutes 5) #(< % 3) (probe-channel :name:return))
 
-   'window' describes the window of the moving average, which defaults to five minutes.  This can be used to adjust
-   the responsiveness to long-term changes to the mean."
-  ([accessor ch]
-     (outliers accessor (t/minutes 5) ch))
-  ([accessor window ch]
-     (outliers accessor window #(< 3 (Math/abs %)) ch))
-  ([accessor window deviation-predicate ch]
+   'window' describes the window of the moving average, which defaults to five minutes.  This can
+    be used to adjust the responsiveness to long-term changes to the mean."
+  ([facet ch]
+     (outliers facet (t/minutes 5) ch))
+  ([facet window ch]
+     (outliers facet window #(< 3 (Math/abs %)) ch))
+  ([facet window deviation-predicate ch]
      (let [f (atom nil)
            avg (avg/moving-average (t/seconds 5) window)
            vr (atom (var/create-variance))

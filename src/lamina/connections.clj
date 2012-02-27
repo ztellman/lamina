@@ -146,6 +146,7 @@
 (deftype RequestTuple [request result channel])
 
 (defn client
+  "something goes here"
   ([connection-generator]
      (client connection-generator nil))
   ([connection-generator
@@ -208,6 +209,7 @@
                   result))))))))
 
 (defn pipelined-client
+  "something goes here"
   ([connection-generator]
      (pipelined-client connection-generator nil))
   ([connection-generator
@@ -314,6 +316,7 @@
 ;;
 
 (defn server-generator
+  "something goes here"
   [handler
    {:keys
     [name
@@ -339,6 +342,7 @@
             (restart)))))))
 
 (defn server
+  "something goes here"
   [handler
    ch
    {:keys
@@ -354,6 +358,7 @@
 ;;
 
 (defn pipelined-server-generator
+  "something goes here"
   [handler
    {:keys
     [name
@@ -389,6 +394,7 @@
               (handler result request))))))))
 
 (defn pipelined-server
+  "something goes here"
   [handler
    ch
    {:keys

@@ -8,23 +8,37 @@
 
 (ns lamina.time)
 
-(defn nanoseconds [n]
+(defn nanoseconds
+  "Converts nanoseconds -> milliseconds"
+  [n]
   (/ n 1e6))
 
-(defn microseconds [n]
+(defn microseconds
+  "Converts microseconds -> milliseconds"
+  [n]
   (/ n 1e3))
 
-(defn milliseconds [n]
+(defn milliseconds
+  "Converts milliseconds -> milliseconds"
+  [n]
   n)
 
-(defn seconds [n]
+(defn seconds
+  "Converts seconds -> milliseconds"
+  [n]
   (* n 1e3))
 
-(defn minutes [n]
+(defn minutes
+  "Converts minutes -> milliseconds"
+  [n]
   (* n 60e3))
 
-(defn hours [n]
+(defn hours
+  "Converts hours -> milliseconds"
+  [n]
   (* n 36e4))
 
-(defn hz [n]
+(defn hz
+  "Converts frequency -> period in milliseconds"
+  [n]
   (/ 1e3 n))

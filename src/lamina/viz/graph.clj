@@ -6,12 +6,12 @@
 ;;   the terms of this license.
 ;;   You must not remove this notice, or any other, from this software.
 
-(ns lamina.viz.node
+(ns lamina.viz.graph
   (:use
     [lamina.core walk utils]
     [lamina.viz core])
   (:require
-    [lamina.core.node :as n]
+    [lamina.core.graph :as g]
     [lamina.core.queue :as q]
     [lamina.core.result :as r]
     [lamina.core.lock :as l]))
@@ -77,7 +77,7 @@
 (defn edge-descriptor [{:keys [src dst description]}]
   (let [hide-desc? (#{"join" "split" "fork"} description)
         dotted? (= "fork" description)]
-    {:src (if (and (n/node? src) (-> src node-data :consumed?))
+    {:src (if (and (g/node? src) (-> src node-data :consumed?))
             [:queue src]
             src)
      :dst dst
@@ -105,7 +105,7 @@
   (let [edges (edge-seq root)
         visible-nodes (->> edges
                         edge-seq->nodes
-                        (filter n/node?))
+                        (filter g/node?))
         queue? (comp show-queue? node-data)
         queue-nodes (filter queue? visible-nodes)
         readable-nodes (->> visible-nodes
@@ -118,13 +118,13 @@
     ;; read the nodes
     (let [results (zipmap
                     readable-nodes
-                    (map n/read-node readable-nodes))
+                    (map g/read-node readable-nodes))
           queues (zipmap
                    queue-nodes
-                   (map #(-> % n/queue q/messages count) queue-nodes))]
+                   (map #(-> % g/queue q/messages count) queue-nodes))]
 
       ;; send the message
-      (n/propagate root msg true)
+      (g/propagate root msg true)
 
       ;; error out any results that didn't receive a message
       (doseq [r (vals results)]
@@ -135,13 +135,13 @@
 
       ;; merge the read messages with the last message in the queue of the leaf/queue nodes
       (let [altered-queue-nodes (filter
-                                  #(not= (queues %) (-> % n/queue q/messages count))
+                                  #(not= (queues %) (-> % g/queue q/messages count))
                                   queue-nodes)]
         (->> results
           (filter (fn [[_ r]] (not= ::none (r/success-value r ::none))))
           (merge (zipmap
                    altered-queue-nodes
-                   (map #(-> % n/queue q/messages last r/success-result) altered-queue-nodes)))
+                   (map #(-> % g/queue q/messages last r/success-result) altered-queue-nodes)))
           (into {}))))))
 
 (defn trace-descriptor [root msg]
