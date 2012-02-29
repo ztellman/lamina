@@ -21,8 +21,8 @@
 (import-fn u/shutdown)
 
 (defmacro task
-  "Executes the body on a separate thread, returning a result-channel representing the eventual
-   result or error."
+  "Executes the body on a separate thread, returning an unrealized result representing the eventual
+   value or error."
   [& body]
   `(u/execute default-executor nil (fn [] ~@body) nil))
 

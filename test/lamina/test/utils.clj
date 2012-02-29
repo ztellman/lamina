@@ -12,6 +12,12 @@
   (defmacro bench [& _])
   (do
     (require '[criterium.core])
+    (defmacro long-bench [name & body]
+      `(do
+         (println "\n-----\n" ~name "\n-----\n")
+         (criterium.core/bench
+           (do ~@body)
+           :reduce-with #(and %1 %2))))
     (defmacro bench [name & body]
       `(do
          (println "\n-----\n" ~name "\n-----\n")

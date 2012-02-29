@@ -9,6 +9,7 @@
 (ns lamina.stats
   (:use
     [lamina core api]
+    [lamina.core.channel :only (mimic)]
     [lamina.stats.utils :only (update)])
   (:require
     [lamina.time :as t]
@@ -49,9 +50,7 @@
   "Returns a channel that will periodically emit the moving average over all messages emitted by
    the source channel every 'interval' milliseconds, defaulting to once every five seconds.  This
    moving average is exponentially weighted to the last 'window' milliseconds, defaulting to the
-   last five minutes.
-
-   It is assumed that all numbers emitted by the source channel are integral values."
+   last five minutes."
   ([ch]
      (average (t/seconds 5) ch))
   ([interval ch]
@@ -76,9 +75,7 @@
      {50 500, 75 750, 95 950, 99 990, 99.9 999}
 
    By default, the above quantiles will be used, these can be specified as a sequence of quantiles
-   of the form [50 98 99.9 99.99].
-
-   It is assumed that all values emitted by the source channel are integral values."
+   of the form [50 98 99.9 99.99]."
   ([ch]
      (quantiles (t/seconds 5) ch))
   ([interval ch]
@@ -119,8 +116,8 @@
    or false.  By default, it will return true for any value where the absolute value is greater
    than three.
 
-   For instance, to monitor function calls that take an unusually long or short via a 'return'
-   probe:
+   For instance, to monitor function calls that take an unusually long or short time via a
+   'return' probe:
 
      (outliers :duration (probe-channel :name:return))
 
@@ -138,27 +135,29 @@
      (let [f (atom nil)
            avg (avg/moving-average (t/seconds 5) window)
            vr (atom (var/create-variance))
+           ch* (mimic ch)
 
            predicate-updater
            (periodically 5000
              (fn []
                (let [mean @avg
                      std-dev (var/std-dev @vr)]
-                 #(deviation-predicate
-                    (/ (- (accessor %) mean) std-dev)))))]
-       
-       ;; update the moving average and variance
-       (receive-all (fork ch)
-         #(let [val (long (accessor %))]
-            (update avg val)
-            (swap! vr update val)))
+                 (when-not (zero? std-dev)
+                   #(deviation-predicate
+                      (/ (- (facet %) mean) std-dev))))))]
 
        ;; periodically update the outlier predicate
        (receive-all predicate-updater #(reset! f %))
        (on-drained ch #(close predicate-updater))
 
-       ;; return the filtered channel
-       (filter*
-         #(when-let [f @f]
-            (f %))
-         ch))))
+       (bridge-join ch "outliers"
+         (fn [msg]
+           (when-let [val (facet msg)]
+             (update avg val)
+             (swap! vr update val)
+             (when-let [f @f]
+               (prn val (f val))
+               (when (f val)
+                 (enqueue ch* msg)))))
+         ch*)
+       ch*)))

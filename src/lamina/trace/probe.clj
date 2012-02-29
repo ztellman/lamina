@@ -104,7 +104,7 @@
 ;;;
 
 (defn probe-result [result]
-  (when-not (r/result-channel? result)
+  (when-not (r/result? result)
     (throw (IllegalArgumentException. "probe-result must be given a result-channel")))
   (reify
     IEnqueue

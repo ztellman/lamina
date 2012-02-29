@@ -170,7 +170,7 @@
 (defn- unwind-stages [idx stages remaining subscribe-expr]
   `(cond
        
-     (r/result-channel? val##)
+     (r/result? val##)
      (let [value# (r/success-value val## ::unrealized)]
        (if (identical? ::unrealized value#)
          ~(subscribe-expr idx)
@@ -275,7 +275,7 @@
                       ;; realized and not a redirect
                       (when (and
                               (not (instance? Redirect val##))
-                              (not (r/result-channel? val##)))
+                              (not (r/result? val##)))
                         (tr/mark-return tracer## step## val##))
                      
                       ;; only unwind a single step at a time

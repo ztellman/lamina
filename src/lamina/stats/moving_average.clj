@@ -11,33 +11,32 @@
     [lamina.stats.utils])
   (:import
     [java.util.concurrent.atomic
-     AtomicLong]))
+     AtomicReference]))
 
 (set! *warn-on-reflection* true)
 
-(def mask (dec (bit-shift-left 1 40)))
-(def increment (inc mask))
+(deftype Counter [^double sum ^long cnt])
 
-(defn acc-sum [n]
-  (bit-and mask n))
-
-(defn acc-count [n]
-  (bit-shift-right n 40))
+(defn update-count [^Counter counter ^double val]
+  (Counter. (+ (.sum counter) val) (inc (.cnt counter))))
 
 (deftype MovingAverage
   [^{:volatile-mutable true} initialized?
    ^{:volatile-mutable true :tag double} rate
-   ^AtomicLong acc
+   ^AtomicReference counter
    ^double alpha
    ^double interval]
   IUpdatable
   (update [_ value]
-    (acc-count (.addAndGet acc (bit-or value increment))))
+    (loop []
+      (let [cnt (.get counter)]
+        (when-not (.compareAndSet counter cnt (update-count cnt value))
+          (recur)))))
   clojure.lang.IDeref
   (deref [_]
-    (let [val (.getAndSet acc 0)
-          sum (acc-sum val)
-          cnt (acc-count val)
+    (let [^Counter counter (.getAndSet counter (Counter. 0 0))
+          sum (.sum counter)
+          cnt (.cnt counter)
           r*  (/ sum interval (max 1 cnt))]
       (if initialized?
         (let [r rate]
@@ -52,6 +51,6 @@
     (MovingAverage.
       false
       0
-      (AtomicLong. 0)
+      (AtomicReference. (Counter. 0 0))
       alpha
       (* interval 1e6))))

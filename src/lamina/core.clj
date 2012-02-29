@@ -41,7 +41,7 @@
     [(splice a b) (splice b a)]))
 
 (import-fn r/result-channel)
-(import-fn r/result-channel?)
+(import-fn r/result?)
 (import-fn r/with-timeout)
 (import-fn r/expiring-result)
 (import-fn r/success)
@@ -50,32 +50,16 @@
 
 ;;;
 
-(defn on-result
-  "Allows two callbacks to be registered on a result-channel, one in the case of a result, the other in case of
+(defn on-realized
+  "Allows two callbacks to be registered on a result-channel, one in the case of a value, the other in case of
    an error.
 
-   This is usually preferable to just using on-success or on-error in isolation, but often can and should be replaced
-   by a pipeline."
-  [result-channel on-success on-error]
-  (r/subscribe result-channel (r/result-callback on-success on-error)))
-
-(defn on-success
-  "Allows a callback to be registered on a result-channel which will be invoked with the result when it is realized.
-   If the result-channel emits an error, the callback will not be called.
-
-   This almost always can and should be replaced by a pipeline."
-  [result-channel callback]
-  (r/subscribe result-channel (r/result-callback callback (fn [_]))))
-
-(defn on-error
-  "Allows a callback to be registered on a result-channel which will be invoked with the error if
-   it is realized as an error.
-
    This often can and should be replaced by a pipeline."
-  [channel callback]
-  (if (result-channel? channel)
-    (r/subscribe channel (r/result-callback (fn [_]) callback))
-    (ch/on-error channel callback)))
+  [result-channel on-success on-error]
+  (r/subscribe result-channel
+    (r/result-callback
+      (or on-success (fn [_]))
+      (or on-error (fn [_])))))
 
 ;;;
 
@@ -90,21 +74,21 @@
 (defn error
   "Puts the channel or result-channel into an error state."
   [channel err]
-  (if (result-channel? channel)
+  (if (result? channel)
     (r/error channel err)
     (ch/error channel err)))
 
 (defn siphon
   "something goes here"
   [src dst]
-  (if (result-channel? src)
+  (if (result? src)
     (r/siphon-result src dst)
     (ch/siphon src dst)))
 
 (defn join
   "something goes here"
   [src dst]
-  (if (result-channel? src)
+  (if (result? src)
     (do
       (r/siphon-result src dst)
       (r/subscribe dst (r/result-callback (fn [_]) #(r/error src %))))

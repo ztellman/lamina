@@ -19,42 +19,45 @@
 (defrecord Enter [^long timestamp args])
 
 (defmacro instrument-task-body
-  [nm executor enter-probe return-probe implicit? timeout invoke args]
+  [nm executor enter-probe return-probe implicit? with-bindings? timeout invoke args]
   `(do
      (when (probe-enabled? ~enter-probe)
        (enqueue ~enter-probe (Enter. (System/currentTimeMillis) ~args)))
      (let [timer# (t/enqueued-timer ~nm ~args ~return-probe nil ~implicit?)]
-       (ex/execute ~executor timer# (fn [] ~invoke) ~(when timeout `(when ~timeout (~timeout ~args)))))))
+       (ex/execute ~executor timer#
+         (~(if with-bindings? `bound-fn `fn) [] ~invoke)
+         ~(when timeout `(when ~timeout (~timeout ~args)))))))
 
 (defn instrument-task
-  [f & {:keys [executor timeout implicit?]
+  [f & {:keys [executor timeout implicit? with-bindings?]
         :as options
-        :or {implicit? true}}]
+        :or {implicit? true
+             with-bindings? false}}]
   (let [nm (name (:name options))
         enter-probe (probe-channel [nm :enter])
         return-probe (probe-channel [nm :return])
         error-probe (probe-channel [nm :error])]
     (fn
       ([]
-         (instrument-task-body nm executor enter-probe return-probe implicit? timeout
+         (instrument-task-body nm executor enter-probe return-probe implicit? with-bindings? timeout
            (f) [])) 
       ([a]
-         (instrument-task-body nm executor enter-probe return-probe implicit? timeout
+         (instrument-task-body nm executor enter-probe return-probe implicit? with-bindings? timeout
            (f a) [a]))
       ([a b]
-         (instrument-task-body nm executor enter-probe return-probe implicit? timeout
+         (instrument-task-body nm executor enter-probe return-probe implicit? with-bindings? timeout
            (f a b) [a b]))
       ([a b c]
-         (instrument-task-body nm executor enter-probe return-probe implicit? timeout
+         (instrument-task-body nm executor enter-probe return-probe implicit? with-bindings? timeout
            (f a b c) [a b c]))
       ([a b c d]
-         (instrument-task-body nm executor enter-probe return-probe implicit? timeout
+         (instrument-task-body nm executor enter-probe return-probe implicit? with-bindings? timeout
            (f a b c d) [a b c d]))
       ([a b c d e] 
-         (instrument-task-body nm executor enter-probe return-probe implicit? timeout
+         (instrument-task-body nm executor enter-probe return-probe implicit? with-bindings? timeout
            (f a b c d e) [a b c d e]))
       ([a b c d e & rest]
-         (instrument-task-body nm executor enter-probe return-probe implicit? timeout
+         (instrument-task-body nm executor enter-probe return-probe implicit? with-bindings? timeout
            (apply f a b c d e rest) (list* a b c d e rest))))))
 
 (defmacro instrument-body [nm enter-probe return-probe implicit? invoke args]
@@ -75,8 +78,11 @@
 
 (defn instrument
   "A general purpose transform for functions, allowing for tracing their execution, defining
-   timeouts, and deferring their execution onto a thread pool.  Instrumented functions always
-   return result-channels.
+   timeouts, and deferring their execution onto a thread pool.
+
+   Instrumenting a function does not change its behavior in any way (unless an :executor is
+   defined, see below).  This can be a powerful tool for both understanding complex tasks
+   during development, and monitoring their behavior in production.
 
    ---------
    OVERHEAD
@@ -97,9 +103,9 @@
    PROBES
 
    Instrumenting a function creates 'enter', 'return', and 'error' probes.  A :name must be
-   specified, and probes will be of the structure name:enter, name:return, etc.  Data emitted by
-   these probes may be captured by other functions if :implicit? is set to true, which is the
-   default.
+   specified, and probe names will be of the structure name:enter, name:return, etc.  Data
+   emitted by these probes may be captured by other functions if :implicit? is set to true,
+   which is the default.
 
    When the function is invoked, the 'enter' probe emits a hash of the form
 
@@ -129,19 +135,22 @@
 
   A :timeout option may be specified, which should be a function that takes the arguments passed
   to the function, and returns the timeout in milliseconds or nil for no timeout.  If the timeout
-  elapses without any result, the returned result-channel will resolve as an error of type
-  :lamina/timeout!
+  elapses without any value, the returned result will be realized as an error of type 'lamina/timeout!'.
 
   ----------
   EXECUTORS
 
-  If an :executor is specified, the function will be executed on that thread pool.  In this case,
-  :timeout will also interrupt the thread if it is still actively computing the result, and the
-  'return' probe will include an :enqueued-duration parameter that describes the time, in
+  If an :executor is specified, the function will be executed on that thread pool, and return a
+  result-channel representing its eventual value.
+
+  In this case, :timeout will also interrupt the thread if it is still actively computing the value,
+  and the 'return' probe will include an :enqueued-duration parameter that describes the time, in
   nanoseconds, spent waiting to be executed."
-  [f & {:keys [executor timeout implicit? probes]
+  
+  [f & {:keys [executor timeout probes implicit? with-bindings?]
         :as options
-        :or {implicit? true}}]
+        :or {implicit? true
+             with-bindings? false}}]
   (when-not (contains? options :name)
     (throw (IllegalArgumentException. "Instrumented functions must have a :name defined.")))
   (if executor
@@ -177,6 +186,52 @@
 
 ;;;
 
+;; TODO: implement in terms of instrumented-fn
+
+(defmacro instrumented-fn
+  "A def form of (instrument...). Options can be defined in the function metadata:
+
+   (defn-instrumented foo
+     {:implicit? false
+      :timeout (constantly 1000)}
+     \"Here's a doc-string\"
+     [x]
+     ...)
+
+   The :name can be explicitly defined, but will default to
+
+     the:function:namespace:the-function-name
+
+   "
+  [fn-name & body]
+  (let [form `(defn ~fn-name ~@body)
+        form (macroexpand form)
+        mta (merge
+              {:implicit? true}
+              (meta (second form)))
+        nm (or (:name mta)
+             (str (-> (ns-name *ns*) str (.replace \. \:)) ":" (name fn-name)))
+        executor? (contains? mta :executor)
+        with-bindings? (:with-bindings? mta)
+        implicit? (:implicit? mta)
+        timeout (:timeout mta)]
+    (unify-gensyms
+      `(let [enter-probe## (probe-channel [~nm :enter])
+             return-probe## (probe-channel [~nm :return])
+             error-probe## (probe-channel [~nm :error])
+             executor## ~(:executor mta)
+             implicit?## ~(:implicit? mta)]
+         (doseq [[k# v#] ~(:probes mta)]
+           (siphon (probe-channel [~nm k#]) v#))
+         ~(transform-defn-bodies
+            (fn [args body]
+              (if executor?
+                `((instrument-task-body ~nm executor## enter-probe## return-probe## ~implicit? ~with-bindings? ~timeout
+                    (do ~@body) ~args))
+                `((instrument-body ~nm enter-probe## return-probe## ~implicit?
+                    (do ~@body) ~args))))
+            form)))))
+
 (defmacro defn-instrumented
   "A def form of (instrument...). Options can be defined in the function metadata:
 
@@ -201,6 +256,7 @@
         nm (or (:name mta)
              (str (-> (ns-name *ns*) str (.replace \. \:)) ":" (name fn-name)))
         executor? (contains? mta :executor)
+        with-bindings? (:with-bindings? mta)
         implicit? (:implicit? mta)
         timeout (:timeout mta)]
     (unify-gensyms
@@ -214,7 +270,7 @@
          ~(transform-defn-bodies
             (fn [args body]
               (if executor?
-                `((instrument-task-body ~nm executor## enter-probe## return-probe## ~implicit? ~timeout
+                `((instrument-task-body ~nm executor## enter-probe## return-probe## ~implicit? ~with-bindings? ~timeout
                     (do ~@body) ~args))
                 `((instrument-body ~nm enter-probe## return-probe## ~implicit?
                     (do ~@body) ~args))))

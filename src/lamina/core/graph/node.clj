@@ -394,7 +394,7 @@
                   ::split
                   (if-let [v (.get cancellations name)]
                     
-                    (if (r/result-channel? v)
+                    (if (r/result? v)
                       ::already-registered
                       ::invalid-name)
                     
@@ -725,7 +725,7 @@
          (identical? ::split x)
          (cancel (.split state) name)
 
-         (r/result-channel? x)
+         (r/result? x)
          (l/with-lock lock
            (q/cancel-receive (.queue state) x))
 

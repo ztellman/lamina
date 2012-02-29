@@ -212,17 +212,17 @@
 
   ;;
   (deref [this]
-    (io! "Cannot dereference a result-channel inside a transaction."
-      (let [state state
-            value (.value state)
-            result (case (.mode state)
-                     ::success value
-                     ::error (if (instance? Throwable value)
-                               (throw value)
-                               (throw (Exception. (str value))))
-                     ::none)]
-        (if-not (identical? ::none result)
-          result
+    (let [state state
+          value (.value state)
+          result (case (.mode state)
+                   ::success value
+                   ::error (if (instance? Throwable value)
+                             (throw value)
+                             (throw (Exception. (str value))))
+                   ::none)]
+      (if-not (identical? ::none result)
+        result
+        (io! "Cannot dereference an unrealized result-channel in a transaction"
           (let [^CountDownLatch latch (CountDownLatch. 1)
                 f (fn [_] (.countDown latch))]
             (subscribe this (ResultCallback. f f))
@@ -333,12 +333,12 @@
 ;;;
 
 (defn success-result
-  "Returns a result-channel already realized with a value."
+  "Returns a result already realized with a value."
   [value]
   (SuccessResult. value))
 
 (defn error-result
-  "Returns a result-channel already realized with an error."
+  "Returns a result already realized with an error."
   [error]
   (ErrorResult. error))
 
@@ -353,8 +353,8 @@
 (defn result-callback [on-success on-error]
   (ResultCallback. on-success on-error))
 
-(defn result-channel?
-  "Returns true if 'x' is a result-channel."
+(defn result?
+  "Returns true if 'x' is a result."
   [x]
   (or
     (instance? ResultChannel x)
@@ -362,14 +362,14 @@
     (instance? ErrorResult x)))
 
 (defn siphon-result
-  "When the source result-channel is realized, that value or error is forwarded to the destination result-channel."
+  "When the source result is realized, that value or error is forwarded to the destination result-channel."
   [src dst]
   (subscribe src (result-callback #(success dst %) #(error dst %)))
   dst)
 
 (defn with-timeout
-  "Returns a new result-channel that will be realized with the error :lamina/timeout! if the source result-channel
-   is not realized in 'interval' milliseconds."
+  "Returns a new result that will mimic the original result, unless 'interval' milliseconds elapse, in which
+   case it will realize as a 'lamina/timeout!' error."
   [interval result]
   (let [result* (siphon-result result (result-channel))]
     (if (zero? interval)
@@ -378,7 +378,8 @@
     result*))
 
 (defn expiring-result
-  "Returns a result-channel that will emit a :lamina/timeout! error if it is not realized within 'interval' milliseconds."
+  "Returns a result-channel that will be realized as a 'lamina/timeout!' error if a value is not enqueued within
+   'interval' milliseconds."
   [interval]
   (if (zero? interval)
     (error-result :lamina/timeout!)
@@ -387,8 +388,7 @@
       result)))
 
 (defn timed-result
-  "Returns a result-channel that will emit the given 'value' in 'interval' milliseconds.  If a 'value' is not given, it
-   defaults to nil."
+  "Returns a result-channel that will be realized as 'value' (defaulting to nil) in 'interval' milliseconds."
   ([interval]
      (timed-result interval nil))
   ([interval value]
