@@ -11,6 +11,7 @@
     [useful.datatypes :only (assoc-record)]
     [lamina.core.utils])
   (:require
+    [lamina.core.return-codes :as codes]
     [lamina.core.lock :as l]
     [lamina.core.threads :as t]
     [clojure.tools.logging :as log])
@@ -73,7 +74,7 @@
   (cancel-callback [_ callback]
     false)
   (toString [_]
-    (str "<< " value " >>")))
+    (str "<< " (pr-str value) " >>")))
 
 (deftype ErrorResult [error]
   IEnqueue
@@ -83,7 +84,10 @@
   (deref [_]
     (if (instance? Throwable error)
       (throw error)
-      (throw (Exception. (pr-str error)))))
+      (throw
+        (or
+          (codes/error-code->exception error)
+          (Exception. (pr-str error))))))
   IResult
   (success [_ _]
     :lamina/already-realized!)
@@ -218,7 +222,10 @@
                    ::success value
                    ::error (if (instance? Throwable value)
                              (throw value)
-                             (throw (Exception. (str value))))
+                             (throw
+                               (or
+                                 (codes/error-code->exception value)
+                                 (Exception. (str value)))))
                    ::none)]
       (if-not (identical? ::none result)
         result

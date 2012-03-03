@@ -59,6 +59,30 @@
   (is (= 10 @(pipe-a 0)))
   (is (= 10 @(pipe-b 0))))
 
+(def ^:dynamic a 1)
+
+(deftest test-with-bindings
+  (is (= 2 @(run-pipeline a
+              inc)))
+  (is (= 2 @(run-pipeline a
+              (wait-stage 1)
+              inc)))
+  (is (= 2 @(binding [a 3]
+              (run-pipeline nil
+                (wait-stage 1)
+                (constantly a)
+                inc))))
+  (is (= 4 @(binding [a 3]
+              (run-pipeline a
+                (wait-stage 1)
+                inc))))
+  (is (= 4 @(binding [a 3]
+              (run-pipeline nil
+                {:with-bindings? true}
+                (wait-stage 1)
+                (constantly a)
+                inc)))))
+
 (deftest test-error-handler
   (is (thrown? Exception @(run-pipeline nil
                             {:error-handler nil}

@@ -18,6 +18,7 @@
     [lamina.trace.probe :as pr]))
 
 (import-fn i/instrument)
+(import-macro i/instrumented-fn)
 (import-macro i/defn-instrumented)
 
 (import-fn t/format-timing)

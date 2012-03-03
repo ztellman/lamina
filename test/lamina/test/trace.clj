@@ -86,7 +86,7 @@
 (def-cnt semi-silent-countdown semi-silent-countdown* {:name ::invisible, :implicit? false})
 
 (def-cnt countdown countdown* {:name :countdown})
-(def-cnt threaded-countdown threaded-countdown* {:name :countdown})
+(def-cnt threaded-countdown threaded-countdown* {:name :countdown, :executor exc})
 
 (defn timing-seq [t]
   (tree-seq
@@ -106,6 +106,25 @@
   (is (= [2 1 0] (test-capture countdown 2)))
   (is (= [2 1 0] (test-capture threaded-countdown 2)))
   (is (= [0] (test-capture semi-silent-countdown 1))))
+
+(def ^:dynamic n 10)
+
+(defn-instrumented unbound-add
+  {:executor exc}
+  [x]
+  (+ x n))
+
+(defn-instrumented bound-add
+  {:executor exc
+   :with-bindings? true}
+  [x]
+  (+ x n))
+
+(deftest test-with-bindings
+  (is (= 11 @(unbound-add 1)))
+  (is (= 11 @(bound-add 1)))
+  (is (= 11 @(binding [n 100] (unbound-add 1))))
+  (is (= 101 @(binding [n 100] (bound-add 1)))))
 
 ;;;
 

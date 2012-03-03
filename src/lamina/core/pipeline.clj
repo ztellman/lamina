@@ -95,7 +95,7 @@
                    (.pipeline redirect))]
     (start-pipeline pipeline result value (redirect-tracer tracer pipeline value))))
 
-(defn subscribe [pipeline result initial-val val executor-fn idx]
+(defn subscribe [pipeline result initial-val val fn-transform idx]
   (let [new-result? (nil? result)
         result (or result (r/result-channel))]
     (if-let [ctx (context/context)]
@@ -103,54 +103,65 @@
       ;; if we have context, propagate it forward
       (r/subscribe val
         (r/result-callback
-          (fn [val]
-            (executor-fn
-              #(context/with-context ctx
-                 (resume-pipeline pipeline result initial-val val idx nil))))
-          (fn [err]
-            (executor-fn
-              #(context/with-context ctx
-                 (error pipeline result initial-val err nil))))))
-
+          (fn-transform
+            (fn [val]
+              (context/with-context ctx
+                (resume-pipeline pipeline result initial-val val idx nil))))
+          (fn-transform
+            (fn [err]
+              (context/with-context ctx
+                (error pipeline result initial-val err nil))))))
+      
       ;; no context, so don't bother
       (r/subscribe val
         (r/result-callback
-          (fn [val]
-            (executor-fn
-              #(resume-pipeline pipeline result initial-val val idx nil)))
-          (fn [err]
-            (executor-fn
-              #(error pipeline result initial-val err nil))))))
+          (fn-transform
+            (fn [val]
+              (resume-pipeline pipeline result initial-val val idx nil)))
+          (fn-transform
+            (fn [err]
+              (error pipeline result initial-val err nil))))))
 
     (if new-result?
       result
       :lamina/suspended)))
 
-(defn trace-subscribe [pipeline result initial-val val tracer executor-fn idx]
+(defn trace-subscribe [pipeline result initial-val val tracer fn-transform idx]
   (let [new-result? (nil? result)
         result (or result (r/result-channel))
         ctx (context/context)]
     (tr/mark-enter tracer idx)
     (r/subscribe val
       (r/result-callback
-        (fn [val]
-          (executor-fn
-            #(context/with-context ctx
-               (resume-pipeline pipeline result initial-val val idx tracer))))
-        (fn [err]
-          (executor-fn
-            #(context/with-context ctx
-               (tr/mark-error tracer idx err)
-               (error pipeline result initial-val err tracer))))))
+        (fn-transform
+          (fn [val]
+            (context/with-context ctx
+              (resume-pipeline pipeline result initial-val val idx tracer))))
+        (fn-transform
+          (fn [err]
+            (context/with-context ctx
+              (tr/mark-error tracer idx err)
+              (error pipeline result initial-val err tracer))))))
     (if new-result?
       result
       :lamina/suspended)))
 
 ;;;
 
-(defn- split-options [opts+stages]
-  (if (map? (first opts+stages))
+(defn- split-options [opts+stages form-meta]
+  (cond
+    (= :error-handler (first opts+stages))
+    (do
+      (println
+        (str
+          (ns-name *ns*) ", line " (:line form-meta) ": "
+          "(pipeline :error-handler ...) is deprecated, use (pipeline {:error-handler ...} ...) instead."))
+      [(apply hash-map (take 2 opts+stages)) (drop 2 opts+stages)])
+
+    (map? (first opts+stages))
     [(first opts+stages) (rest opts+stages)]
+
+    :else
     [nil opts+stages]))
 
 ;; this is a Duff's device-ish unrolling of the pipeline, the resulting code
@@ -204,12 +215,12 @@
     (< num-stages 8) 1
     :else 0))
 
-(defn- complex-error-handler [error-handler]
+(defn- complex-error-handler [error-handler form-meta]
   (if (and (sequential? error-handler)
         (= "pipeline" (str (first error-handler))))
 
     ;; pipeline error-handler
-    (let [[opts stages] (split-options (rest error-handler))]
+    (let [[opts stages] (split-options (rest error-handler) form-meta)]
       (unify-gensyms
         `(error [this# result## initial-value# ex# tracer#]
            (let [result## (or result## (r/result-channel))
@@ -234,19 +245,24 @@
              (r/error-result ex#)))))))
 
 (defmacro pipeline [& opts+stages]
-  (let [[options stages] (split-options opts+stages)
-        {:keys [result error-handler timeout executor]} options
+  (let [[options stages] (split-options opts+stages (meta &form))
+        {:keys [result error-handler timeout executor with-bindings?]} options
         len (count stages)
         depth (max-depth len)
         location (str (ns-name *ns*) ", line " (:line (meta &form)))
-        executor-fn (gensym "executor-fn")
-        expand-subscribe (fn [idx] `(subscribe this## result## initial-val## val## ~executor-fn ~idx))
-        expand-trace-subscribe (fn [idx] `(trace-subscribe this## result## initial-val## val## tracer## ~executor-fn ~idx))]
+        fn-transform (gensym "fn-transform")
+        expand-subscribe (fn [idx] `(subscribe this## result## initial-val## val## ~fn-transform ~idx))
+        expand-trace-subscribe (fn [idx] `(trace-subscribe this## result## initial-val## val## tracer## ~fn-transform ~idx))]
 
     `(let [executor# ~executor
-           ~executor-fn (if executor#
-                          (fn [f#] (ex/execute executor# nil f# nil))
-                          (fn [f#] (f#)))]
+           fn-transform# identity
+           fn-transform# (if executor#
+                           (fn [f#] (fn [x#] (ex/execute executor# nil #(f# x#) nil)))
+                           fn-transform#)
+           fn-transform# (if ~with-bindings?
+                           (comp bound-fn* fn-transform#)
+                           fn-transform#)
+           ~fn-transform fn-transform#]
        (reify IPipeline
          
          (gen-tracer [_ parent#]
@@ -308,7 +324,7 @@
                     (error this## result## initial-val## ex# nil))))))
        
         ~(if error-handler
-           (complex-error-handler error-handler)
+           (complex-error-handler error-handler (meta &form))
            `(error [_# result# _# ex# _#]
               (when-not ~(contains? options :error-handler)
                 (log/error ex# (str "Unhandled exception in pipeline at " ~location)))

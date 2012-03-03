@@ -24,7 +24,22 @@
   "Executes the body on a separate thread, returning an unrealized result representing the eventual
    value or error."
   [& body]
-  `(u/execute default-executor nil (fn [] ~@body) nil))
+  `((trace/instrumented-fn
+      {:name "task"
+       :executor default-executor}
+      []
+      ~@body)))
+
+(defmacro bound-task
+  "Executes the body on a separate thread, returning an unrealized result representing the eventual
+   value or error.  Unlike 'task', thread-local bindings are preserved when evaluating the body."
+  [& body]
+  `((trace/instrumented-fn
+      {:name "bound-task"
+       :executor default-executor
+       :with-bindings? true}
+      []
+      ~@body)))
 
 (defn executor-channel
   "Creates a channel that ensures all downstream channels will receive messages on the thread-pool

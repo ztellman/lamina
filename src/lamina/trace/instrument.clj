@@ -186,54 +186,44 @@
 
 ;;;
 
-;; TODO: implement in terms of instrumented-fn
-
 (defmacro instrumented-fn
-  "A def form of (instrument...). Options can be defined in the function metadata:
+  "A compile-time version of (instrument ...).
 
-   (defn-instrumented foo
-     {:implicit? false
-      :timeout (constantly 1000)}
-     \"Here's a doc-string\"
-     [x]
-     ...)
-
-   The :name can be explicitly defined, but will default to
-
-     the:function:namespace:the-function-name
-
-   "
-  [fn-name & body]
-  (let [form `(defn ~fn-name ~@body)
-        form (macroexpand form)
-        mta (merge
-              {:implicit? true}
-              (meta (second form)))
-        nm (or (:name mta)
-             (str (-> (ns-name *ns*) str (.replace \. \:)) ":" (name fn-name)))
-        executor? (contains? mta :executor)
-        with-bindings? (:with-bindings? mta)
-        implicit? (:implicit? mta)
-        timeout (:timeout mta)]
-    (unify-gensyms
-      `(let [enter-probe## (probe-channel [~nm :enter])
-             return-probe## (probe-channel [~nm :return])
-             error-probe## (probe-channel [~nm :error])
-             executor## ~(:executor mta)
-             implicit?## ~(:implicit? mta)]
-         (doseq [[k# v#] ~(:probes mta)]
-           (siphon (probe-channel [~nm k#]) v#))
-         ~(transform-defn-bodies
-            (fn [args body]
-              (if executor?
-                `((instrument-task-body ~nm executor## enter-probe## return-probe## ~implicit? ~with-bindings? ~timeout
-                    (do ~@body) ~args))
-                `((instrument-body ~nm enter-probe## return-probe## ~implicit?
-                    (do ~@body) ~args))))
-            form)))))
+   (instrumented-fn
+     {:name \"foo\", :implicit? false}
+     [x y]
+     (+ x y))"
+  [{:keys
+    [name
+     executor
+     with-bindings?
+     implicit?
+     timeout
+     probes]
+    :or {with-bindings? false
+         implicit? true}}
+   & fn-tail]
+  (when-not name
+    (throw (IllegalArgumentException. "instrumented functions must have :name defined")))
+  (unify-gensyms
+    `(let [enter-probe## (probe-channel [~name :enter])
+           return-probe## (probe-channel [~name :return])
+           error-probe## (probe-channel [~name :error])
+           executor## ~executor
+           implicit?## ~implicit?]
+       (doseq [[k# v#] ~probes]
+         (siphon (probe-channel [~name k#]) v#))
+       ~(transform-fn-bodies
+          (fn [args body]
+            (if executor
+              `((instrument-task-body ~name executor## enter-probe## return-probe## ~implicit? ~with-bindings? ~timeout
+                  (do ~@body) ~args))
+              `((instrument-body ~name enter-probe## return-probe## ~implicit?
+                  (do ~@body) ~args))))
+          `(fn ~@fn-tail)))))
 
 (defmacro defn-instrumented
-  "A def form of (instrument...). Options can be defined in the function metadata:
+  "A def form of (instrumented-fn...). Options can be defined in the function metadata:
 
    (defn-instrumented foo
      {:implicit? false
@@ -248,30 +238,13 @@
 
    "
   [fn-name & body]
-  (let [form `(defn ~fn-name ~@body)
-        form (macroexpand form)
-        mta (merge
-              {:implicit? true}
-              (meta (second form)))
-        nm (or (:name mta)
-             (str (-> (ns-name *ns*) str (.replace \. \:)) ":" (name fn-name)))
-        executor? (contains? mta :executor)
-        with-bindings? (:with-bindings? mta)
-        implicit? (:implicit? mta)
-        timeout (:timeout mta)]
-    (unify-gensyms
-      `(let [enter-probe## (probe-channel [~nm :enter])
-             return-probe## (probe-channel [~nm :return])
-             error-probe## (probe-channel [~nm :error])
-             executor## ~(:executor mta)
-             implicit?## ~(:implicit? mta)]
-         (doseq [[k# v#] ~(:probes mta)]
-           (siphon (probe-channel [~nm k#]) v#))
-         ~(transform-defn-bodies
-            (fn [args body]
-              (if executor?
-                `((instrument-task-body ~nm executor## enter-probe## return-probe## ~implicit? ~with-bindings? ~timeout
-                    (do ~@body) ~args))
-                `((instrument-body ~nm enter-probe## return-probe## ~implicit?
-                    (do ~@body) ~args))))
-            form)))))
+  (let [options (->> `(defn fn-name ~@body)
+                  macroexpand
+                  second
+                  meta)
+        options (merge
+                  {:name (str (-> (ns-name *ns*) str (.replace \. \:)) ":" (name fn-name))}
+                  options)]
+    `(def ~fn-name
+       (instrumented-fn ~options
+         ~@(drop-while (complement sequential?) body)))))

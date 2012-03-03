@@ -208,12 +208,20 @@
         enqueued (:enqueued-duration t)]
     (str/trim
       (str desc " - "
-        (if duration
-          (str
-            (format-duration duration)
-            (when enqueued
-              (str " (" (format-duration enqueued) " enqueued)")))
-          "still running")
+        (cond
+          (and (not duration) (not enqueued))
+          "still running"
+
+          (not enqueued)
+          (format-duration duration)
+
+          (not duration)
+          (str "waited " (format-duration enqueued) ", still running")
+
+          :else
+          (str (format-duration (+ enqueued duration))
+            " (waited " (format-duration enqueued) ", "
+            "ran for " (format-duration duration) ")"))
         "\n"
         (indent 2
           (->> t
