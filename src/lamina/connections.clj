@@ -300,9 +300,8 @@
 (defn tagged-client
   "Like pipelined-client, but for protocols in which responses may come in any
 order, associating requests with responses via an opaque tag.  The request-tag
-function should accept a request and return a (potentially updated) request and
-associated tag value.  The response-tag function should accept a response and
-return a (potentially unwrapped) response value and the extracted tag."
+function should accept a request and return the associated tag.  The
+response-tag function should accept a response and return the extracted tag."
   ([request-tag response-tag connection-generator]
      (tagged-client request-tag response-tag connection-generator nil))
   ([request-tag response-tag connection-generator options]
@@ -318,7 +317,7 @@ return a (potentially unwrapped) response value and the extracted tag."
            pause? (atom false)
            results (ref {})
            response-handler (fn [response]
-                              (let [[response tag] (response-tag response),
+                              (let [tag (response-tag response),
                                     result (get @results tag)]
                                 (dosync (commute results dissoc tag))
                                 (when (result-channel? result)
@@ -360,7 +359,7 @@ return a (potentially unwrapped) response value and the extracted tag."
                    (if (= ::close ch)
                      (error! result (Exception. "Client has been deactivated."))
                      (when-not (has-completed? result)
-                       (let [[request tag] (request-tag request)]
+                       (let [tag (request-tag request)]
                          (dosync (commute results assoc tag result))
                          (on-error result
                            (fn [_] (dosync (commute results dissoc tag))))

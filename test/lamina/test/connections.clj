@@ -119,7 +119,7 @@
      (simple-response client-fn -1)))
 
 (defn constant-tagged-client [& args]
-  (let [tag-zero (fn [x] [x 0])]
+  (let [tag-zero (constantly 0)]
     (apply tagged-client tag-zero tag-zero args)))
 
 (deftest test-simple-response
@@ -148,8 +148,7 @@
      (reordered-response client-fn -1)))
 
 (defn identity-tagged-client [& args]
-  (let [tag-identity (fn [x] [x x])]
-    (apply tagged-client tag-identity tag-identity args)))
+  (apply tagged-client identity identity args))
 
 (deftest test-reordered-response
   (reordered-response identity-tagged-client))
