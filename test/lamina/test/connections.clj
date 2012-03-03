@@ -30,6 +30,19 @@
       (fn [_] (do (close a) (close b))))
     [a #(do (close a) (close b))]))
 
+(defn reordering-echo-server []
+  (let [[a b] (channel-pair), buffer (atom nil)]
+    (run-pipeline
+      (receive-in-order b
+        (fn [req]
+          (if (nil? @buffer)
+            (reset! buffer req)
+            (do (enqueue b req)
+                (enqueue b @buffer)
+                (reset! buffer nil)))))
+      (fn [_] (do (close a) (close b))))
+    [a #(do (close a) (close b))]))
+
 (defn alternating-delay-echo-server []
   (let [[a b] (channel-pair)]
     (run-pipeline b
@@ -105,16 +118,42 @@
   ([client-fn]
      (simple-response client-fn -1)))
 
+(defn constant-tagged-client [& args]
+  (let [tag-zero (fn [x] [x 0])]
+    (apply tagged-client tag-zero tag-zero args)))
+
 (deftest test-simple-response
   (simple-response client)
   (simple-response pipelined-client)
+  (simple-response constant-tagged-client)
   (simple-response (fn [& args] (client-pool 1 #(apply client args)))))
 
 (deftest timeouts-can-be-used
   (simple-response client 1000)
   (simple-response pipelined-client 1000)
+  (simple-response constant-tagged-client 1000)
   (simple-response (fn [& args] (client-pool 1 #(apply client args)))))
  
+(defn reordered-response
+  ([client-fn timeout]
+     (with-server reordering-echo-server
+       (let [f (client-fn #(connect) {:description "reordering-response"})]
+         (try
+           (let [results (doall (map #(vector % (f % timeout)) (range 10)))]
+             (doseq [[i rch] results]
+               (is (= i (wait-for-result rch 1000)))))
+           (finally
+            (close-connection f))))))
+  ([client-fn]
+     (reordered-response client-fn -1)))
+
+(defn identity-tagged-client [& args]
+  (let [tag-identity (fn [x] [x x])]
+    (apply tagged-client tag-identity tag-identity args)))
+
+(deftest test-reordered-response
+  (reordered-response identity-tagged-client))
+
 (defn dropped-connection [client-fn]
   (with-server simple-echo-server
     (let [f (client-fn #(connect) {:description "dropped-connection"})]
@@ -131,6 +170,7 @@
 (deftest test-dropped-connection
   (dropped-connection client)
   (dropped-connection pipelined-client)
+  (dropped-connection constant-tagged-client)
   (dropped-connection (fn [& args] (client-pool 1 #(apply client args)))))
 
 (defn works-after-a-timed-out-request [client-fn initially-disconnected]
@@ -184,16 +224,19 @@
     
 (deftest test-keeps-on-working-after-a-timed-out-request
   (testing "with the connection initially disconnected"
+    (works-after-a-timed-out-request constant-tagged-client true)
     (works-after-a-timed-out-request pipelined-client true)
     (works-after-a-timed-out-request client true))
   (testing "with the connection disconnected afterwards"
+    (works-after-a-timed-out-request constant-tagged-client false)
     (works-after-a-timed-out-request pipelined-client false)
     (works-after-a-timed-out-request client false)
     ))
 
 (deftest test-keeps-working-despite-constant-disconnects
   (persistent-connection-stress-test client)
-  (persistent-connection-stress-test pipelined-client))
+  (persistent-connection-stress-test pipelined-client)
+  (persistent-connection-stress-test constant-tagged-client))
 
 (defn errors-propagate [client-fn]
   (with-server error-server
@@ -205,6 +248,7 @@
 (deftest test-error-propagation
   (errors-propagate client)
   (errors-propagate pipelined-client)
+  (errors-propagate constant-tagged-client)
   (errors-propagate (fn [& args] (client-pool 1 #(apply client args)))))
 
 ;;;;
