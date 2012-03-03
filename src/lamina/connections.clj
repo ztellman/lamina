@@ -297,6 +297,86 @@
 		result)))
 	 options))))
 
+(defn tagged-client
+  "Like pipelined-client, but for protocols in which responses may come in any
+order, associating requests with responses via an opaque tag.  The request-tag
+function should accept a request and return the associated tag.  The
+response-tag function should accept a response and return the extracted tag."
+  ([request-tag response-tag connection-generator]
+     (tagged-client request-tag response-tag connection-generator nil))
+  ([request-tag response-tag connection-generator options]
+     (let [options (merge
+                    {:name (str (gensym "tagged-client:"))
+                     :description "unknown"
+                     :reconnect-on-timeout? true
+                     :default-timeout 10000}
+                    options)
+           reconnect-on-timeout? (:reconnect-on-timeout? options)
+           default-timeout (:default-timeout options)
+           requests (channel)
+           pause? (atom false)
+           results (ref {})
+           response-handler (fn [response]
+                              (let [tag (response-tag response),
+                                    result (get @results tag)]
+                                (dosync (commute results dissoc tag))
+                                (when (result-channel? result)
+                                  (if (instance? Exception response)
+                                    (error! result response)
+                                    (success! result response)))))
+           nccb (get options :connection-callback (fn [& _]))
+           nccb (fn [ch] (receive-in-order ch response-handler) (nccb ch))
+           options (assoc options :connection-callback nccb)
+           connection (persistent-connection connection-generator options)]
+
+       (siphon-probes (:name options) (:probes options))
+
+       ;; handle requests
+       (receive-all requests
+         (fn [[request result]]
+           (if (= ::close request)
+             (do
+               (close-connection connection)
+               (success! result true))
+             (when-not (has-completed? result)
+
+               ;; send requests
+               (run-pipeline nil
+                 :error-handler (fn [ex]
+                                  (reset! pause? true)
+                                  (if-not (has-completed? result)
+                                    (restart)
+                                    (complete nil)))
+                 (fn [_]
+                   (when (compare-and-set! pause? true false)
+                     (run-pipeline nil
+                       (wait-stage 1))))
+                 (fn [_]
+                   (connection))
+                 (fn [ch]
+                   (when reconnect-on-timeout?
+                     (setup-connection-timeout result ch))
+                   (if (= ::close ch)
+                     (error! result (Exception. "Client has been deactivated."))
+                     (when-not (has-completed? result)
+                       (let [tag (request-tag request)]
+                         (dosync (commute results assoc tag result))
+                         (on-error result
+                           (fn [_] (dosync (commute results dissoc tag))))
+                         (enqueue ch request))))))))))
+
+       ;; request function
+       (trace-wrap
+        (fn this
+          ([request]
+             (this request default-timeout))
+          ([request timeout]
+             (let [result (result-channel)]
+               (setup-result-timeout result timeout)
+               (enqueue requests [request result])
+               result)))
+        options))))
+
 
 (defn client-pool
   "Returns a client function that distributes requests across n-many clients."
