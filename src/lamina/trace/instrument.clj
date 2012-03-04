@@ -77,18 +77,19 @@
              (throw e#)))))))
 
 (defn instrument
-  "A general purpose transform for functions, allowing for tracing their execution, defining
-   timeouts, and deferring their execution onto a thread pool.
+  "A general purpose transform for functions, allowing for tracing their execution,
+   defining timeouts, and deferring their execution onto a thread pool.
 
-   Instrumenting a function does not change its behavior in any way (unless an :executor is
-   defined, see below).  This can be a powerful tool for both understanding complex tasks
-   during development, and monitoring their behavior in production.
+   Instrumenting a function does not change its behavior in any way (unless an
+   :executor is defined, see below).  This can be a powerful tool for both
+   understanding complex tasks during development, and monitoring their behavior in
+   production.
 
    ---------
    OVERHEAD
 
-   Instrumenting adds some overhead to a function, equivalent to the performance difference
-   between calling
+   Instrumenting adds some overhead to a function, equivalent to the performance
+   difference between calling
 
      (+ 1 2 3)
 
@@ -96,16 +97,16 @@
 
      (apply + [1 2 3])
 
-   If you'd happily call 'apply' on the function being instrumented, chances are you won't
-   notice the difference.
+   If you'd happily call 'apply' on the function being instrumented, chances are you
+    won't notice the difference.
 
    ---------
    PROBES
 
-   Instrumenting a function creates 'enter', 'return', and 'error' probes.  A :name must be
-   specified, and probe names will be of the structure name:enter, name:return, etc.  Data
-   emitted by these probes may be captured by other functions if :implicit? is set to true,
-   which is the default.
+   Instrumenting a function creates 'enter', 'return', and 'error' probes.  A :name
+   must be specified, and probe names will be of the structure name:enter,
+   name:return, etc.  Data emitted by these probes may be captured by other functions
+   if :implicit? is set to true, which is the default.
 
    When the function is invoked, the 'enter' probe emits a hash of the form
 
@@ -118,34 +119,36 @@
 
      :duration    - the time elapsed since the invocation, in nanoseconds
      :result      - the value returned by the function
-     :sub-tasks   - 'return' probe data, less :result, for all implicit instrumented sub-functions
-     
+     :sub-tasks   - 'return' probe data, less :result, for all implicit instrumented
+     sub-functions
+
    If an error is thrown, or the value is realized as an error, :result is replaced by
 
      :error       - the exception thrown or realized error
 
-   A :probes option may be defined, giving a hash of probe names onto channels that will consume
-   their data:
+   A :probes option may be defined, giving a hash of probe names onto channels that
+   will consume their data:
 
-     {:error (siphon->> (sink #(println \"ERROR:\" %)))
-      :return (siphon->> (sink #(println \"Called with\" (:args %) \"and returned\" (:result %))))}
+     {:error (channel->> (sink #(println \"ERROR:\" %)))
+      :return (channel->> (sink #(println \"Given\" (:args %) \", returned\" (:result %))))}
 
   ----------
   TIMEOUTS
 
-  A :timeout option may be specified, which should be a function that takes the arguments passed
-  to the function, and returns the timeout in milliseconds or nil for no timeout.  If the timeout
-  elapses without any value, the returned result will be realized as an error of type 'lamina/timeout!'.
+  A :timeout option may be specified, which should be a function that takes the
+  arguments passed to the function, and returns the timeout in milliseconds or nil
+  for no timeout.  If the timeout elapses without any value, the returned result will
+   be realized as an error of type 'lamina/timeout!'.
 
   ----------
   EXECUTORS
 
-  If an :executor is specified, the function will be executed on that thread pool, and return a
-  result-channel representing its eventual value.
+  If an :executor is specified, the function will be executed on that thread pool,
+  and return an unrealized result representing its eventual value.
 
-  In this case, :timeout will also interrupt the thread if it is still actively computing the value,
-  and the 'return' probe will include an :enqueued-duration parameter that describes the time, in
-  nanoseconds, spent waiting to be executed."
+  In this case, :timeout will also interrupt the thread if it is still actively
+  computing the value, and the 'return' probe will include an :enqueued-duration
+  parameter that describes the time, in nanoseconds, spent waiting to be executed."
   
   [f & {:keys [executor timeout probes implicit? with-bindings?]
         :as options

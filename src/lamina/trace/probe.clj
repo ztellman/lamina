@@ -26,7 +26,7 @@
      AtomicBoolean]))
 
 (defprotocol IProbe
-  (probe-enabled? [_]))
+  (probe-enabled? [_] "Returns true if the probe has downstream channels."))
 
 (deftype ProbeChannel
   [^AtomicBoolean enabled?
@@ -66,7 +66,8 @@
   (cond
     (string? x) x
     (keyword? x) (name x)
-    (sequential? x) (->> x (map name) (interpose ":") (apply str))))
+    (sequential? x) (->> x (map canonical-probe-name) (interpose ":") (apply str))
+    :else (str x)))
 
 (def ^ConcurrentHashMap probes (ConcurrentHashMap.))
 (def new-probe-broadcaster (c/channel* :grounded? true, :permanent? true))
@@ -83,11 +84,29 @@
               (enqueue new-probe-broadcaster id)
               ch)))))))
 
-(def probe-channel (probe-channel-generator #(probe-channel- % false)))
+(def
+  ^{:doc
+    "Returns a probe channel for the given name.  Keywords will be converted to simple strings, and
+     sequences will be joined with ':' characters.
 
-(def error-probe-channel (probe-channel-generator #(probe-channel- % true)))
+     [:a \"b\" [1 2 3]] => \"a:b:1:2:3\""}
+  probe-channel (probe-channel-generator #(probe-channel- % false)))
 
-(defn select-probes [wildcard-string-or-regex]
+(def
+  ^{:doc
+    "Like probe-channel, but if the probe is not active every message enqueued into the channe will be
+     logged as an error."}
+  error-probe-channel (probe-channel-generator #(probe-channel- % true)))
+
+(defn probe-names
+  "Returns a list of all existing probes."
+  []
+  (keys probes))
+
+(defn select-probes
+  "Activates all probes that match the given string or regex, and returns a channel that will emit
+   all messages from these probes."
+  [wildcard-string-or-regex]
   (let [ch (c/channel)
         regex (if (string? wildcard-string-or-regex)
                 (-> wildcard-string-or-regex (str/replace "*" ".*") Pattern/compile)
@@ -103,7 +122,8 @@
 
 ;;;
 
-(defn probe-result [result]
+(defn probe-result
+  [result]
   (when-not (r/result? result)
     (throw (IllegalArgumentException. "probe-result must be given a result-channel")))
   (reify
@@ -137,7 +157,7 @@
     (str emitter)))
 
 (defn sympathetic-probe-channel
-  "A channel that only lets messages through if 'ch' has downstream nodes."
+  "A channel that only lets messages through if 'ch' has downstream channels."
   [ch]
   (let [receiver-channel (c/channel* :grounded? true)
         receiver (c/receiver-node receiver-channel)

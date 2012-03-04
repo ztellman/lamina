@@ -24,7 +24,7 @@
 
 (defn sum
   "Returns a channel that will periodically emit the sum of all messages emitted by the source
-   channel over the last 'interval' milliseconds.
+   channel over the last 'interval' milliseconds, with a default of 1000.
 
    It is assumed that all numbers emitted by the source channel are integral values."
   ([ch]
@@ -38,12 +38,12 @@
 
 (defn rate
   "Returns a channel that will periodically emit the number of messages emitted by the source
-   channel over the last 'interval' milliseconds."
+   channel over the last 'interval' milliseconds, with a default of 1000."
   ([ch]
      (rate 1000 ch))
   ([interval ch]
      (->> ch
-       (map* (fn [_] 1))
+       (map* (constantly 1))
        (sum interval))))
 
 (defn average

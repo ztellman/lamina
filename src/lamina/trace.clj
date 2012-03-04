@@ -32,6 +32,7 @@
 (import-fn pr/probe-enabled?)
 (import-fn pr/probe-result)
 (import-fn pr/select-probes)
+(import-fn pr/probe-names)
 
 (defmacro trace* [probe & body]
   (let [probe (if (keyword? probe)

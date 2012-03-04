@@ -33,8 +33,8 @@
   (channel* :permanent? true))
 
 (defn channel-pair
-  "Returns a pair of channels, where all messages enqueued into one channel can be received by the other,
-   and vice-versa."
+  "Returns a pair of channels, where all messages enqueued into one channel can
+   be received by the other, and vice-versa."
   []
   (let [a (channel)
         b (channel)]
@@ -51,8 +51,8 @@
 ;;;
 
 (defn on-realized
-  "Allows two callbacks to be registered on a result-channel, one in the case of a value, the other in case of
-   an error.
+  "Allows two callbacks to be registered on a result-channel, one in the case of a
+   value, the other in case of an error.
 
    This often can and should be replaced by a pipeline."
   [result-channel on-success on-error]
@@ -142,13 +142,56 @@
 (import-fn op/partition-every)
 (import-fn op/periodically)
 
-(defmacro split->> [& downstream-channels]
+(defmacro channel->>
+  "Creates a channel, pipes it through the ->> operator, and returns that same
+   channel. This can be useful when defining :probes for an instrumented
+   function, among other places.
+
+   (channel->> (map* inc) (map* dec) (sink println))
+
+   expands to
+
+   (let [ch (channel)]
+     (->> ch (map* inc) (map* dec) (sink println))
+     ch)"
+  [& transforms]
+  (unify-gensyms
+    `(let [ch## (channel)]
+       ~(if (empty? transforms)
+          `ch##
+          `(do
+             (->> ch## ~@transforms)
+             ch##)))))
+
+(defmacro split->>
+  "Returns a channel which will forward each message to all downstream-channels.
+   This can be used with channel->>, siphon->>, and join->> to define complex
+   message flows:
+
+   (join->> (map* inc)
+     (split->>
+       (channel->> (filter* even?) (sink log-even))
+       (channel->> (filter* odd?) (sink log-odd))))"
+  [& downstream-channels]
   `(let [ch# (channel)]
      (doseq [x# ~downstream-channels]
        (siphon ch## x#))
      ch#))
 
-(defmacro siphon->> [& transforms+downstream-channel]
+(defmacro siphon->>
+  "A variant of channel->> where the last argument is assumed to be a channel,
+   and the contents of the transform chain are siphoned into it.
+
+   (siphon->> (map* inc) (map* dec) (named-channel :foo))
+
+   expands to
+
+   (let [ch (channel)]
+     (siphon
+       (->> ch (map* inc) (map* dec))
+       (named-channel :foo))
+     ch)"
+  [& transforms+downstream-channel]
   (let [transforms (butlast transforms+downstream-channel)
         ch (last transforms+downstream-channel)]
     (unify-gensyms
@@ -160,7 +203,20 @@
            ~ch)
          ch##))))
 
-(defmacro join->> [& transforms+downstream-channel]
+(defmacro join->>
+  "A variant of channel->> where the last argument is assumed to be a channel,
+   and the transform chain is joined to it.
+
+   (join->> (map* inc) (map* dec) (named-channel :foo))
+
+   expands to
+
+   (let [ch (channel)]
+     (join
+       (->> ch (map* inc) (map* dec))
+       (named-channel :foo))
+     ch)"
+  [& transforms+downstream-channel]
   (let [transforms (butlast transforms+downstream-channel)
         ch (last transforms+downstream-channel)]
     (unify-gensyms

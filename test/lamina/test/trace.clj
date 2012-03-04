@@ -8,6 +8,7 @@
 
 (ns lamina.test.trace
   (:use
+    [lamina.trace.probe :only (canonical-probe-name)]
     [lamina core executor trace]
     [lamina.test utils]
     [clojure test]))
@@ -33,6 +34,14 @@
 (def exc (executor :name :test-executor))
 
 ;;;
+
+(deftest test-canonical-probe-name
+  (are [x y] (= x (canonical-probe-name y))
+    "a" :a
+    "a" "a"
+    "a:b" :a:b
+    "a:b:c" [:a "b" :c]
+    "a:b:c:1:2:3" [:a [:b "c:1"] [2 3]]))
 
 (defn test-probe [f args options probe-type]
   (let [nm (gensym "name")
