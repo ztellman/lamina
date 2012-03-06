@@ -8,7 +8,6 @@
 
 (ns lamina.test.trace
   (:use
-    [lamina.trace.probe :only (canonical-probe-name)]
     [lamina core executor trace]
     [lamina.test utils]
     [clojure test]))
@@ -116,7 +115,7 @@
   (is (= [2 1 0] (test-capture threaded-countdown 2)))
   (is (= [0] (test-capture semi-silent-countdown 1))))
 
-(def ^:dynamic n 10)
+(def ^{:dynamic true} n 10)
 
 (defn-instrumented unbound-add
   {:executor exc}

@@ -76,7 +76,7 @@
   (l/with-exclusive-lock lock
     (.set closed? true)
     (let [downstream (vals downstream)]
-      (.clear downstream)
+      (.clear ^ConcurrentHashMap downstream)
       downstream)))
 
 (deftype MultiplexingPropagator

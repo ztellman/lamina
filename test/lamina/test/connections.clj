@@ -36,13 +36,19 @@
     (is (thrown? Exception @(c 1 50)))
     (is (= 1 @(c 1 500)))))
 
+(defn safe-deliver [promise val]
+  (try
+    (deliver promise val)
+    (catch Exception e
+      nil)))
+
 (defn test-heartbeat [client-fn]
   (let [latch (promise)
         c (client-fn #(first (delayed-echo-server 100))
             {:heartbeat {:request :a
                          :interval 0
                          :timeout 10
-                         :on-failure (fn [_] (deliver latch true))}})]
+                         :on-failure (fn [_] (safe-deliver latch true))}})]
     (is (= true @latch))
     (close-connection c))
   (let [latch (promise)
@@ -50,7 +56,7 @@
             {:heartbeat {:request :a
                          :interval 0
                          :response-validator #(= % :b)
-                         :on-failure (fn [_] (deliver latch true))}})]
+                         :on-failure (fn [_] (safe-deliver latch true))}})]
     (is (= true @latch))
     (close-connection c)))
 

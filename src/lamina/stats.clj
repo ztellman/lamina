@@ -130,7 +130,7 @@
   ([facet ch]
      (outliers facet (t/minutes 5) ch))
   ([facet window ch]
-     (outliers facet window #(< 3 (Math/abs %)) ch))
+     (outliers facet window #(< 3 (Math/abs (double %))) ch))
   ([facet window deviation-predicate ch]
      (let [f (atom nil)
            avg (avg/moving-average (t/seconds 5) window)

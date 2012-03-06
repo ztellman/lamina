@@ -26,6 +26,7 @@
 (import-macro u/with-instrumented-pipelines)
 (import-macro u/with-instrumentation)
 
+(import-fn pr/canonical-probe-name)
 (import-fn pr/probe-channel)
 (import-fn pr/error-probe-channel)
 (import-fn pr/sympathetic-probe-channel)

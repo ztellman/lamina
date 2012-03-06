@@ -17,8 +17,8 @@
 
 (deftype Counter [^double sum ^long cnt])
 
-(defn update-count [^Counter counter ^double val]
-  (Counter. (+ (.sum counter) val) (inc (.cnt counter))))
+(defn update-count [^Counter counter val]
+  (Counter. (double (+ (.sum counter) (double val))) (inc (.cnt counter))))
 
 (deftype MovingAverage
   [^{:volatile-mutable true} initialized?
@@ -40,17 +40,17 @@
           r*  (/ sum interval (max 1 cnt))]
       (if initialized?
         (let [r rate]
-          (set! rate (+ r (* alpha (- r* r)))))
+          (set! rate (double (+ r (* alpha (- r* r))))))
         (do
           (set! initialized? true)
-          (set! rate r*)))
+          (set! rate (double r*))))
       (* interval rate))))
 
 (defn moving-average [interval window]
   (let [alpha (- 1 (Math/exp (/ (- interval) window)))]
     (MovingAverage.
       false
-      0
-      (AtomicReference. (Counter. 0 0))
-      alpha
-      (* interval 1e6))))
+      (double 0.0)
+      (AtomicReference. (Counter. (double 0.0) 0))
+      (double alpha)
+      (double (* interval 1e6)))))
