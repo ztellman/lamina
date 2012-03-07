@@ -145,15 +145,15 @@
 (deftest test-recur
   (is= [0 1 2]
     (for [x (range 3)] (task* x)))
-  (is= (range 100)
+  (is= (range 50)
     ((fn [x]
-       (if (= 100 (count x))
+       (if (= 50 (count x))
 	 x
 	 (recur (task* (conj x (count x))))))
      []))
-  (is= (range 100)
+  (is= (range 50)
     (loop [i 0 accum []]
-      (if (< 99 i)
+      (if (< 49 i)
 	accum
 	(recur (inc i) (conj accum i)))))
   (is= 4

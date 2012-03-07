@@ -92,6 +92,7 @@
     (if (empty? dependencies)
       expr*
       `(run-pipeline nil
+         :error-handler (fn [_#])
 	 ~@(map
 	     (fn [v] `(read-merge (constantly ~v) (constantly nil)))
 	     dependencies)

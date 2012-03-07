@@ -434,7 +434,7 @@
     (let [ch (channel)
 	  ch* (partition-all* 4 3 ch)]
       (async-enqueue ch s false)
-      (is (= (partition-all 4 3 s) (channel-seq ch* 2500)))
+      (is (= (partition-all 4 3 s) (channel-seq ch* 5000)))
       (is (drained? ch))
       (is (drained? ch*)))))
 
