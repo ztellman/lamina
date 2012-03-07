@@ -42,7 +42,10 @@
       read-channel
       #(when-not (drained? b)
 	 (enqueue b %))
-      (fn [_] (restart)))
+      (fn [_]
+        (if (drained? b)
+          (do (close a) (close b))
+          (restart))))
     [a #(do (close a) (close b))]))
 
 (defn error-server []
