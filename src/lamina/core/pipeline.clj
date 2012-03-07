@@ -323,7 +323,7 @@
      (read-channel ch -1))
   ([ch timeout]
      (if (drained? ch)
-       (throw (Exception. "Cannot read from a drained channel."))
+       (success-result nil)
        (let [msg (dequeue ch ::none)]
 	 (if-not (= ::none msg)
 	   (success-result msg)
