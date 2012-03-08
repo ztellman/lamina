@@ -413,38 +413,50 @@
         ary (object-array cnt)
         combined-result (result-channel)]
     (loop [idx 0, results results]
+
       (if (empty? results)
+
+        ;; no further results, decrement the counter one last time
+        ;; and mark the success if everything else has been realized
         (do
           (when (zero? (.decrementAndGet counter))
             (success combined-result (seq ary)))
           combined-result)
+        
         (let [r (first results)]
           (if-not (result? r)
+
+            ;; not a result - set, decrement, and recur
             (do
               (aset ary idx r)
               (.decrementAndGet counter)
               (recur (inc idx) (rest results)))
+
+            
             (case (result r)
-             :error
-             r
-            
-             :success
-             (do
-               (aset ary idx (success-value r nil))
-               (.decrementAndGet counter)
-               (recur (inc idx) (rest results)))
-            
-             nil
-             (do
-               (subscribe r
-                 (result-callback
-                   (fn [val]
-                     (aset ary idx val)
-                     (when (zero? (.decrementAndGet counter))
-                       (success combined-result (seq ary))))
-                   (fn [err]
-                     (error combined-result err))))
-               (recur (inc idx) (rest results))))))))))
+
+              ;; just return the error
+              :error
+              r
+
+              ;; resolved - set, decrement, and recur
+              :success
+              (do
+                (aset ary idx (success-value r nil))
+                (.decrementAndGet counter)
+                (recur (inc idx) (rest results)))
+
+              ;; unrealized - subscribe and recur
+              (do
+                (subscribe r
+                  (result-callback
+                    (fn [val]
+                      (aset ary idx val)
+                      (when (zero? (.decrementAndGet counter))
+                        (success combined-result (seq ary))))
+                    (fn [err]
+                      (error combined-result err))))
+                (recur (inc idx) (rest results))))))))))
 
 ;;;
 
