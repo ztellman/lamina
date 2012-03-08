@@ -21,6 +21,8 @@
     [java.util.concurrent
      ConcurrentLinkedQueue
      CountDownLatch]
+    [java.util.concurrent.atomic
+     AtomicInteger]
     [java.util
      ArrayList
      LinkedList]
@@ -402,6 +404,47 @@
      (let [result (result-channel)]
        (t/delay-invoke interval #(success result value))
        result)))
+
+(defn merge-results
+  "something goes here"
+  [& results]
+  (let [cnt (count results)
+        counter (AtomicInteger. (inc cnt))
+        ary (object-array cnt)
+        combined-result (result-channel)]
+    (loop [idx 0, results results]
+      (if (empty? results)
+        (do
+          (when (zero? (.decrementAndGet counter))
+            (success combined-result (seq ary)))
+          combined-result)
+        (let [r (first results)]
+          (if-not (result? r)
+            (do
+              (aset ary idx r)
+              (.decrementAndGet counter)
+              (recur (inc idx) (rest results)))
+            (case (result r)
+             :error
+             r
+            
+             :success
+             (do
+               (aset ary idx (success-value r nil))
+               (.decrementAndGet counter)
+               (recur (inc idx) (rest results)))
+            
+             nil
+             (do
+               (subscribe r
+                 (result-callback
+                   (fn [val]
+                     (aset ary idx val)
+                     (when (zero? (.decrementAndGet counter))
+                       (success combined-result (seq ary))))
+                   (fn [err]
+                     (error combined-result err))))
+               (recur (inc idx) (rest results))))))))))
 
 ;;;
 

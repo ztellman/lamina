@@ -54,32 +54,32 @@
                    expected)
         trans-f* #(dosync (f* %))]
 
-    ;; pre-populated non-transactional channel
-    (dotimes [_ n]
-      (let [ch (channel* :messages input)]
-       (close ch)
-       (is (= expected (result f* ch))))
-      (tick))
+    (testing "pre-populated non-transactional channel"
+      (dotimes [_ n]
+        (let [ch (channel* :messages input)]
+          (close ch)
+          (is (= expected (result f* ch))))
+        (tick)))
 
-    ;; async enqueue into non-transactional channel
-    (dotimes [_ n]
-      (let [ch (channel)]
-       (async-enqueue false ch input)
-       (is (= expected (result f* ch))))
-      (tick))
+    (testing "async enqueue into non-transactional channel"
+      (dotimes [_ n]
+        (let [ch (channel)]
+          (async-enqueue false ch input)
+          (is (= expected (result f* ch))))
+        (tick)))
 
-    ;; pre-populated transactional channel
-    (dotimes [_ n]
-      (let [ch (channel* :transactional? true :messages input)]
-       (dosync (close ch))
-       (is (= expected (result trans-f* ch))))
-     (tick))
+    (testing "pre-populated transactional channel"
+      (dotimes [_ n]
+        (let [ch (channel* :transactional? true :messages input)]
+          (dosync (close ch))
+          (is (= expected (result trans-f* ch))))
+        (tick)))
 
-    ;; async enqueue into transactional channel
-    (dotimes [_ n] (let [ch (channel* :transactional? true)]
-       (async-enqueue true ch input)
-       (is (= expected (result trans-f* ch))))
-     (tick))
+    (testing "async enqueue into transactional channel"
+      (dotimes [_ n] (let [ch (channel* :transactional? true)]
+                       (async-enqueue true ch input)
+                       (is (= expected (result trans-f* ch))))
+        (tick)))
 
     true))
 

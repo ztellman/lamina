@@ -20,7 +20,11 @@
     [lamina.core.lock
      Lock]
     [java.util.concurrent
-     ConcurrentLinkedQueue])) 
+     ConcurrentLinkedQueue]
+    [java.util.concurrent.atomic
+     AtomicReferenceArray]
+    [java.math
+     BigInteger])) 
 
 (set! *warn-on-reflection* true)
 
@@ -162,11 +166,12 @@
 ;;;
 
 (defn receive-in-order
-  "Consumes messages from the source channel, passing them to 'f' one at a time.  If 'f' returns
-   a result-channel, consumption of the next message is deferred until it's realized.
+  "Consumes messages from the source channel, passing them to 'f' one at a time.  If
+   'f' returns a result-channel, consumption of the next message is deferred until
+   it's realized.
 
-   If an exception is thrown or the return result is realized as an error, the source channel is put
-   into an error state."
+   If an exception is thrown or the return result is realized as an error, the source
+   channel is put into an error state."
   [ch f]
   (consume ch
     :channel nil
@@ -177,9 +182,15 @@
                 (f x)))
     :description "receive-in-order"))
 
+(defn emit-in-order
+  "Returns a channel that emits messages one at a time."
+  [ch]
+  (consume ch
+    :description "emit-in-order"))
+
 (defn last*
-  "A dual to last.  Returns a result-channel that emits the final message from the source channel
-   before it was closed.
+  "A dual to last.  Returns a result that is realized as the final message from the
+   source channel before it was closed.
 
    (last* (closed-channel 3 2 1)) => 1"
   [ch]
@@ -234,8 +245,8 @@
        :map (fn [v _] v))))
 
 (defn reduce*
-  "A dual to reduce.  Returns a result-channel that emits the final reduced value when the source
-   channel has been drained.
+  "A dual to reduce.  Returns a result-channel that emits the final reduced value
+   when the source channel has been drained.
 
    (reduce* max (channel 1 3 2)) => 3"
   ([f ch]
@@ -301,13 +312,13 @@
       (cons msg (lazy-seq (lazy-channel-seq- read-fn cleanup-fn))))))
 
 (defn lazy-channel-seq
-  "Returns a sequence.  As elements of the sequence are realized, messages from the source
-   channel are consumed.  If there are no messages are available to be consumed, execution will
-   block until one is available.
+  "Returns a sequence.  As elements of the sequence are realized, messages from the
+   source channel are consumed.  If there are no messages are available to be
+   consumed, execution will block until one is available.
 
-   A 'timeout' can be defined, either as a number or a no-arg function that returns a number.  Each
-   time the seq must wait for a message to consume, it will only wait that many milliseconds before
-   giving up and ending the sequence."
+   A 'timeout' can be defined, either as a number or a no-arg function that returns a
+   number.  Each time the seq must wait for a message to consume, it will only wait
+   that many milliseconds before giving up and ending the sequence."
   ([ch]
      (lazy-channel-seq ch nil))
   ([ch timeout]
@@ -325,8 +336,8 @@
          (throw (IllegalStateException. "Can't consume, channel already in use."))))))
 
 (defn channel-seq
-  "An eager variant of lazy-channel-seq.  Blocks until the channel has been drained, or until 'timeout'
-   milliseconds have elapsed."
+  "An eager variant of lazy-channel-seq.  Blocks until the channel has been drained,
+   or until 'timeout' milliseconds have elapsed."
   ([ch]
      (g/drain (emitter-node ch)))
   ([ch timeout]
@@ -358,8 +369,8 @@
   (->> ch (map* f) concat*))
 
 (defn periodically
-  "Returns a channel.  Every 'interval' milliseconds, 'f' is invoked with no arguments and the value is emitted
-   as a message."
+  "Returns a channel.  Every 'interval' milliseconds, 'f' is invoked with no arguments
+   and the value is emitted as a message."
   [interval f]
   (let [ch (channel* :description (str "periodically " (describe-fn f)))]
     (p/run-pipeline (System/currentTimeMillis)
@@ -380,8 +391,8 @@
     ch))
 
 (defn sample-every
-  "Takes a source channel, and returns a channel that emits the most recent message from the source channel every
-   'interval' milliseconds."
+  "Takes a source channel, and returns a channel that emits the most recent message
+   from the source channel every 'interval' milliseconds."
   [interval ch]
   (let [val (atom ::none)
         ch* (mimic ch)]
@@ -394,8 +405,8 @@
     ch*))
 
 (defn partition-every
-  "Takes a source channel, and returns a channel that repeatedly emits a collection of all messages from the source
-   channel in the last 'interval' milliseconds."
+  "Takes a source channel, and returns a channel that repeatedly emits a collection
+   of all messages from the source channel in the last 'interval' milliseconds."
   [interval ch]
   (let [q (ConcurrentLinkedQueue.)
         drain (fn []
@@ -410,3 +421,51 @@
     (siphon (periodically interval drain) ch*)
     ch*))
 
+;;;
+
+(defn create-bitset [n]
+  (reduce
+    #(.setBit ^BigInteger %1 %2)
+    (BigInteger/valueOf 0)
+    (range n)))
+
+(defn unset-bit [^BigInteger b idx]
+  (when b
+    (let [b (.clearBit b idx)]
+      (when-not (zero? (.bitCount b))
+        b))))
+
+(defn combine-latest
+  "something goes here"
+  [f & channels]
+  (let [cnt (count channels)
+        bitset (atom (create-bitset cnt))
+        vals (AtomicReferenceArray. cnt)
+        ch* (channel* :description "combine-latest")]
+
+    (doseq [[idx ch] (map vector (range cnt) channels)]
+      (bridge-join ch nil
+        (fn [msg]
+          (.set vals idx msg)
+
+          (if-not (and @bitset (swap! bitset unset-bit idx))
+
+            :lamina/incomplete
+            
+            ;; copy value array into argument array
+            (let [ary (object-array cnt)]
+              (dotimes [i idx]
+                (aset ary i (.get vals i)))
+              (aset ary idx msg)
+              (dotimes [j (- cnt idx)]
+                (let [i (+ j idx)]
+                  (aset ary i (.get vals i))))
+
+              ;; pass along updated evaluation
+              (try
+                (enqueue ch* (apply f ary))
+                (catch Exception e
+                  (error ch* e))))))
+        ch*))
+
+    ch*))

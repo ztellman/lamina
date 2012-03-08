@@ -24,7 +24,7 @@
 
 (set! *warn-on-reflection* true)
 
-(defn contract-pool-size [^ThreadPoolExecutor pool]
+(defn contract-pool-size [^ThreadPoolExecutor pool min-thread-count]
   (let [active (.getActiveCount pool)
         pool-size (.getPoolSize pool)]
     (if (< active pool-size)
@@ -36,10 +36,12 @@
     (when (= pool-size active)
       (.setCorePoolSize pool (min max-thread-count (inc active))))))
 
-(defn periodically-contract-pool-size [^ThreadPoolExecutor pool interval]
+(defn periodically-contract-pool-size [^ThreadPoolExecutor pool min-thread-count interval]
   (when-not (.isShutdown pool)
-    (contract-pool-size pool)
-    (delay-invoke interval #(periodically-contract-pool-size pool))))
+    (contract-pool-size pool min-thread-count)
+    (delay-invoke
+      interval
+      #(periodically-contract-pool-size pool min-thread-count interval))))
 
 (defn executor
   "Defines a thread pool that can be used with instrument and defn-instrumented.
@@ -47,10 +49,12 @@
    more goes here"
   [& {:keys [idle-timeout
              min-thread-count
-             max-thread-count]
+             max-thread-count
+             interrupt?]
       :or {idle-timeout 60000
            min-thread-count 1
-           max-thread-count Integer/MAX_VALUE}
+           max-thread-count Integer/MAX_VALUE
+           interrupt? true}
       :as options}]
   (when-not (contains? options :name)
     (throw (IllegalArgumentException. "Every executor must have a :name specified.")))
@@ -67,14 +71,18 @@
                     (doto
                       (Thread. f)
                       (.setName (str nm "-" (swap! cnt inc)))))))]
-    (periodically-contract-pool-size pool (* idle-timeout 1000))
+
+    (periodically-contract-pool-size pool min-thread-count (* idle-timeout 1000))
+
     (reify
+
       clojure.lang.IDeref
       (deref [_]
         {:completed-tasks (.getCompletedTaskCount pool)
          :pending-tasks (- (.getTaskCount pool) (.getCompletedTaskCount pool))
          :active-threads (.getActiveCount pool)
          :num-threads (.getPoolSize pool)})
+
       IExecutor
       (shutdown [_]
         (.shutdown pool))
@@ -82,16 +90,24 @@
         (let [result (if timeout
                        (r/expiring-result timeout)
                        (r/result-channel))
+              complete? (when interrupt? (atom false))
               f (fn []
-                  (when timeout
+
+                  ;; set up the thread interruption
+                  (when (and interrupt? timeout)
                     (let [thread (Thread/currentThread)]
                       (r/subscribe result
                         (r/result-callback
                           (fn [_])
                           (fn [ex]
-                            (when (= :lamina/timeout! ex)
+                            (when (and (identical? :lamina/timeout! ex)
+                                    (compare-and-set! complete? false true))
                               (.interrupt thread)))))))
+
+                  ;; mark the entry
                   (when timer (t/mark-enter timer))
+
+                  ;; run the task
                   (context/with-context (context/assoc-context :timer timer)
                     (p/run-pipeline nil
                       {:error-handler #(when timer (t/mark-error timer %))
@@ -100,7 +116,14 @@
                         (f))
                       (fn [x]
                         (when timer (t/mark-return timer x)) 
-                        x))))]
+                        x)))
+
+                  ;; mark completion so we don't try to interrupt another task,
+                  ;; and reset interrupt status
+                  (when interrupt?
+                    (reset! complete? true)
+                    (Thread/interrupted)))]
+          
           (expand-pool-size pool max-thread-count)
           (.execute pool f)
           result)))))

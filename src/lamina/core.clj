@@ -47,6 +47,7 @@
 (import-fn r/success)
 (import-fn r/success-result)
 (import-fn r/error-result)
+(import-fn r/merge-results)
 
 ;;;
 
@@ -126,6 +127,8 @@
 (import-macro p/wait-stage)
 
 (import-fn ch/multiplexer)
+(import-fn op/combine-latest)
+
 (import-macro op/consume)
 (import-fn ch/map*)
 (import-fn ch/filter*)
