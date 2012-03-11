@@ -88,12 +88,16 @@
    error
    ;; queue info
    queue 
-   read?
+   ^boolean read?
    ;; special node states
-   transactional?
-   permanent?])
+   ^boolean transactional?
+   ^boolean permanent?])
 
-(defmacro set-state! [this state-val & key-vals]
+(defmacro set-state! [this state-val &
+                      {:or {read? false
+                            transactional? false
+                            permanent? false}
+                       :as key-vals}]
   `(let [val# (assoc-record ~state-val ~@key-vals)]
      (set-state ~this val#)
      val#))
@@ -103,7 +107,7 @@
 (defmacro enqueue-and-release [lock state msg persist?]
   `(if-let [q# (.queue ~state)]
      (do
-       (q/enqueue q# ~msg true #(l/release ~lock))
+       (q/enqueue q# ~msg ~persist? #(l/release ~lock))
        :lamina/enqueued)
      (l/release ~lock)))
 
@@ -189,7 +193,7 @@
   [^AsymmetricLock lock
    operator
    description
-   grounded?
+   ^boolean grounded?
    ^{:volatile-mutable true :tag NodeState} state
    ^Map cancellations
    ^CopyOnWriteArrayList edges
@@ -325,7 +329,7 @@
   ;;
   (transactional [this]
 
-    ;; most often this will already have been done, but it's idempotent
+    ;; most often this will already have been done, but a second acquisition is okay
     (l/acquire-exclusive this)
     (let [s state]
       (if (.transactional? s)
@@ -344,16 +348,20 @@
             ;; acquire children before releasing our own lock (hand-over-hand locking)
             ;; if we are interrupted while acquiring the children, make sure we release
             ;; our own lock
-            (when (try
-                    (->> downstream (filter node?) (l/acquire-all true))
-                    true
-                    (finally
-                      (l/release-exclusive this)))
-
-              ;; lather, rinse, recur
-              (doseq [n downstream]
-                (transactional n))
-              true))))))
+            (let [downstream-nodes (filter node? downstream)]
+              (when (try
+                      (l/acquire-all true downstream-nodes)
+                      true
+                      (finally
+                        (l/release-exclusive this)))
+                
+                ;; lather, rinse, recur
+                (try
+                  (doseq [n downstream]
+                    (transactional n))
+                  (finally
+                    (l/release-all true downstream-nodes)
+                    true)))))))))
 
   INode
 
@@ -783,6 +791,7 @@
                   (if ~transactional?
                     (q/transactional-queue messages#)
                     (q/queue messages#)))
+         :read? false
          :permanent? ~permanent?
          :transactional? ~transactional?)
        (Collections/synchronizedMap (HashMap.))
