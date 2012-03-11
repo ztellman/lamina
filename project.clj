@@ -12,7 +12,6 @@
                      [useful "0.7.3"]
                      [potemkin "0.1.2-SNAPSHOT"]]
                "1.2" [[org.clojure/clojure "1.2.1"]]
-               "1.4a" [[org.clojure/clojure "1.4.0-alpha4"]]
                "1.4s" [[org.clojure/clojure "1.4.0-master-SNAPSHOT"]]
                }
   :dev-dependencies [[criterium "0.2.1-SNAPSHOT"]
