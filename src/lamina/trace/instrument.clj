@@ -23,7 +23,11 @@
   `(do
      (when (probe-enabled? ~enter-probe)
        (enqueue ~enter-probe (Enter. (System/currentTimeMillis) ~args)))
-     (let [timer# (t/enqueued-timer ~nm ~args ~return-probe nil ~implicit?)]
+     (let [timer# (t/enqueued-timer
+                    :description ~nm
+                    :args ~args
+                    :return-probe ~return-probe
+                    :implicit? ~implicit?)]
        (ex/execute ~executor timer#
          (~(if with-bindings? `bound-fn `fn) [] ~invoke)
          ~(when timeout `(when ~timeout (~timeout ~args)))))))
@@ -64,7 +68,11 @@
   `(do
      (when (probe-enabled? ~enter-probe)
        (enqueue ~enter-probe (Enter. (System/currentTimeMillis) ~args)))
-     (let [timer# (t/timer ~nm ~args ~return-probe nil ~implicit?)]
+     (let [timer# (t/timer
+                    :description ~nm
+                    :args ~args
+                    :return-probe ~return-probe
+                    :implicit? ~implicit?)]
        (context/with-context (context/assoc-context :timer timer#)
          (try
            (let [result# ~invoke]

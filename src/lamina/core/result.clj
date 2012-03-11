@@ -418,9 +418,8 @@
 
         ;; no further results, decrement the counter one last time
         ;; and mark the success if everything else has been realized
-        (do
-          (when (zero? (.decrementAndGet counter))
-            (success combined-result (seq ary)))
+        (if (zero? (.decrementAndGet counter))
+          (success-result (seq ary))
           combined-result)
         
         (let [r (first results)]

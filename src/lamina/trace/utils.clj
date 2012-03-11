@@ -3,21 +3,10 @@
     [lamina.core])
   (:require
     [lamina.trace.probe :as pr]
-    [lamina.trace.pipeline :as p]
     [lamina.trace.timer :as t]
     [lamina.core.context :as context])
   (:import
     [java.io Writer]))
-
-(defmacro with-instrumented-pipelines
-  "Returns detailed data for all pipelines executed within the scope."
-  [& body]
-  `(let [tracer# (p/root-pipeline-tracer nil nil)]
-     (context/with-context (context/assoc-context :pipeline-tracer tracer#)
-       @(run-pipeline nil
-          (fn [_#]
-            ~@body)))
-     (-> @tracer# :sub-tasks first :sub-tasks)))
 
 ;; factored out into functions to aid JIT
 (defn print-timing-result [r]
@@ -31,7 +20,10 @@
 
 (defn capture-timings
   [description probe-channel f]
-  (let [timer (t/timer description nil probe-channel probe-channel false)
+  (let [timer (t/timer
+                :description description
+                :return-probe probe-channel
+                :error-probe probe-channel)
         unwrap? (atom true)
         result (context/with-context (context/assoc-context :timer timer)
                  (run-pipeline nil

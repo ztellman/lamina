@@ -12,14 +12,11 @@
     [lamina.core.utils :only (description)])
   (:require
     [lamina.trace.timer :as t]
-    [lamina.trace.pipeline :as tr]
     [lamina.core.result :as r]
     [lamina.executor.utils :as ex]
     [lamina.core.context :as context]
     [clojure.tools.logging :as log])
   (:import
-    [lamina.trace.pipeline
-     PipelineTracer]
     [lamina.core.result
      ResultChannel
      SuccessResult
@@ -32,10 +29,10 @@
 (deftype Redirect [pipeline value])
 
 (defprotocol IPipeline
-  (gen-tracer [_ parent])
-  (run [_ result initial-value value step])
-  (trace-run [_ result initial-value value step tracer])
-  (error [_ result initial-value ex tracer]))
+  (implicit? [_])
+  (gen-timer [_ stage])
+  (run [_ result initial-value value stage])
+  (error [_ result initial-value ex]))
  
 (defn redirect
   "If returned from a pipeline stage, redirects the pipeline flow to the beginning
@@ -51,21 +48,16 @@
 
 ;;;
 
-(defn redirect-tracer [^PipelineTracer tracer pipeline value]
-  (when tracer
-    (let [tracer* (gen-tracer pipeline value)]
-      (tr/mark-redirect tracer tracer*)
-      tracer*)))
-
-(defn resume-pipeline [pipeline result initial-value value step tracer]
+(defn resume-pipeline [pipeline result initial-value value stage]
   (loop [pipeline pipeline
          initial-value initial-value
          value value
-         step step
-         ^PipelineTracer tracer tracer]
-    (let [val (if tracer
-                (trace-run pipeline result initial-value value step tracer)
-                (run pipeline result initial-value value step))]
+         stage stage]
+    
+    (let [timer (gen-timer pipeline stage)
+          val (run pipeline result initial-value value stage)]
+      (when timer
+        (t/mark-return timer nil))
       (if (instance? Redirect val)
         (let [^Redirect redirect val
               value (if (identical? ::initial (.value redirect))
@@ -74,26 +66,30 @@
               pipeline (if (identical? ::current (.pipeline redirect))
                          pipeline
                          (.pipeline redirect))]
-          (recur pipeline value value 0 (redirect-tracer tracer pipeline value)))
+          (recur pipeline value value 0))
         val))))
 
-(defn start-pipeline [pipeline result value tracer]
-  (let [tracer (or tracer
-                 (when-let [^PipelineTracer parent (context/pipeline-tracer)]
-                   (gen-tracer pipeline parent)))]
-    (if tracer
-      (context/with-context (context/assoc-context :pipeline-tracer tracer)
-        (resume-pipeline pipeline result value value 0 tracer))
-      (resume-pipeline pipeline result value value 0 tracer))))
+(defn start-pipeline [pipeline result value]
+  (if-let [timer (gen-timer pipeline -1)]
+    (context/with-context (context/assoc-context :timer timer)
+      (resume-pipeline pipeline result value value 0))
+    (resume-pipeline pipeline result value value 0)))
 
-(defn handle-redirect [^Redirect redirect result current-pipeline initial-value tracer]
+(defn handle-redirect [^Redirect redirect result current-pipeline initial-value]
   (let [value (if (identical? ::initial (.value redirect))
                 initial-value
                 (.value redirect))
         pipeline (if (identical? ::current (.pipeline redirect))
                    current-pipeline
                    (.pipeline redirect))]
-    (start-pipeline pipeline result value (redirect-tracer tracer pipeline value))))
+
+    ;; close out the current timer, if there is one
+    (when (implicit? current-pipeline)
+      (when-let [timer (context/timer)]
+        (t/mark-return timer nil)))
+
+    ;; start up the new pipeline
+    (start-pipeline pipeline result value)))
 
 (defn subscribe [pipeline result initial-val val fn-transform idx]
   (let [new-result? (nil? result)
@@ -106,42 +102,22 @@
           (fn-transform
             (fn [val]
               (context/with-context ctx
-                (resume-pipeline pipeline result initial-val val idx nil))))
+                (resume-pipeline pipeline result initial-val val idx))))
           (fn-transform
             (fn [err]
               (context/with-context ctx
-                (error pipeline result initial-val err nil))))))
+                (error pipeline result initial-val err))))))
       
       ;; no context, so don't bother
       (r/subscribe val
         (r/result-callback
           (fn-transform
             (fn [val]
-              (resume-pipeline pipeline result initial-val val idx nil)))
+              (resume-pipeline pipeline result initial-val val idx)))
           (fn-transform
             (fn [err]
-              (error pipeline result initial-val err nil))))))
+              (error pipeline result initial-val err))))))
 
-    (if new-result?
-      result
-      :lamina/suspended)))
-
-(defn trace-subscribe [pipeline result initial-val val tracer fn-transform idx]
-  (let [new-result? (nil? result)
-        result (or result (r/result-channel))
-        ctx (context/context)]
-    (tr/mark-enter tracer idx)
-    (r/subscribe val
-      (r/result-callback
-        (fn-transform
-          (fn [val]
-            (context/with-context ctx
-              (resume-pipeline pipeline result initial-val val idx tracer))))
-        (fn-transform
-          (fn [err]
-            (context/with-context ctx
-              (tr/mark-error tracer idx err)
-              (error pipeline result initial-val err tracer))))))
     (if new-result?
       result
       :lamina/suspended)))
@@ -167,17 +143,17 @@
 ;; this is a Duff's device-ish unrolling of the pipeline, the resulting code
 ;; will end up looking something like:
 ;;
-;; (case step
-;;   0   (steps 0 to 2 and recur to 3)
-;;   1   (steps 1 to 3 and recur to 4)
+;; (case stage
+;;   0   (stages 0 to 2 and recur to 3)
+;;   1   (stages 1 to 3 and recur to 4)
 ;;   ...
-;;   n-2 (steps n-2 to n and return)
-;;   n-1 (steps n-1 to n and return)
-;;   n   (step n and return))
+;;   n-2 (stages n-2 to n and return)
+;;   n-1 (stages n-1 to n and return)
+;;   n   (stage n and return))
 ;;
-;;  the longer the pipeline, the fewer steps per clause, since the JVM doesn't
-;;  like big functions.  Currently at eight or more steps, each clause only handles
-;;  a single step. 
+;;  the longer the pipeline, the fewer stages per clause, since the JVM doesn't
+;;  like big functions.  Currently at eight or more stages, each clause only handles
+;;  a single stage. 
 (defn- unwind-stages [idx stages remaining subscribe-expr]
   `(cond
        
@@ -222,7 +198,7 @@
     ;; pipeline error-handler
     (let [[opts stages] (split-options (rest error-handler) form-meta)]
       (unify-gensyms
-        `(error [this# result## initial-value# ex# tracer#]
+        `(error [this# result## initial-value# ex#]
            (let [result## (or result## (r/result-channel))
                  p# (pipeline
                       ~(merge {:error-handler `(fn [_#])} opts {:result `result##})
@@ -230,102 +206,92 @@
                       (fn [value#]
                         (let [value# (~(last stages) value#)]
                           (if (instance? Redirect value#)
-                            (handle-redirect value# result## this# initial-value# tracer#)
+                            (handle-redirect value# result## this# initial-value#)
                             (r/error-result ex#)))))]
              (p# ex#)
              result##))))
 
     ;; function error-handler
-    `(error [this# result# initial-value# ex# tracer#]
+    `(error [this# result# initial-value# ex#]
        (let [value# (~error-handler ex#)]
          (if (instance? Redirect value#)
-           (handle-redirect value# result# this# initial-value# tracer#)
+           (handle-redirect value# result# this# initial-value#)
            (if result#
              (r/error result# ex#)
              (r/error-result ex#)))))))
 
 (defmacro pipeline [& opts+stages]
   (let [[options stages] (split-options opts+stages (meta &form))
-        {:keys [result error-handler timeout executor with-bindings?]} options
+        {:keys [result
+                error-handler
+                timeout
+                executor
+                with-bindings?
+                description
+                implicit?]
+         :or {description "pipeline"
+              implicit? false}}
+        options
         len (count stages)
         depth (max-depth len)
         location (str (ns-name *ns*) ", line " (:line (meta &form)))
         fn-transform (gensym "fn-transform")
-        expand-subscribe (fn [idx] `(subscribe this## result## initial-val## val## ~fn-transform ~idx))
-        expand-trace-subscribe (fn [idx] `(trace-subscribe this## result## initial-val## val## tracer## ~fn-transform ~idx))]
+        expand-subscribe (fn [idx] `(subscribe this## result## initial-val## val## ~fn-transform ~idx))]
 
     `(let [executor# ~executor
            fn-transform# identity
            fn-transform# (if executor#
-                           (fn [f#] (fn [x#] (ex/execute executor# nil #(f# x#) nil)))
+                           (fn [f#] (fn [x#] (ex/execute executor# nil #(f# x#) ~(when implicit? `(context/timer)))))
                            fn-transform#)
            fn-transform# (if ~with-bindings?
                            (comp bound-fn* fn-transform#)
                            fn-transform#)
            ~fn-transform fn-transform#]
        (reify IPipeline
-         
-         (gen-tracer [_ parent#]
-           (tr/pipeline-tracer "pipeline" ~len parent#))
-         
+
+         (implicit? [_#]
+           implicit?)
+
          ~(unify-gensyms
-            `(trace-run [this## result## initial-val## val# step# tracer##]
-               
-               (if-not (or (identical? nil result##)
-                         (identical? nil (r/result result##)))
-                 
-                 ;; if the result is already realized, skip to the end in the tracing
-                 (case (r/result result##)
-                   :success (tr/mark-return tracer## ~len (r/success-value result## nil))
-                   :error (tr/mark-error tracer## ~len (r/error-value result## nil)))
-                 
-                 ;; not already realized
-                 (let [cnt# (atom 0)]
-                   (try
-                    (loop [val## val# step## (long step#)]
-                     
-                      ;; we need to know the step if an exception is thrown
-                      (reset! cnt# step##)
-                     
-                      ;; only mark the step complete if the value is completely
-                      ;; realized and not a redirect
-                      (when (and
-                              (not (instance? Redirect val##))
-                              (not (r/result? val##)))
-                        (tr/mark-return tracer## step## val##))
-                     
-                      ;; only unwind a single step at a time
-                      (case (int step##)
-                        ~@(interleave
-                            (iterate inc 0)
-                            (map
-                              #(unwind-stages % (drop % stages) 0 expand-trace-subscribe)
-                              (range (inc len))))))
-                    (catch Exception ex#
-                      (tr/mark-error tracer## @cnt# ex#)
-                      (error this## result## initial-val## ex# tracer##)))))))
-       
+            `(gen-timer [_# stage##]
+               ~(cond
+                  (not implicit?) `nil
+                  executor `(when (context/timer)
+                              (if (neg? stage##)
+                                (t/timer
+                                  :description ~description
+                                  :implicit? true)
+                                (t/enqueued-timer
+                                  :description ~description
+                                  :implicit? true
+                                  :start-stage stage##)))
+                  :else `(when (context/timer)
+                           (t/timer
+                             :description ~description
+                             :implicit? true
+                             :start-stage stage##)))))
+         
         ~(unify-gensyms
-           `(run [this## result## initial-val## val# step#]
+           `(run [this## result## initial-val## val# stage#]
 
               ;; if the result is already realized, stop now
               (when (or (identical? nil result##)
                       (identical? nil (r/result result##)))
                 (try
-                  ;; unwind the steps
-                  (loop [val## val# step## (long step#)]
-                    (case (int step##)
+                  ;; unwind the stages
+                  (loop [val## val# stage## (long stage#)]
+                    (case (int stage##)
                       ~@(interleave
                           (iterate inc 0)
                           (map
                             #(unwind-stages % (drop % stages) depth expand-subscribe)
                             (range (inc len))))))
                   (catch Exception ex#
-                    (error this## result## initial-val## ex# nil))))))
+                    (error this## result## initial-val## ex#))))))
        
         ~(if error-handler
            (complex-error-handler error-handler (meta &form))
-           `(error [_# result# _# ex# _#]
+           `(error [_# result# _# ex#]
               (when-not ~(contains? options :error-handler)
                 (log/error ex# (str "Unhandled exception in pipeline at " ~location)))
               (if result#
@@ -338,19 +304,19 @@
               ~(cond
                  (and timeout (not result))
                  `(let [result# (r/expiring-result ~timeout)]
-                    (start-pipeline this## result# val## nil)
+                    (start-pipeline this## result# val##)
                     result#)
                  
                 (and result (not timeout))
-                `(start-pipeline this## ~result val## nil)
+                `(start-pipeline this## ~result val##)
 
                 (and result timeout)
                 `(let [result# ~result]
                    (on-success (r/timed-result ~timeout) (fn [_] (r/error result# :lamina/timeout!)))
-                   (start-pipeline this## result# val## nil))
+                   (start-pipeline this## result# val##))
 
                 :else
-                `(start-pipeline this## nil val## nil))))))))
+                `(start-pipeline this## nil val##))))))))
 
 (defmacro run-pipeline [value & opts+stages]
   `(let [p# ~(with-meta `(pipeline ~@opts+stages) (meta &form))

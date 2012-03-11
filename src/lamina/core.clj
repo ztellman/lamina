@@ -108,6 +108,9 @@
 
 (import-fn ch/fork)
 
+(import-fn ch/idle-result)
+(import-fn ch/close-on-idle)
+
 (import-fn ch/close)
 (import-fn ch/drained?)
 (import-fn ch/closed?)

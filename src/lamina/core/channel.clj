@@ -14,12 +14,15 @@
     [lamina.core.queue :as q]
     [lamina.core.lock :as l]
     [lamina.core.result :as r]
+    [lamina.core.threads :as t]
     [clojure.string :as str])
   (:import
     [lamina.core.lock
      AsymmetricLock]
     [lamina.core.graph.node
      Node]
+    [java.util.concurrent.atomic
+     AtomicLong]
     [java.io
      Writer]))
 
@@ -329,6 +332,30 @@
                          (receiver-node ch))))]
     (g/link receiver propagator (g/edge nil propagator) nil nil)
     (Channel. receiver receiver)))
+
+;;;
+
+(defn check-idle [^AtomicLong last-message interval result]
+  (let [mark (.get last-message)]
+    (t/delay-invoke (- interval (- (System/currentTimeMillis) mark))
+      (fn []
+        (if (= mark (.get last-message))
+          (r/success result true)
+          (check-idle last-message interval result))))))
+
+(defn idle-result [interval ch]
+  (let [last-message (AtomicLong. (System/currentTimeMillis))
+        result (r/result-channel)]
+    (receive-all ch (fn [_] (.set last-message (System/currentTimeMillis))))
+    (check-idle last-message interval result)
+    result))
+
+(defn close-on-idle [interval ch]
+  (r/subscribe (idle-result interval ch)
+    (r/result-callback
+      (fn [_] (close ch))
+      (fn [_])))
+  nil)
 
 ;;;
 

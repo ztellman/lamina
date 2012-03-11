@@ -21,13 +21,14 @@
   (mark-return [_ val])
   (add-sub-task [_ timer]))
 
-(defn dummy-timer [description]
+(defn dummy-timer [description enqueue-error?]
   (reify
     clojure.lang.IDeref
     (deref [_] {})
     ITimed
     (mark-error [_ err]
-      (enqueue (p/error-probe-channel [description :error]) {:error err}))
+      (when enqueue-error?
+        (enqueue (p/error-probe-channel [description :error]) {:error err})))
     (mark-enter [_])
     (mark-return [_ _])
     (add-sub-task [_ _] )))
@@ -44,26 +45,29 @@
    result])
 
 (defmacro make-timing [type & extras]
-  `(make-record ~type
-     :description ~'description
-     :timestamp ~'timestamp
-     :duration 0
-     :duration (if (or
-                     (= Long/MIN_VALUE ~'return)
-                     (= Long/MIN_VALUE ~'enter))
-                 -1
-                 (unchecked-subtract (long ~'return) (long ~'enter)))
-     :args ~'args
-     :sub-tasks (when-not (.isEmpty ~'sub-tasks)
-                  (doall (map deref ~'sub-tasks)))
-     ~@extras))
+  `(let [timing# (make-record ~type
+                   :description ~'description
+                   :timestamp ~'timestamp
+                   :duration (if (or
+                                   (= Long/MIN_VALUE ~'return)
+                                   (= Long/MIN_VALUE ~'enter))
+                               -1
+                               (unchecked-subtract (long ~'return) (long ~'enter)))
+                   :args ~'args
+                   :sub-tasks (when-not (.isEmpty ~'sub-tasks)
+                                (doall (map deref ~'sub-tasks)))
+                   ~@extras)]
+     (if-not (neg? ~'start-stage)
+       (assoc timing# :start-stage ~'start-stage)
+       timing#)))
 
 (deftype EnqueuedTimer
   [description
-   probe
+   return-probe
    error-probe
-   timestamp
-   enqueued
+   ^long start-stage
+   ^long timestamp
+   ^long enqueued
    args
    ^{:volatile-mutable true, :tag long} enter
    ^{:volatile-mutable true, :tag long} return
@@ -86,15 +90,15 @@
       (assoc @this :error err)))
   (mark-return [this val]
     (set! return (System/nanoTime))
-    (when probe
-      (enqueue probe
+    (when return-probe
+      (enqueue return-probe
         (make-timing EnqueuedTiming
           :enqueued-duration (if (= Long/MIN_VALUE enter)
                                -1
                                (unchecked-subtract (long enter) (long enqueued)))
           :result val)))))
 
-(defn enqueued-timer [description args return-probe error-probe implicit?]
+(defn enqueued-timer- [description args return-probe error-probe start-stage implicit? enqueue-error?]
   (let [enabled? (and return-probe (p/probe-enabled? return-probe))
         parent (when (or enabled? implicit?)
                  (context/timer))]
@@ -103,6 +107,7 @@
                     description
                     (when enabled? return-probe)
                     error-probe
+                    start-stage
                     (System/currentTimeMillis)
                     (System/nanoTime)
                     args
@@ -112,7 +117,27 @@
         (when parent
           (add-sub-task parent timer))
         timer)
-      (dummy-timer description))))
+      (dummy-timer description enqueue-error?))))
+
+(defmacro enqueued-timer
+  [& {:keys [description
+             args
+             return-probe
+             error-probe
+             start-stage
+             implicit?
+             enqueue-error?]
+      :or {implicit? false
+           enqueue-error? true
+           start-stage -1}}]
+  `(enqueued-timer-
+     ~description
+     ~args
+     ~return-probe
+     ~error-probe
+     ~start-stage
+     ~implicit?
+     ~enqueue-error?))
 
 ;;;
 
@@ -128,9 +153,10 @@
   [description
    return-probe
    error-probe
+   ^long start-stage
    args
-   timestamp
-   enter
+   ^long timestamp
+   ^long enter
    ^{:volatile-mutable true, :tag long} return
    ^ConcurrentLinkedQueue sub-tasks]
   clojure.lang.IDeref
@@ -148,12 +174,20 @@
       (assoc @this :error err)))
   (mark-return [this val]
     (set! return (System/nanoTime))
+
     (when return-probe
       (enqueue return-probe
         (make-timing Timing
           :result val)))))
 
-(defn timer [description args return-probe error-probe implicit?]
+(defn timer-
+  [description
+   args
+   return-probe
+   error-probe
+   start-stage
+   implicit?
+   enqueue-error?]
   (let [enabled? (and return-probe (p/probe-enabled? return-probe))
         parent (when (or enabled? implicit?)
                  (context/timer))]
@@ -162,6 +196,7 @@
                     description
                     (when enabled? return-probe)
                     error-probe
+                    start-stage
                     args
                     (System/currentTimeMillis)
                     (System/nanoTime)
@@ -170,7 +205,27 @@
         (when parent
           (add-sub-task parent timer))
         timer)
-      (dummy-timer description))))
+      (dummy-timer description enqueue-error?))))
+
+(defmacro timer
+  [& {:keys [description
+             args
+             return-probe
+             error-probe
+             start-stage
+             implicit?
+             enqueue-error?]
+      :or {implicit? false
+           enqueue-error? true
+           start-stage -1}}]
+  `(timer-
+     ~description
+     ~args
+     ~return-probe
+     ~error-probe
+     ~start-stage
+     ~implicit?
+     ~enqueue-error?))
 
 ;;;
 
@@ -216,11 +271,11 @@
           (format-duration duration)
 
           (not duration)
-          (str "waited " (format-duration enqueued) ", still running")
+          (str "enqueued for " (format-duration enqueued) ", still running")
 
           :else
           (str (format-duration (+ enqueued duration))
-            " (waited " (format-duration enqueued) ", "
+            " (enqueued for " (format-duration enqueued) ", "
             "ran for " (format-duration duration) ")"))
         "\n"
         (indent 2

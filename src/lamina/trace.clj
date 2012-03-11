@@ -12,7 +12,6 @@
     [lamina.core.utils :only (enqueue)])
   (:require
     [lamina.trace.instrument :as i]
-    [lamina.trace.pipeline :as p]
     [lamina.trace.timer :as t]
     [lamina.trace.utils :as u]
     [lamina.trace.probe :as pr]))
@@ -23,7 +22,6 @@
 
 (import-fn t/format-timing)
 (import-macro u/time*)
-(import-macro u/with-instrumented-pipelines)
 (import-macro u/with-instrumentation)
 
 (import-fn pr/canonical-probe-name)
