@@ -14,7 +14,7 @@
 
 (defn defer [f]
   #(run-pipeline %
-     (wait-stage 10)
+     (wait-stage 20)
      f))
 
 (defn boom [_]
@@ -65,21 +65,21 @@
   (is (= 2 @(run-pipeline a
               inc)))
   (is (= 2 @(run-pipeline a
-              (wait-stage 1)
+              (wait-stage 20)
               inc)))
   (is (= 2 @(binding [a 3]
               (run-pipeline nil
-                (wait-stage 1)
+                (wait-stage 20)
                 (constantly a)
                 inc))))
   (is (= 4 @(binding [a 3]
               (run-pipeline a
-                (wait-stage 1)
+                (wait-stage 20)
                 inc))))
   (is (= 4 @(binding [a 3]
               (run-pipeline nil
                 {:with-bindings? true}
-                (wait-stage 1)
+                (wait-stage 20)
                 (constantly a)
                 inc)))))
 
