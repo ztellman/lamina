@@ -330,7 +330,7 @@
        (if-let [unconsume (g/consume (emitter-node ch) e)]
          (lazy-channel-seq-
            (if timeout-fn
-             #(read-channel* ch :timeout (timeout-fn) :on-timeout ::end :on-drained ::end)
+             #(read-channel* ch :timeout (timeout-fn), :on-timeout ::end, :on-drained ::end)
              #(read-channel* ch :on-drained ::end))
            unconsume)
          (throw (IllegalStateException. "Can't consume, channel already in use."))))))
