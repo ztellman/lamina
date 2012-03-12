@@ -3,7 +3,7 @@
   :dependencies [[org.clojure/clojure "1.3.0"]
                  [org.clojure/tools.logging "0.2.3"]
                  [useful "0.7.3"]
-                 [potemkin "0.1.2-SNAPSHOT"]
+                 [potemkin "0.1.2"]
                  [com.yammer.metrics/metrics-core "2.0.2"
                   :exclusions [org.slf4j/slf4j-api]]]
   :multi-deps {:all [[com.yammer.metrics/metrics-core "2.0.2"
