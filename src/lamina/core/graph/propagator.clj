@@ -12,6 +12,7 @@
     [lamina.core.utils])
   (:require
     [lamina.core.lock :as l]
+    [lamina.core.result :as r]
     [lamina.core.graph.node :as n]
     [clojure.tools.logging :as log])
   (:import
@@ -113,7 +114,13 @@
                        (let [n (generator id)]
                          (when (.get transactional?)
                            (transactional n))
-                         (or (.putIfAbsent downstream id n) n))))))]
+                         (or (.putIfAbsent downstream id n)
+                           (do
+                             (r/subscribe (n/closed-result n)
+                               (r/result-callback
+                                 (fn [_] (.remove downstream id))
+                                 (fn [_] (.remove downstream id))))
+                             n)))))))]
       (propagate n msg true)
       :lamina/closed!)))
 

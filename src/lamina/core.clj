@@ -10,6 +10,7 @@
   (:use
     [potemkin])
   (:require
+    [lamina.core.named :as n]
     [lamina.core.utils :as u]
     [lamina.core.channel :as ch]
     [lamina.core.pipeline :as p]
@@ -251,16 +252,7 @@
   ([result-channel timeout]
      @(with-timeout timeout result-channel)))
 
+;;;
 
-;; what we had in previous version of lamina.core
-
-(comment
-  ;; core channel functions
-
-;; channel variants
-
-;; named channels
-(import-fn #'named/named-channel)
-(import-fn #'named/release-named-channel)
-
-)
+(import-fn n/named-channel)
+(import-fn n/release-named-channel)
