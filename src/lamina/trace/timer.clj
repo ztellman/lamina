@@ -8,6 +8,8 @@
     [lamina.core.result :as r]
     [lamina.core.context :as context])
   (:import
+    [java.io
+     Writer]
     [java.util.concurrent
      ConcurrentLinkedQueue]))
 
@@ -286,3 +288,10 @@
             (apply str)))))))
 
 
+;;;
+
+(defmethod print-method Timing [o ^Writer w]
+  (.write w (pr-str (into {} o))))
+
+(defmethod print-method EnqueuedTiming [o ^Writer w]
+  (.write w (pr-str (into {} o))))

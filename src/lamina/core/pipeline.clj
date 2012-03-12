@@ -70,10 +70,7 @@
         val))))
 
 (defn start-pipeline [pipeline result value]
-  (if-let [timer (gen-timer pipeline -1)]
-    (context/with-context (context/assoc-context :timer timer)
-      (resume-pipeline pipeline result value value 0))
-    (resume-pipeline pipeline result value value 0)))
+  (resume-pipeline pipeline result value value 0))
 
 (defn handle-redirect [^Redirect redirect result current-pipeline initial-value]
   (let [value (if (identical? ::initial (.value redirect))
