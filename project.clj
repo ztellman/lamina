@@ -10,7 +10,7 @@
                       :exclusions [org.slf4j/slf4j-api]]
                      [org.clojure/tools.logging "0.2.3"]
                      [useful "0.7.3"]
-                     [potemkin "0.1.2-SNAPSHOT"]]
+                     [potemkin "0.1.2"]]
                "1.2" [[org.clojure/clojure "1.2.1"]]
                "1.4s" [[org.clojure/clojure "1.4.0-master-SNAPSHOT"]]
                }
