@@ -30,8 +30,9 @@
 
 (defn permanent-channel
   "Returns a channel which cannot be closed or put into an error state."
-  []
-  (channel* :permanent? true))
+  [& messages]
+  (channel* :permanent? true
+            :messages (seq messages)))
 
 (defn channel-pair
   "Returns a pair of channels, where all messages enqueued into one channel can
