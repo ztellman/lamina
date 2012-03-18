@@ -55,6 +55,9 @@
         (set! emitter n)
         n)
       emitter))
+  clojure.lang.Counted
+  (count [_]
+    (-> (g/queue emitter) q/messages count))
   Object
   (toString [_]
     (if-not (= ::none (g/error-value receiver ::none))
@@ -216,7 +219,7 @@
          (when-let [q (g/queue emitter)]
            (-> n g/queue (q/append (q/messages q)))))
       nil)
-    (Channel. n n))) 
+    (Channel. n n)))
 
 (defn close
   "Closes the channel. Returns if successful, false if the channel is already closed or in an
@@ -224,7 +227,7 @@
   [channel]
   (g/close (receiver-node channel)))
 
-(defn error [channel err]  
+(defn error [channel err]
   (g/error (receiver-node channel) err))
 
 (defn closed?
