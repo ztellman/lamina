@@ -40,10 +40,13 @@
 
 (deftype Channel
   [^Node receiver
-   ^{:volatile-mutable true :tag Node} emitter]
+   ^{:volatile-mutable true :tag Node} emitter
+   metadata]
+
   IEnqueue
   (enqueue [_ msg]
     (g/propagate receiver msg true))
+
   IChannel
   (receiver-node [_]
     receiver)
@@ -55,6 +58,12 @@
         (set! emitter n)
         n)
       emitter))
+
+  clojure.lang.IMeta
+  clojure.lang.IObj
+  (meta [_] metadata)
+  (withMeta [_ meta] (Channel. receiver emitter meta))
+
   Object
   (toString [_]
     (if-not (= ::none (g/error-value receiver ::none))
@@ -100,10 +109,11 @@
      :permanent?       - ensures that the channel cannot be closed or be put in an error state
      :transactional?   - determines whether the channel's queue is transactional
      :messages         - sequence of zero or more messages that will be in the channel's queue
-     :description      - a string that will be diplayed in channel visualizations"
-  [& {:keys [grounded? permanent? transactional? messages description] :as options}]
+     :description      - a string that will be diplayed in channel visualizations
+     :meta             - initial metadata"
+  [& {:keys [grounded? permanent? transactional? messages description meta] :as options}]
   `(let [n# (g/node* ~@(apply concat options))]
-     (Channel. n# n#)))
+     (Channel. n# n# ~meta)))
 
 (defn channel
   "Returns a channel containing the given messages."
@@ -112,7 +122,7 @@
 
 (defn mimic [channel]
   (let [n (g/mimic (receiver-node channel))]
-    (Channel. n n)))
+    (Channel. n n nil)))
 
 (defn closed-channel
   "Returns a closed channel containing the given messages."
@@ -216,7 +226,7 @@
          (when-let [q (g/queue emitter)]
            (-> n g/queue (q/append (q/messages q)))))
       nil)
-    (Channel. n n))) 
+    (Channel. n n nil)))
 
 (defn close
   "Closes the channel. Returns if successful, false if the channel is already closed or in an
@@ -224,7 +234,7 @@
   [channel]
   (g/close (receiver-node channel)))
 
-(defn error [channel err]  
+(defn error [channel err]
   (g/error (receiver-node channel) err))
 
 (defn closed?
@@ -305,7 +315,7 @@
    (map* inc (channel 1 2 3)) => [2 3 4]"
   [f channel]
   (let [n (g/downstream-node f (emitter-node channel))]
-    (Channel. n n)))
+    (Channel. n n nil)))
 
 (defn filter*
   "A dual to filter.
@@ -313,7 +323,7 @@
    (filter* odd? (channel 1 2 3)) => [1 3]"
   [f channel]
   (let [n (g/downstream-node (predicate-operator f) (emitter-node channel))]
-    (Channel. n n)))
+    (Channel. n n nil)))
 
 (defn remove*
   "A dual to remove.
@@ -331,7 +341,7 @@
                          (join ch ch*)
                          (receiver-node ch))))]
     (g/link receiver propagator (g/edge nil propagator) nil nil)
-    (Channel. receiver receiver)))
+    (Channel. receiver receiver nil)))
 
 ;;;
 
