@@ -199,6 +199,13 @@
    ^CopyOnWriteArrayList edges
    ^CopyOnWriteArrayList watchers]
 
+  clojure.lang.Counted
+
+  (count [_]
+    (if-let [q (.queue state)]
+      (count q)
+      0))
+
   IDescribed
   (description [_] description)
 

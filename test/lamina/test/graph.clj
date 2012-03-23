@@ -11,7 +11,8 @@
     [clojure test]
     [lamina.test utils]
     [lamina.core.utils :only (predicate-operator)]
-    [lamina.core graph walk])
+    [lamina.core graph]
+    [lamina.walk])
   (:require
     [lamina.core.queue :as q]))
 

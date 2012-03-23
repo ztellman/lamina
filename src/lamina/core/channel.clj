@@ -41,6 +41,9 @@
 (deftype Channel
   [^Node receiver
    ^{:volatile-mutable true :tag Node} emitter]
+  clojure.lang.Counted
+  (count [_]
+    (count emitter))
   IEnqueue
   (enqueue [_ msg]
     (g/propagate receiver msg true))
@@ -76,7 +79,10 @@
             "[ \u2026 ]"
             "[ ]"))))))
 
-(defrecord SplicedChannel [^Channel receiver ^Channel emitter]
+(deftype SplicedChannel [^Channel receiver ^Channel emitter]
+  clojure.lang.Counted
+  (count [_]
+    (count emitter))
   IEnqueue
   (enqueue [_ msg]
     (g/propagate (receiver-node receiver) msg true))

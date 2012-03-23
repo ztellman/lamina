@@ -8,7 +8,8 @@
 
 (ns lamina.viz.graph
   (:use
-    [lamina.core walk utils]
+    [lamina.core.utils]
+    [lamina.walk]
     [lamina.viz core])
   (:require
     [lamina.core.graph :as g]

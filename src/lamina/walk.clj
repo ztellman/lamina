@@ -6,7 +6,7 @@
 ;;   the terms of this license.
 ;;   You must not remove this notice, or any other, from this software.
 
-(ns lamina.core.walk
+(ns lamina.walk
   (use
     [lamina.core graph utils])
   (:require
@@ -34,6 +34,7 @@
        :downstream-count (count (downstream n))}
       (when (node? n)
         {:node? true
+         :queue-size (count n)
          :operator (or (operator-predicate f) f)
          :messages (when (queue n) (-> n queue q/messages))
          :predicate? (boolean (operator-predicate f))

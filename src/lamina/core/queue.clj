@@ -183,6 +183,11 @@
    ^ConcurrentLinkedQueue consumers
    ^{:volatile-mutable true} closed?]
 
+  clojure.lang.Counted
+
+  (count [_]
+    (.size messages))
+
   IEventQueue
 
   ;;
@@ -384,6 +389,11 @@
   [messages
    consumers
    closed?]
+
+  clojure.lang.Counted
+
+  (count [_]
+    (count @messages))
 
   IEventQueue
 
