@@ -123,6 +123,11 @@
 (import-fn ch/drained-result)
 (import-fn ch/cancel-callback)
 
+(defn enqueue-and-close
+  [ch & messages]
+  (apply enqueue ch messages)
+  (close ch))
+
 (import-macro p/pipeline)
 (import-macro p/run-pipeline)
 (import-fn p/restart)
