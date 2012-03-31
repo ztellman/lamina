@@ -12,10 +12,16 @@
     [java.util.concurrent
      ScheduledThreadPoolExecutor
      TimeUnit
-     TimeoutException]))
+     TimeoutException
+     ThreadFactory]))
 
 (def delayed-executor
-  (ScheduledThreadPoolExecutor. (.availableProcessors (Runtime/getRuntime))))
+  (ScheduledThreadPoolExecutor.
+    (.availableProcessors (Runtime/getRuntime))
+    (reify ThreadFactory
+      (newThread [_ f]
+        (doto (Thread. f)
+          (.setDaemon true))))))
 
 (defn delay-invoke [f delay]
   (.schedule
