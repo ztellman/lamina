@@ -27,7 +27,10 @@
 (defn ^ThreadFactory thread-factory [name-generator]
   (reify ThreadFactory
     (newThread [_ runnable]
-      (doto (Thread. runnable) (.setName (name-generator))))))
+      (doto
+        (Thread. runnable)
+        (.setName (name-generator))
+        (.setDaemon true)))))
 
 (def ^ExecutorService cleanup-executor
   (Executors/newSingleThreadExecutor
