@@ -150,12 +150,13 @@
 (defmacro close-node! [this edges s]
   `(let [^NodeState s# ~s
          q# (.queue s#)
-         _# (when q# (q/close q#))
-         drained?# (or (nil? q#) (q/drained? q#))]
-     (.clear ~edges)
-     (set-state! ~this s#
-       :mode (if drained?# ::drained ::closed)
-       :queue (if drained?# (q/drained-queue) q#))))
+         drained?# (or (nil? q#) (zero? (count q#)))]
+     (let [s# (set-state! ~this s#
+                :mode (if drained?# ::drained ::closed)
+                :queue (if drained?# (q/drained-queue) q#))]
+       (.clear ~edges)
+       (when q# (q/close q#))
+       s#)))
 
 (defmacro read-from-queue [[this lock state watchers cancellations] forward queue-receive]
   (let [state-sym (gensym "state")]
