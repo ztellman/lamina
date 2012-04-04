@@ -408,3 +408,38 @@
      error-response]
     :as options}]
   ((pipelined-server-generator handler options) ch))
+
+;;
+
+(defn single-shot-server-generator
+  "something goes here"
+  [handler
+   {:keys
+    [name
+     implicit?
+     probes
+     executor
+     result-channel-generator
+     timeout
+     error-response]
+    :or {result-channel-generator result-channel}
+    :as options}]
+  (server-generator- handler options
+    (fn [handler ch]
+      (run-pipeline (read-channel ch)
+        handler
+        #(enqueue ch %)))))
+
+(defn single-shot-server
+  "something goes here"
+  [handler
+   ch
+   {:keys
+    [name
+     implicit?
+     probes
+     executor
+     result-channel-generator
+     error-response]
+    :as options}]
+  ((single-shot-server-generator handler options) ch))
