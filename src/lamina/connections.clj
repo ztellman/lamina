@@ -377,15 +377,13 @@
 
         ;; wait for the responses, returning them in-order
         (run-pipeline responses
-          {:error-handler (fn [ex]
-                            (when-not (or (drained? ch) (closed? ch))
-                              (enqueue ch ex)
-                              (restart)))
+          {:error-handler #(enqueue ch %)
            :result r}
           read-channel
           (fn [response]
             (enqueue ch response)
-            (restart)))
+            (when-not (or (drained? ch) (closed? ch))
+              (restart))))
 
         ;; handle the requests as quickly as we can, enqueuing
         ;; the result onto the responses channel

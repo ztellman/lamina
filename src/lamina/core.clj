@@ -34,6 +34,14 @@
   (channel* :permanent? true
             :messages (seq messages)))
 
+(defn channel-pair
+  "Returns a pair of channels, where all messages enqueued into one channel can
+   be received by the other, and vice-versa."
+  []
+  (let [a (channel)
+        b (channel)]
+    [(splice a b) (splice b a)]))
+
 (import-fn r/result-channel)
 (import-fn r/result?)
 (import-fn r/with-timeout)
@@ -119,19 +127,6 @@
   [ch & messages]
   (apply enqueue ch messages)
   (close ch))
-
-(defn channel-pair
-  "Returns a pair of channels, where all messages enqueued into one channel can
-   be received by the other, and vice-versa.  Closing one channel will automatically
-   close the other."
-  []
-  (let [a (channel)
-        b (channel)
-        a* (splice a b)
-        b* (splice b a)]
-    (on-closed a* #(close b*))
-    (on-closed b* #(close a*))
-    [a* b*]))
 
 (import-macro p/pipeline)
 (import-macro p/run-pipeline)

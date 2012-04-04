@@ -116,15 +116,15 @@
                result
                on-timeout
                on-false
-               on-drained]
-        :as options}]
+               on-drained
+               ]}]
   (let [result-sym (gensym "result")]
     `(let [~result-sym (read-node ~n
                          ~predicate
                          ~(when predicate
                             (or on-false :lamina/false))
                          ~result)]
-       ~@(when (contains? options :on-timeout)
+       ~@(when timeout
            `((let [timeout# ~timeout]
                (when (and timeout# (instance? ResultChannel ~result-sym))
                  (t/delay-invoke timeout#
@@ -132,7 +132,7 @@
                      ~(if on-timeout
                         `(r/success ~result-sym ~on-timeout)
                         `(r/error ~result-sym :lamina/timeout!))))))))
-       ~(if-not (contains? options :on-drained)
+       ~(if-not on-drained
           result-sym
           `(if (instance? SuccessResult ~result-sym)
              ~result-sym
