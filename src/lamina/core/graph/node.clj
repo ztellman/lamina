@@ -150,13 +150,12 @@
 (defmacro close-node! [this edges s]
   `(let [^NodeState s# ~s
          q# (.queue s#)
-         drained?# (or (nil? q#) (zero? (count q#)))]
-     (let [s# (set-state! ~this s#
-                :mode (if drained?# ::drained ::closed)
-                :queue (if drained?# (q/drained-queue) q#))]
-       (.clear ~edges)
-       (when q# (q/close q#))
-       s#)))
+         _# (when q# (q/close q#))
+         drained?# (or (nil? q#) (q/drained? q#))]
+     (.clear ~edges)
+     (set-state! ~this s#
+       :mode (if drained?# ::drained ::closed)
+       :queue (if drained?# (q/drained-queue) q#))))
 
 (defmacro read-from-queue [[this lock state watchers cancellations] forward queue-receive]
   (let [state-sym (gensym "state")]
@@ -758,10 +757,12 @@
 
 (defn closed? [node]
   (let [s (state node)]
-    (case (.mode s)
-      ::consumed (q/closed? (.queue s))
-      (::closed ::drained) true
-      false)))
+    (or
+      (case (.mode s)
+        ::consumed (q/closed? (.queue s))
+        (::closed ::drained) true
+        false)
+      (and (.queue s) (q/closed? (.queue s))))))
 
 (defn split-node
   [^Node node]
@@ -867,7 +868,10 @@
       default-value)))
 
 (defn drained? [node]
-  (identical? ::drained (.mode (state node))))
+  (let [s (state node)]
+    (or
+      (identical? ::drained (.mode s))
+      (and (.queue s) (q/drained? (.queue s))))))
 
 (defn split? [node]
   (identical? ::split (.mode (state node))))
