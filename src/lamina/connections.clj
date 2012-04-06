@@ -61,7 +61,7 @@
       (fn [conn]
         (when on-connected
           (on-connected conn))
-        (reset! connection conn)
+        (success @connection conn)
         (trace {:state :connected})
         (closed-result conn))
 
@@ -140,7 +140,9 @@
 
 (defn try-instrument [options f]
   (if (contains? options :name)
-    (with-meta (instrument f options) (meta f))
+    (with-meta
+      (apply instrument f (apply concat options))
+      (meta f))
     f))
 
 (deftype RequestTuple [request result channel])
@@ -200,13 +202,17 @@
              ::reset-fn reset-fn}
            (fn
              ([request]
-                (let [result (result-channel)]
-                  (enqueue requests (RequestTuple. request result nil))
-                  result))
+                (if (identical? ::close request)
+                  (close-fn)
+                  (let [result (result-channel)]
+                    (enqueue requests (RequestTuple. request result nil))
+                    result)))
              ([request timeout]
-                (let [result (expiring-result timeout)]
-                  (enqueue requests (RequestTuple. request result nil))
-                  result))))))))
+                (if (identical? ::close request)
+                  (close-fn)
+                  (let [result (expiring-result timeout)]
+                    (enqueue requests (RequestTuple. request result nil))
+                    result)))))))))
 
 (defn pipelined-client
   "something goes here"
@@ -275,13 +281,17 @@
              ::reset-fn reset-fn}
            (fn
              ([request]
-                (let [result (result-channel)]
-                  (enqueue requests (RequestTuple. request result nil))
-                  result))
+                (if (identical? ::close request)
+                  (close-fn)
+                  (let [result (result-channel)]
+                    (enqueue requests (RequestTuple. request result nil))
+                    result)))
              ([request timeout]
-                (let [result (expiring-result timeout)]
-                  (enqueue requests (RequestTuple. request result nil))
-                  result))))))))
+                (if (identical? ::close request)
+                  (close-fn)
+                  (let [result (expiring-result timeout)]
+                    (enqueue requests (RequestTuple. request result nil))
+                    result)))))))))
 
 ;;;
 
