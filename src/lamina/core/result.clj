@@ -362,7 +362,7 @@
 (defn result-callback [on-success on-error]
   (ResultCallback. on-success on-error))
 
-(defn result?
+(defn async-result?
   "Returns true if 'x' is a result."
   [x]
   (or
@@ -423,7 +423,7 @@
           combined-result)
         
         (let [r (first results)]
-          (if-not (result? r)
+          (if-not (async-result? r)
 
             ;; not a result - set, decrement, and recur
             (do

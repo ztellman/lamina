@@ -154,7 +154,7 @@
 (defn- unwind-stages [idx stages remaining subscribe-expr]
   `(cond
        
-     (r/result? val##)
+     (r/async-result? val##)
      (let [value# (r/success-value val## ::unrealized)]
        (if (identical? ::unrealized value#)
          ~(subscribe-expr idx)

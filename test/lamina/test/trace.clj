@@ -50,7 +50,7 @@
     (receive-all probe callback)
     (try
       (let [result (apply f args)]
-        (if (result? result)
+        (if (async-result? result)
           @result
           result))
       (finally

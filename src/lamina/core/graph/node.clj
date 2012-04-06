@@ -409,7 +409,7 @@
                   ::split
                   (if-let [v (.get cancellations name)]
                     
-                    (if (r/result? v)
+                    (if (r/async-result? v)
                       ::already-registered
                       ::invalid-name)
                     
@@ -548,14 +548,14 @@
                     ::consumed
                     (if-not (= edge (first edges))
                       false
-                      (do
+                      (let [q (.queue s)]
                         (.clear edges)
                         (set-state! this s
-                          :mode (if (q/closed? (.queue s))
+                          :mode (if (q/closed? q)
                                   ::closed
                                   ::open)
                           :downstream-count 0)
-                        true))
+                        (q/closed? q)))
 
                     false))))]
         (if (identical? ::split result)
@@ -740,7 +740,7 @@
          (identical? ::split x)
          (cancel (.split state) name)
 
-         (r/result? x)
+         (r/async-result? x)
          (l/with-lock lock
            (q/cancel-receive (.queue state) x))
 

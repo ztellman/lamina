@@ -35,7 +35,7 @@
             :messages (seq messages)))
 
 (import-fn r/result-channel)
-(import-fn r/result?)
+(import-fn r/async-result?)
 (import-fn r/with-timeout)
 (import-fn r/expiring-result)
 (import-fn r/success)
@@ -69,21 +69,21 @@
 (defn error
   "Puts the channel or result-channel into an error state."
   [channel err]
-  (if (result? channel)
+  (if (async-result? channel)
     (r/error channel err)
     (ch/error channel err)))
 
 (defn siphon
   "something goes here"
   [src dst]
-  (if (result? src)
+  (if (async-result? src)
     (r/siphon-result src dst)
     (ch/siphon src dst)))
 
 (defn join
   "something goes here"
   [src dst]
-  (if (result? src)
+  (if (async-result? src)
     (do
       (r/siphon-result src dst)
       (r/subscribe dst (r/result-callback (fn [_]) #(r/error src %))))
