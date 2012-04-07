@@ -13,20 +13,26 @@
 (def padding [0.25 0.25])
 
 (defmacro render-graph-diagram [name [ch] & body]
-  `(let [~ch (channel)
-         _# (do ~@body)
-         ch# ~ch
-         ^java.io.File file# (io/file (str image-path ~(str name) ".png"))
-         image# (render-graph {:pad padding} ch#)]
-     (when exists? (ImageIO/write image# "png" file#))))
+  `(try
+     (let [~ch (channel)
+           _# (do ~@body)
+           ch# ~ch
+           ^java.io.File file# (io/file (str image-path ~(str name) ".png"))
+           image# (render-graph {:pad padding} ch#)]
+       (when exists? (ImageIO/write image# "png" file#))
+       (catch Exception e
+         ))))
 
 (defmacro render-propagation-diagram [name [ch msg] & body]
-  `(let [~ch (channel)
-         _# (do ~@body)
-         ch# ~ch
-         file# (io/file (str image-path ~(str name) ".png"))
-         image# (render-propagation {:pad padding} ch# ~msg)]
-     (when exists? (ImageIO/write image# "png" file#))))
+  `(try
+     (let [~ch (channel)
+           _# (do ~@body)
+           ch# ~ch
+           file# (io/file (str image-path ~(str name) ".png"))
+           image# (render-propagation {:pad padding} ch# ~msg)]
+       (when exists? (ImageIO/write image# "png" file#))
+       (catch Exception e
+         ))))
 
 (render-graph-diagram channel-1 [ch]
   )
