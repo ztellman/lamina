@@ -94,9 +94,10 @@
   ([channel message]
      (u/enqueue channel message))
   ([channel message & messages]
-     (u/enqueue channel message)
-     (doseq [m messages]
-       (u/enqueue channel m))))
+     (let [val (u/enqueue channel message)]
+       (doseq [m messages]
+         (u/enqueue channel m))
+       val)))
 
 (import-macro ch/read-channel*)
 

@@ -139,6 +139,8 @@
 ;;;
 
 (deftype ErrorQueue [error]
+  clojure.lang.Counted
+  (count [_] 0)
   IEventQueue
   (error [_ _] false)
   (close [_] false)
@@ -158,6 +160,8 @@
     false))
 
 (deftype DrainedQueue []
+  clojure.lang.Counted
+  (count [_] 0)
   IEventQueue
   (error [_ _] false)
   (close [_] false)

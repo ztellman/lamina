@@ -19,11 +19,12 @@
 
 ;;;
 
-(defn show-queue? [{:keys [error downstream-count consumed? node? grounded?]}]
+(defn show-queue? [{:keys [error downstream-count consumed? drained? node? grounded?]}]
   (and
     node?
     (not error)
     (not grounded?)
+    (not drained?)
     (or consumed? (zero? downstream-count))))
 
 (defn message-string [messages]

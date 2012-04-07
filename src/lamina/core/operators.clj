@@ -357,7 +357,12 @@
   [ch]
   (let [ch* (mimic ch)]
     (bridge-join ch "concat*"
-      #(doseq [msg %] (enqueue ch* msg))
+      (fn [s]
+        (when-not (empty? s)
+          (let [val (enqueue ch* (first s))]
+            (doseq [msg (rest s)]
+              (enqueue ch* msg))
+            val)))
       ch*)
     ch*))
 
