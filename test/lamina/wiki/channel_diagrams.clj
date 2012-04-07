@@ -19,9 +19,9 @@
            ch# ~ch
            ^java.io.File file# (io/file (str image-path ~(str name) ".png"))
            image# (render-graph {:pad padding} ch#)]
-       (when exists? (ImageIO/write image# "png" file#))
-       (catch Exception e
-         ))))
+       (when exists? (ImageIO/write image# "png" file#)))
+     (catch Exception e#
+       )))
 
 (defmacro render-propagation-diagram [name [ch msg] & body]
   `(try
@@ -30,9 +30,9 @@
            ch# ~ch
            file# (io/file (str image-path ~(str name) ".png"))
            image# (render-propagation {:pad padding} ch# ~msg)]
-       (when exists? (ImageIO/write image# "png" file#))
-       (catch Exception e
-         ))))
+       (when exists? (ImageIO/write image# "png" file#)))
+     (catch Exception e#
+       )))
 
 (render-graph-diagram channel-1 [ch]
   )
