@@ -165,7 +165,7 @@
    :default-node {:fontname :helvetica, :shape :box}
    :default-edge {:fontname :helvetica}})
 
-(defn view-graph [& nodes]
+(defn render-graph [options & nodes]
   (let [descriptor-merge (fn [a b]
                            (if (map? a)
                              (merge a b)
@@ -182,12 +182,19 @@
                          (map (comp vec reverse list) edges)
                          (into {})
                          vals)))
-        dot-string (digraph (merge default-settings descriptor))]
-    (view-dot-string node-frame dot-string)))
+        dot-string (digraph (merge
+                              (update-in default-settings [:options]
+                                #(merge % options))
+                              descriptor))]
+    (render-dot-string dot-string)))
 
-(defn trace-message [root msg]
-  (let [descriptor (trace-descriptor root msg)
-        dot-string (digraph (merge default-settings descriptor))]
-    (view-dot-string node-frame dot-string)))
+(defn render-propagation
+  ([options root msg]
+     (let [descriptor (trace-descriptor root msg)
+           dot-string (digraph (merge
+                                 (update-in default-settings [:options]
+                                   #(merge % options))
+                                 descriptor))]
+       (render-dot-string dot-string))))
 
 

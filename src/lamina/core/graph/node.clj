@@ -106,9 +106,7 @@
 
 (defmacro enqueue-and-release [lock state msg persist?]
   `(if-let [q# (.queue ~state)]
-     (do
-       (q/enqueue q# ~msg ~persist? #(l/release ~lock))
-       :lamina/enqueued)
+     (q/enqueue q# ~msg ~persist? #(l/release ~lock))
      (l/release ~lock)))
 
 (defmacro transform-message [node msg transform?]

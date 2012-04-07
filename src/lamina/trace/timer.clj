@@ -6,7 +6,8 @@
     [clojure.string :as str]
     [lamina.trace.probe :as p]
     [lamina.core.result :as r]
-    [lamina.core.context :as context])
+    [lamina.core.context :as context]
+    [lamina.executor.utils :as ex])
   (:import
     [java.io
      Writer]
@@ -64,7 +65,8 @@
        timing#)))
 
 (deftype EnqueuedTimer
-  [description
+  [executor
+   description
    return-probe
    error-probe
    ^long start-stage
@@ -87,25 +89,30 @@
     (set! enter (System/nanoTime)))
   (mark-error [this err]
     (set! return (System/nanoTime))
-    (enqueue
-      (or error-probe (p/error-probe-channel [description :error]))
-      (assoc @this :error err)))
+    (let [timing (assoc @this :error err)]
+      (enqueue
+        (or error-probe (p/error-probe-channel [description :error]))
+        timing)
+      (ex/trace-error executor timing)))
   (mark-return [this val]
     (set! return (System/nanoTime))
-    (when return-probe
-      (enqueue return-probe
-        (make-timing EnqueuedTiming
-          :enqueued-duration (if (= Long/MIN_VALUE enter)
-                               -1
-                               (unchecked-subtract (long enter) (long enqueued)))
-          :result val)))))
+    (let [timing (make-timing EnqueuedTiming
+                   :enqueued-duration (if (= Long/MIN_VALUE enter)
+                                        -1
+                                        (unchecked-subtract (long enter) (long enqueued)))
+                   :result val)]
+      (when return-probe
+        (enqueue return-probe timing))
+      (ex/trace-return executor timing))))
 
-(defn enqueued-timer- [description args return-probe error-probe start-stage implicit? enqueue-error?]
+(defn enqueued-timer-
+  [executor description args return-probe error-probe start-stage implicit? enqueue-error?]
   (let [enabled? (and return-probe (p/probe-enabled? return-probe))
         parent (when (or enabled? implicit?)
                  (context/timer))]
     (if (or enabled? parent)
       (let [timer (EnqueuedTimer.
+                    executor
                     description
                     (when enabled? return-probe)
                     error-probe
@@ -122,7 +129,8 @@
       (dummy-timer description enqueue-error?))))
 
 (defmacro enqueued-timer
-  [& {:keys [description
+  [executor
+   & {:keys [description
              args
              return-probe
              error-probe
@@ -133,6 +141,7 @@
            enqueue-error? true
            start-stage -1}}]
   `(enqueued-timer-
+     ~executor
      ~description
      ~args
      ~return-probe

@@ -9,5 +9,7 @@
 (ns lamina.executor.utils)
 
 (defprotocol IExecutor
+  (trace-return [_ val])
+  (trace-error [_ val])
   (execute [_ timer f timeout])
   (shutdown [_] "Shuts down the thread pool, making it impossible for any further tasks to be enqueued."))

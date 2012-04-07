@@ -9,21 +9,40 @@
 (ns lamina.viz
   (:require
     [lamina.core.channel :as c]
+    [lamina.viz.core :as core]
     [lamina.viz.graph :as g]
     [lamina.trace :as trace]))
 
+(defn render-graph
+  "Given one or more channels, renders them and all downstream nodes."
+  [& options+channels]
+  (let [options (when (map? (first options+channels))
+                  (first options+channels))
+        channels (if options
+                   (rest options+channels)
+                   options+channels)]
+    (->> channels
+      (map #(vector (c/receiver-node %) (c/emitter-node %)))
+      (apply concat)
+      distinct
+      (apply g/render-graph options))))
+
 (defn view-graph
-  "Given one or more channels, opens a window displaying those channels and all downstream
-   channels."
-  [& channels]
-  (->> channels
-    (map #(vector (c/receiver-node %) (c/emitter-node %)))
-    (apply concat)
-    distinct
-    (apply g/view-graph)))
+  "Displays the results of render-graph in a window."
+  [& options+channels]
+  (core/view-image g/node-frame (apply render-graph options+channels)))
+
+(defn render-propagation
+  "Given a channel and a message, renders a graph displaying the value of the message as
+   it is propagated downstream.  This is safe to do while other threads are using the
+   channel."
+  ([channel message]
+     (render-propagation nil channel message))
+  ([options channel message]
+     (g/render-propagation options (c/receiver-node channel) message)))
 
 (defn view-propagation
-  "Given a channel and a message, opens a window displaying the value of the message as it is
-   propagated downstream.  This is safe to do while other threads are using the channel."
-  [channel message]
-  (g/trace-message (c/receiver-node channel) message))
+  ([channel message]
+     (view-propagation nil channel message))
+  ([options channel message]
+     (core/view-image g/node-frame (render-propagation options channel message))))

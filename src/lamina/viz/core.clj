@@ -10,10 +10,11 @@
   (:use
     [clojure.java.shell :only (sh)])
   (:require
+    [clojure.java.io :as io]
     [clojure.string :as str])
   (:import
-    [java.awt
-     Toolkit]
+    [javax.imageio
+     ImageIO]
     [javax.swing
      JFrame JLabel JScrollPane ImageIcon]))
 
@@ -30,9 +31,8 @@
       {:frame frame
        :image-icon image-icon})))
 
-(defn view-image [frame bytes]
-  (let [image (.createImage (Toolkit/getDefaultToolkit) bytes)
-        {:keys [^JFrame frame ^ImageIcon image-icon]} @frame]
+(defn view-image [frame image]
+  (let [{:keys [^JFrame frame ^ImageIcon image-icon]} @frame]
     (.setImage image-icon image)
     (.setVisible frame true)
     (java.awt.EventQueue/invokeLater
@@ -43,22 +43,31 @@
          .requestFocus
          (.setAlwaysOnTop false)))))
 
-(defn view-dot-string [frame s]
-  (view-image frame (:out (sh "dot" "-Tpng" :in s :out-enc :bytes))))
+(defn render-dot-string [s]
+  (let [bytes (:out (sh "dot" "-Tpng" :in s :out-enc :bytes))]
+    (ImageIO/read (io/input-stream bytes))))
 
 
 ;;;
+
+(defn format-options-value [v]
+  (cond
+    (string? v) (str \" (str/replace v "\\" "\\\\") \")
+    (keyword? v) (name v)
+    (coll? v) (str "\""
+                (->> v
+                  (map format-options-value)
+                  (interpose ",")
+                  (apply str))
+                "\"")
+    :else (str v)))
 
 (defn format-options [separator m]
   (->> m
     (remove (comp nil? second))
     (map
       (fn [[k v]]
-        (str (name k) "="
-          (cond
-            (string? v) (str \" (str/replace v "\\" "\\\\") \")
-            (keyword? v) (name v)
-            :else (str v)))))
+        (str (name k) "=" (format-options-value v))))
     (interpose ", ")
     (apply str)))
 

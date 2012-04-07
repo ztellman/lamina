@@ -24,6 +24,7 @@
      (when (probe-enabled? ~enter-probe)
        (enqueue ~enter-probe (Enter. (System/currentTimeMillis) ~args)))
      (let [timer# (t/enqueued-timer
+                    ~executor
                     :description ~nm
                     :args ~args
                     :return-probe ~return-probe

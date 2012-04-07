@@ -8,9 +8,11 @@
 
 (ns lamina.executor.core
   (:use
+    [lamina.core.utils]
     [lamina.executor.utils]
     [lamina.core.threads :only (delay-invoke)])
   (:require
+    [lamina.trace.probe :as pr]
     [lamina.core.pipeline :as p]
     [lamina.core.result :as r]
     [lamina.trace.timer :as t]
@@ -60,6 +62,8 @@
     (throw (IllegalArgumentException. "Every executor must have a :name specified.")))
   (let [nm (name (:name options))
         cnt (atom 0)
+        return-probe (pr/probe-channel [nm :return])
+        error-probe (pr/probe-channel [nm :error])
         pool (ThreadPoolExecutor.
                 1
                 1
@@ -84,6 +88,12 @@
          :num-threads (.getPoolSize pool)})
 
       IExecutor
+      (trace-return [_ val]
+        (when (pr/probe-enabled? return-probe)
+          (enqueue return-probe val)))
+      (trace-error [_ val]
+        (when (pr/probe-enabled? error-probe)
+          (enqueue error-probe val)))
       (shutdown [_]
         (.shutdown pool))
       (execute [this timer f timeout]
