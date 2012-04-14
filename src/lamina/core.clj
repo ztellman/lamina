@@ -75,19 +75,25 @@
 
 (defn siphon
   "something goes here"
-  [src dst]
-  (if (async-result? src)
-    (r/siphon-result src dst)
-    (ch/siphon src dst)))
+  ([src dst]
+     (if (async-result? src)
+       (r/siphon-result src dst)
+       (ch/siphon src dst)))
+  ([src dst & rest]
+     (siphon src dst)
+     (apply siphon dst rest)))
 
 (defn join
   "something goes here"
-  [src dst]
-  (if (async-result? src)
-    (do
-      (r/siphon-result src dst)
-      (r/subscribe dst (r/result-callback (fn [_]) #(r/error src %))))
-    (ch/join src dst)))
+  ([src dst]
+     (if (async-result? src)
+       (do
+         (r/siphon-result src dst)
+         (r/subscribe dst (r/result-callback (fn [_]) #(r/error src %))))
+       (ch/join src dst)))
+  ([src dst & rest]
+     (join src dst)
+     (apply join dst rest)))
 
 (defn enqueue
   "Enqueues the message or messages into the channel."

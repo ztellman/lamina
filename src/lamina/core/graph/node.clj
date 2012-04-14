@@ -755,12 +755,13 @@
 
 (defn closed? [node]
   (let [s (state node)]
-    (or
-      (case (.mode s)
-        ::consumed (q/closed? (.queue s))
-        (::closed ::drained) true
-        false)
-      (and (.queue s) (q/closed? (.queue s))))))
+    (boolean
+      (or
+        (case (.mode s)
+          ::consumed (q/closed? (.queue s))
+          (::closed ::drained) true
+          false)
+        (and (.queue s) (q/closed? (.queue s)))))))
 
 (defn split-node
   [^Node node]
@@ -867,9 +868,10 @@
 
 (defn drained? [node]
   (let [s (state node)]
-    (or
-      (identical? ::drained (.mode s))
-      (and (.queue s) (q/drained? (.queue s))))))
+    (boolean
+      (or
+        (identical? ::drained (.mode s))
+        (and (.queue s) (q/drained? (.queue s)))))))
 
 (defn split? [node]
   (identical? ::split (.mode (state node))))

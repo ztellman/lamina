@@ -85,7 +85,7 @@
   (ground ch))
 
 (render-propagation-diagram channel-14 [ch 1]
-  (->> ch (map* inc) (filter even?)))
+  (->> ch (map* inc) (filter* even?)))
 
 (render-graph-diagram channel-15 [ch]
   (enqueue ch 1 3 2)
@@ -105,7 +105,7 @@
 
 (render-graph-diagram channel-19 [ch]
   (receive-all
-    (->> (map* inc) (filter* even?))
+    (->> ch (map* inc) (filter* even?))
     println))
 
 (render-graph-diagram channel-20 [ch]

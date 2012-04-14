@@ -205,16 +205,17 @@
     nil
     nil))
 
-(defn sink
-  "Equivalent to receive-all, but with argument ordering more amenable to threading with
-   the ->> operator."
-  [callback channel]
-  (receive-all channel callback))
-
 (defn cancel-callback
   "Cancels a callback registered with receive, receive-all, on-closed, on-drained, or on-error."
   ([channel callback]
      (g/cancel (emitter-node channel) callback)))
+
+(defn sink
+  "Creates a channel which will forward all messages to 'callback'."
+  [callback]
+  (let [ch (channel)]
+    (receive-all ch callback)
+    ch))
 
 (defn fork
   "Returns a channel which is an exact duplicate of the source channel, containing all messages
