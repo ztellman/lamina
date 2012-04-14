@@ -300,7 +300,9 @@
            `(invoke [this## val##]
               ~(cond
                  (and timeout (not result))
-                 `(let [result# (r/expiring-result ~timeout)]
+                 `(let [timeout# ~timeout
+                        result# (when timeout#
+                                  (r/expiring-result timeout#))]
                     (start-pipeline this## result# val##)
                     result#)
                  
@@ -308,8 +310,11 @@
                 `(start-pipeline this## ~result val##)
 
                 (and result timeout)
-                `(let [result# ~result]
-                   (on-success (r/timed-result ~timeout) (fn [_] (r/error result# :lamina/timeout!)))
+                `(let [timeout# ~timeout
+                       result# ~result]
+                   (when timeout#
+                     (on-success (r/timed-result timeout#)
+                       (fn [_] (r/error result# :lamina/timeout!))))
                    (start-pipeline this## result# val##))
 
                 :else
