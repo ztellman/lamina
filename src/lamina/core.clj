@@ -118,6 +118,7 @@
 (import-fn ch/transactional?)
 (import-fn ch/on-closed)
 (import-fn ch/on-drained)
+(import-fn ch/on-error)
 (import-fn ch/closed-result)
 (import-fn ch/drained-result)
 (import-fn ch/cancel-callback)
@@ -133,12 +134,12 @@
    close the other."
   []
   (let [a (channel)
-        b (channel)
-        a* (splice a b)
-        b* (splice b a)]
-    (on-closed a* #(close b*))
-    (on-closed b* #(close a*))
-    [a* b*]))
+        b (channel)]
+    (on-closed a #(close b))
+    (on-closed b #(close a))
+    (on-error a #(error b %))
+    (on-error b #(error a %))
+    [(splice a b) (splice b a)]))
 
 (import-macro p/pipeline)
 (import-macro p/run-pipeline)

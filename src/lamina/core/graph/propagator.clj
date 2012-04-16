@@ -137,7 +137,14 @@
 
 (defn bridge-siphon [src edge-description node-description callback dsts]
   (let [downstream (to-array (map #(edge nil %) dsts))
-        n (BridgePropagator. node-description callback downstream)
+        n (BridgePropagator. node-description
+            (fn [x]
+              (try
+                (callback x)
+                (catch Exception e
+                  (log/error e (str "error in " (or node-description edge-description)))
+                  (error src e))))
+            downstream)
         upstream (edge edge-description n)
         dsts (filter n/node? dsts)]
     (n/link src n upstream
@@ -148,7 +155,14 @@
 
 (defn bridge-join [src edge-description node-description callback dsts]
   (let [downstream (to-array (map #(edge nil %) dsts))
-        n (BridgePropagator. node-description callback downstream)
+        n (BridgePropagator. node-description
+            (fn [x]
+              (try
+                (callback x)
+                (catch Exception e
+                  (log/error e (str "error in " (or node-description edge-description)))
+                  (error src e))))
+            downstream)
         upstream (edge edge-description n)]
     (n/link src n upstream
       nil
