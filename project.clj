@@ -1,6 +1,6 @@
 (defproject lamina "0.5.0-SNAPSHOT"
   :description "event-driven data structures for clojure"
-  :dependencies [[org.clojure/clojure "1.3.0"]
+  :dependencies [[org.clojure/clojure "1.4.0"]
                  [org.clojure/tools.logging "0.2.3"]
                  [useful "0.7.3"]
                  [potemkin "0.1.2"]
@@ -12,7 +12,7 @@
                      [useful "0.7.3"]
                      [potemkin "0.1.2"]]
                "1.2" [[org.clojure/clojure "1.2.1"]]
-               "1.4s" [[org.clojure/clojure "1.4.0-master-SNAPSHOT"]]
+               "1.4" [[org.clojure/clojure "1.4.0"]]
                }
   :dev-dependencies [[criterium "0.2.1-SNAPSHOT"]
                      [codox "0.4.1"]]
