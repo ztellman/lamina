@@ -301,8 +301,9 @@
               ~(cond
                  (and timeout (not result))
                  `(let [timeout# ~timeout
-                        result# (when timeout#
-                                  (r/expiring-result timeout#))]
+                        result# (if timeout#
+                                  (r/expiring-result timeout#)
+                                  (r/result-channel))]
                     (start-pipeline this## result# val##)
                     result#)
                  
