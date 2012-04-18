@@ -12,7 +12,7 @@
     [lamina core connections trace]
     [lamina.core.pipeline :only (success-result error-result)])
   (:require
-   [clojure.contrib.logging :as log])
+   [clojure.tools.logging :as log])
   (:import java.util.concurrent.TimeoutException))
 
 ;;;

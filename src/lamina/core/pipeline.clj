@@ -13,7 +13,7 @@
     [lamina.core.channel]
     [clojure.pprint])
   (:require
-    [clojure.contrib.logging :as log])
+    [clojure.tools.logging :as log])
   (:import
     [java.util.concurrent
      TimeoutException
@@ -23,9 +23,9 @@
 
 (def instrument-exceptions false)
 
-(def *inside-pipeline?* false)
+(def ^{:dynamic true} *inside-pipeline?* false)
 
-(def *current-executor* nil)
+(def ^{:dynamic true} *current-executor* nil)
 
 (defmacro with-executor [executor & body]
   `(let [f# (fn [] ~@body)]
@@ -43,7 +43,7 @@
 
 ;;;
 
-(declare wait-for-result)
+(declare ^{:dynamic true} wait-for-result)
 
 (deftype ResultChannel [success error metadata]
   Object
@@ -78,10 +78,10 @@
 (defn result-channel? [x]
   (instance? ResultChannel x))
 
-(defn on-success [^ResultChannel ch & callbacks]
+(defn ^{:dynamic true} on-success [^ResultChannel ch & callbacks]
   (apply receive (.success ch) callbacks))
 
-(defn on-error [^ResultChannel ch & callbacks]
+(defn ^{:dynamic true} on-error [^ResultChannel ch & callbacks]
   (apply receive (.error ch) callbacks))
 
 (defn success! [^ResultChannel ch value]
