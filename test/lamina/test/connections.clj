@@ -93,9 +93,6 @@
 (deftest test-pipelined-server
   (run-server-tests pipelined-server))
 
-(deftest test-single-shot-server
-  (run-server-tests single-shot-server))
-
 ;;;
 
 (deftest ^:benchmark benchmark-clients
