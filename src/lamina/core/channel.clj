@@ -8,6 +8,7 @@
 
 (ns lamina.core.channel
   (:use
+    [potemkin]
     [lamina.core.utils])
   (:require
     [lamina.core.graph :as g]
@@ -30,7 +31,7 @@
 
 ;;;
 
-(defprotocol IChannel
+(defprotocol-once IChannel
   (receiver-node [_]
     "Returns the receiver node for the channel.")
   (emitter-node [_]

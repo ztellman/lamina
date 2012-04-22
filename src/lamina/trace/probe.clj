@@ -8,6 +8,7 @@
 
 (ns lamina.trace.probe
   (:use
+    [potemkin]
     [lamina.core.utils])
   (:require
     [clojure.string :as str]
@@ -25,7 +26,7 @@
     [java.util.concurrent.atomic
      AtomicBoolean]))
 
-(defprotocol IProbe
+(defprotocol-once IProbe
   (probe-enabled? [_] "Returns true if the probe has downstream channels."))
 
 (deftype ProbeChannel

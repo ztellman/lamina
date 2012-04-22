@@ -7,7 +7,9 @@
 ;;   You must not remove this notice, or any other, from this software.
 
 (ns lamina.core.graph.core
-  (:use [lamina.core.utils]))
+  (:use 
+    [lamina.core.utils]
+    [potemkin]))
 
 ;;;
 
@@ -23,7 +25,7 @@
 
 ;;;
 
-(defprotocol IPropagator
+(defprotocol-once IPropagator
   (downstream [_]
     "Returns a list of nodes which are downstream of this node.")
   (transactional [_]

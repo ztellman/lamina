@@ -7,6 +7,8 @@
 ;;   You must not remove this notice, or any other, from this software.
 
 (ns lamina.core.lock
+  (:use
+    [potemkin])
   (:require
     [clojure.tools.logging :as log])
   (:import
@@ -17,7 +19,7 @@
 
 ;;;
 
-(defprotocol ILock
+(defprotocol-once ILock
   (acquire [_])
   (acquire-exclusive [_])
   (release [_])

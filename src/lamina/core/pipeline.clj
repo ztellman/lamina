@@ -8,7 +8,7 @@
 
 (ns lamina.core.pipeline
   (:use
-    [potemkin :only (unify-gensyms)]
+    [potemkin]
     [lamina.core.utils :only (description)])
   (:require
     [lamina.trace.timer :as t]
@@ -28,7 +28,7 @@
 
 (deftype Redirect [pipeline value])
 
-(defprotocol IPipeline
+(defprotocol-once IPipeline
   (implicit? [_])
   (gen-timer [_ stage])
   (run [_ result initial-value value stage])

@@ -8,6 +8,7 @@
 
 (ns lamina.core.graph.node
   (:use
+    [potemkin]
     [useful.datatypes :only (make-record assoc-record)]
     [lamina.core.threads :only (enqueue-cleanup)]
     [lamina.core.graph.core]
@@ -37,7 +38,7 @@
      CopyOnWriteArrayList]))
 
 
-(defprotocol INode
+(defprotocol-once INode
   
   ;;
   (read-node [_] [_ predicate false-value result-channel]

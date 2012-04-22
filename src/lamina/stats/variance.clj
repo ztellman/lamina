@@ -8,12 +8,13 @@
 
 (ns lamina.stats.variance
   (:use
+    [potemkin]
     [lamina.stats.utils])
   (:import
     [java.util.concurrent.atomic
      AtomicLong]))
 
-(defprotocol IVariance
+(defprotocol-once IVariance
   (std-dev [_])
   (variance [_])
   (mean [_]))

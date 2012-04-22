@@ -1,5 +1,6 @@
 (ns lamina.trace.timer
   (:use
+    [potemkin]
     [useful.datatypes :only (make-record)]
     [lamina.core.utils :only (enqueue)])
   (:require
@@ -18,7 +19,8 @@
 
 ;;;
 
-(defprotocol ITimed
+(defprotocol-once ITimed
+  (timing [_ start])
   (mark-enter [_])
   (mark-error [_ err])
   (mark-return [_ val])
@@ -26,9 +28,9 @@
 
 (defn dummy-timer [description enqueue-error?]
   (reify
-    clojure.lang.IDeref
-    (deref [_] {})
     ITimed
+    (timing [_ start]
+      {})
     (mark-error [_ err]
       (when enqueue-error?
         (enqueue (p/error-probe-channel [description :error]) {:error err})))
@@ -40,6 +42,7 @@
 
 (defrecord EnqueuedTiming
   [description
+   ^long offset
    ^long timestamp
    ^long duration
    ^long enqueued-duration
@@ -47,10 +50,12 @@
    args
    result])
 
-(defmacro make-timing [type & extras]
-  `(let [timing# (make-record ~type
+(defmacro make-timing [type start & extras]
+  `(let [start# ~start
+         timing# (make-record ~type
                    :description ~'description
                    :timestamp ~'timestamp
+                   :offset (unchecked-subtract (long ~'enter) (long start#))
                    :duration (if (or
                                    (= Long/MIN_VALUE ~'return)
                                    (= Long/MIN_VALUE ~'enter))
@@ -58,7 +63,7 @@
                                (unchecked-subtract (long ~'return) (long ~'enter)))
                    :args ~'args
                    :sub-tasks (when-not (.isEmpty ~'sub-tasks)
-                                (doall (map deref ~'sub-tasks)))
+                                (doall (map #(timing % start#) ~'sub-tasks)))
                    ~@extras)]
      (if-not (neg? ~'start-stage)
        (assoc timing# :start-stage ~'start-stage)
@@ -76,27 +81,26 @@
    ^{:volatile-mutable true, :tag long} enter
    ^{:volatile-mutable true, :tag long} return
    ^ConcurrentLinkedQueue sub-tasks]
-  clojure.lang.IDeref
-  (deref [_]
-    (make-timing EnqueuedTiming
+  ITimed
+  (timing [_ start]
+    (make-timing EnqueuedTiming start
       :enqueued-duration (if (= Long/MIN_VALUE enter)
                            -1
                            (unchecked-subtract (long enter) (long enqueued)))))
-  ITimed
   (add-sub-task [_ timer]
     (.add sub-tasks timer))
   (mark-enter [this]
     (set! enter (System/nanoTime)))
   (mark-error [this err]
     (set! return (System/nanoTime))
-    (let [timing (assoc @this :error err)]
+    (let [timing (assoc (timing this enter) :error err)]
       (enqueue
         (or error-probe (p/error-probe-channel [description :error]))
         timing)
       (ex/trace-error executor timing)))
   (mark-return [this val]
     (set! return (System/nanoTime))
-    (let [timing (make-timing EnqueuedTiming
+    (let [timing (make-timing EnqueuedTiming enter
                    :enqueued-duration (if (= Long/MIN_VALUE enter)
                                         -1
                                         (unchecked-subtract (long enter) (long enqueued)))
@@ -155,6 +159,7 @@
 (defrecord Timing
   [description
    ^long timestamp
+   ^long offset
    ^long duration
    sub-tasks
    args
@@ -170,10 +175,9 @@
    ^long enter
    ^{:volatile-mutable true, :tag long} return
    ^ConcurrentLinkedQueue sub-tasks]
-  clojure.lang.IDeref
-  (deref [_]
-    (make-timing Timing))
   ITimed
+  (timing [_ start]
+    (make-timing Timing start))
   (add-sub-task [_ timer]
     (.add sub-tasks timer))
   (mark-enter [_]
@@ -182,13 +186,13 @@
     (set! return (System/nanoTime))
     (enqueue
       (or error-probe (p/error-probe-channel [description :error]))
-      (assoc @this :error err)))
+      (assoc (timing this enter) :error err)))
   (mark-return [this val]
     (set! return (System/nanoTime))
 
     (when return-probe
       (enqueue return-probe
-        (make-timing Timing
+        (make-timing Timing enter
           :result val)))))
 
 (defn timer-

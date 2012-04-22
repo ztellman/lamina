@@ -8,6 +8,7 @@
 
 (ns lamina.core.result
   (:use
+    [potemkin]
     [useful.datatypes :only (assoc-record)]
     [lamina.core.utils])
   (:require
@@ -33,7 +34,7 @@
 
 (deftype ResultCallback [on-success on-error])
 
-(defprotocol IResult
+(defprotocol-once IResult
   (success [_ val])
   (error [_ err])
   (success! [_ val])

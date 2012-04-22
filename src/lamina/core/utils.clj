@@ -7,14 +7,16 @@
 ;;   You must not remove this notice, or any other, from this software.
 
 (ns lamina.core.utils
+  (:use
+    [potemkin])
   (:require
     [clojure.tools.logging :as log]
     [clojure.string :as str]))
 
-(defprotocol IEnqueue
+(defprotocol-once IEnqueue
   (enqueue [_ msg]))
 
-(defprotocol IDescribed
+(defprotocol-once IDescribed
   (description [_]))
 
 (defn in-transaction? []

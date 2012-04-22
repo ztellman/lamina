@@ -6,7 +6,8 @@
 ;;   the terms of this license.
 ;;   You must not remove this notice, or any other, from this software.
 
-(ns lamina.stats.utils)
+(ns lamina.stats.utils
+  (:use [potemkin]))
 
-(defprotocol IUpdatable
+(defprotocol-once IUpdatable
   (update [_ value]))
