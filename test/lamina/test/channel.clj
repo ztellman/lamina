@@ -44,6 +44,11 @@
     (enqueue a 4)
     (is (= [2 4] @v))))
 
+(deftest test-distribute-aggregate
+  (let [ch (channel 1 2 1 2 3 1 1)
+        ch* (distribute-aggregate identity (fn [_ ch] ch) ch)]
+    (is (= [{1 1, 2 2} {1 1, 2 2, 3 3} {1 1}] (channel-seq ch*)))))
+
 (deftest test-fork
   (let [a (channel 0 1 2)
         b (->> a fork (map* inc))
