@@ -21,12 +21,12 @@
 
 (set! *warn-on-reflection* true)
 
-(deftype MessageConsumer
+(deftype-once MessageConsumer
   [predicate
    false-value
    ^ResultChannel result-channel])
 
-(deftype SimpleConsumer
+(deftype-once SimpleConsumer
   [^ResultChannel result-channel]
   Object
   (equals [_ x]
@@ -45,9 +45,9 @@
    result
    ^ResultChannel result-channel])
 
-(deftype Consumptions [s])
+(deftype-once Consumptions [s])
 
-(deftype FailedConsumptions [s])
+(deftype-once FailedConsumptions [s])
 
 (defn no-consumption [result-channel]
   (Consumption. ::no-dispatch nil result-channel))
@@ -140,7 +140,7 @@
 
 ;;;
 
-(deftype ErrorQueue [error]
+(deftype-once ErrorQueue [error]
   clojure.lang.Counted
   (count [_] 0)
   IEventQueue
@@ -161,7 +161,7 @@
   (cancel-receive [_ _]
     false))
 
-(deftype DrainedQueue []
+(deftype-once DrainedQueue []
   clojure.lang.Counted
   (count [_] 0)
   IEventQueue
@@ -183,7 +183,7 @@
 
 ;;;
 
-(deftype EventQueue
+(deftype-once EventQueue
   [^AsymmetricLock lock
    ^ConcurrentLinkedQueue messages
    ^ConcurrentLinkedQueue consumers
@@ -391,7 +391,7 @@
        PersistentQueue/EMPTY
        (apply conj PersistentQueue/EMPTY s))))
 
-(deftype TransactionalEventQueue
+(deftype-once TransactionalEventQueue
   [messages
    consumers
    closed?]

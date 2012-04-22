@@ -13,7 +13,7 @@
 
 ;;;
 
-(deftype Edge [^String description node]
+(deftype-once Edge [^String description node]
   IDescribed
   (description [_] description))
 

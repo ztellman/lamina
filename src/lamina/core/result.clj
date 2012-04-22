@@ -32,7 +32,7 @@
 
 (set! *warn-on-reflection* true)
 
-(deftype ResultCallback [on-success on-error])
+(deftype-once ResultCallback [on-success on-error])
 
 (defprotocol-once IResult
   (success [_ val])
@@ -49,7 +49,7 @@
 
 ;;;
 
-(deftype SuccessResult [value]
+(deftype-once SuccessResult [value]
   IEnqueue
   (enqueue [_ _]
     :lamina/already-realized!)
@@ -79,7 +79,7 @@
   (toString [_]
     (str "<< " (pr-str value) " >>")))
 
-(deftype ErrorResult [error]
+(deftype-once ErrorResult [error]
   IEnqueue
   (enqueue [_ _]
     :lamina/already-realized!)
@@ -117,7 +117,7 @@
 
 ;;;
 
-(deftype ResultState [^long subscribers mode value claim-ref])
+(deftype-once ResultState [^long subscribers mode value claim-ref])
 
 (defmacro update-state [^ResultState state signal value]
   `(let [signal# ~signal
@@ -205,7 +205,7 @@
                    (recur)))
                result#)))))))
 
-(deftype ResultChannel
+(deftype-once ResultChannel
   [^Lock lock
    ^{:volatile-mutable true :tag ResultState} state
    ^LinkedList subscribers]

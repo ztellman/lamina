@@ -8,6 +8,7 @@
 
 (ns lamina.core.graph.propagator
   (:use
+    [potemkin]
     [lamina.core.graph.core]
     [lamina.core.utils])
   (:require
@@ -80,7 +81,7 @@
       (.clear ^ConcurrentHashMap downstream)
       downstream)))
 
-(deftype MultiplexingPropagator
+(deftype DistributingPropagator
   [facet
    generator
    ^AsymmetricLock lock
@@ -88,7 +89,7 @@
    ^AtomicBoolean transactional?
    ^ConcurrentHashMap downstream]
   IDescribed
-  (description [_] "multiplexer")
+  (description [_] "demux")
   IPropagator
   (close [_]
     (doseq [n (close-and-clear lock closed? downstream)]
@@ -124,8 +125,8 @@
       (propagate n msg true)
       :lamina/closed!)))
 
-(defn multiplexing-propagator [facet generator]
-  (MultiplexingPropagator.
+(defn distributing-propagator [facet generator]
+  (DistributingPropagator.
     facet
     generator
     (l/asymmetric-lock)

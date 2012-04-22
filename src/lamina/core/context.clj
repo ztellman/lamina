@@ -8,6 +8,7 @@
 
 (ns lamina.core.context
   (:use
+    [potemkin]
     [useful.datatypes :only (assoc-record make-record)])
   (:import
     [java.util
@@ -17,7 +18,7 @@
 
 ;;;
 
-(deftype Context
+(deftype-once Context
   [timer])
 
 ;;;

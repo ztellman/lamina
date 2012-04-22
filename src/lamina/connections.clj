@@ -8,6 +8,7 @@
 
 (ns lamina.connections
   (:use
+    [potemkin]
     [useful.datatypes :only (assoc-record)]
     [lamina core trace])
   (:require
@@ -145,7 +146,7 @@
       (meta f))
     f))
 
-(deftype RequestTuple [request result channel])
+(deftype-once RequestTuple [request result channel])
 
 (defn client
   "something goes here"

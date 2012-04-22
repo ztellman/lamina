@@ -24,6 +24,8 @@
      Node]
     [java.util.concurrent.atomic
      AtomicLong]
+    [java.util.concurrent
+     ConcurrentHashMap]
     [java.io
      Writer]))
 
@@ -39,7 +41,7 @@
   (split-receiver [_]
     "Ensures the receiver and emitter are split, and returns the emitter."))
 
-(deftype Channel
+(deftype-once Channel
   [^Node receiver
    ^{:volatile-mutable true :tag Node} emitter
    metadata]
@@ -90,7 +92,7 @@
             "[ \u2026 ]"
             "[ ]"))))))
 
-(deftype SplicedChannel [^Channel receiver ^Channel emitter]
+(deftype-once SplicedChannel [^Channel receiver ^Channel emitter]
   clojure.lang.Counted
   (count [_]
     (count emitter))
@@ -341,16 +343,71 @@
   [f channel]
   (filter* (complement f) channel))
 
-(defn multiplexer [facet generator]
+(defn distributor
+  "Returns a channel.
+
+   Messages enqueued into this channel are split into multiple streams, grouped by
+   (facet msg). When a new facet-value is encountered, (channel-initializer facet ch)
+   is called, allowing messages with that facet-value to be handled appropriately.
+
+   If a facet channel is closed, it will be removed from the distributor, and
+   a new channel will be generated when another message of that type is enqueued.
+   This allows the use of (close-on-idle ch ...), if facet-values will change over
+   time.
+
+   Given messages with the form {:type :foo, :value 1}, to print the mean values of all
+   types:
+
+   (distributor :type
+     (fn [ch facet]
+       (siphon
+         (->> ch (map* :value) average)
+         (sink #(println \"average for\" facet \"is\" %)))))"
+  [facet channel-initializer]
   (let [receiver (g/node identity)
-        propagator (g/multiplexing-propagator facet
+        propagator (g/distributing-propagator facet
                      (fn [id]
-                       (let [ch (channel* :description (pr-str id))
-                             ch* (generator id)]
-                         (join ch ch*)
+                       (let [ch (channel* :description (pr-str id))]
+                         (channel-initializer id ch)
                          (receiver-node ch))))]
     (g/link receiver propagator (g/edge nil propagator) nil nil)
     (Channel. receiver receiver nil)))
+
+(defn aggregate
+  [facet ch]
+  (let [ch* (mimic ch)
+        lock (l/lock)
+        aggregator (atom (ConcurrentHashMap.))]
+    (bridge-join ch "aggregate"
+      (fn [msg]
+        (let [f (facet msg)]
+          (when-let [msg (l/with-exclusive-lock lock
+                           (let [^ConcurrentHashMap m @aggregator]
+                             (when (.putIfAbsent m f msg)
+                               (reset! aggregator
+                                 (doto (ConcurrentHashMap.)
+                                   (.put f msg)))
+                               m)))]
+            (enqueue ch* (into {} msg)))))
+      ch*)
+    ch*))
+
+(defn distribute-aggregate
+  [facet channel-initializer ch]
+  (let [ch* (mimic ch)
+        aggr (->> ch*
+               (aggregate :facet))
+        dist (distributor facet
+               (fn [facet ch]
+                 (siphon
+                   (->> ch
+                     (channel-initializer facet)
+                     (map* #(hash-map :facet facet, :value %)))
+                   ch*)))]
+    (siphon ch dist)
+    (map*
+      #(zipmap (keys %) (map :value (vals %)))
+      aggr)))
 
 ;;;
 

@@ -149,7 +149,9 @@
 (import-fn p/read-merge)
 (import-macro p/wait-stage)
 
-(import-fn ch/multiplexer)
+(import-fn ch/distributor)
+(import-fn ch/aggregate)
+(import-fn ch/distribute-aggregate)
 (import-fn op/combine-latest)
 
 (import-macro op/consume)

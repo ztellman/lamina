@@ -26,7 +26,7 @@
 
 ;;;
 
-(deftype Redirect [pipeline value])
+(deftype-once Redirect [pipeline value])
 
 (defprotocol-once IPipeline
   (implicit? [_])

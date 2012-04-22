@@ -8,6 +8,7 @@
 
 (ns lamina.stats.moving-average
   (:use
+    [potemkin]
     [lamina.stats.utils])
   (:import
     [java.util.concurrent.atomic
@@ -15,12 +16,12 @@
 
 (set! *warn-on-reflection* true)
 
-(deftype Counter [^double sum ^long cnt])
+(deftype-once Counter [^double sum ^long cnt])
 
 (defn update-count [^Counter counter val]
   (Counter. (double (+ (.sum counter) (double val))) (inc (.cnt counter))))
 
-(deftype MovingAverage
+(deftype-once MovingAverage
   [^{:volatile-mutable true} initialized?
    ^{:volatile-mutable true :tag double} rate
    ^AtomicReference counter

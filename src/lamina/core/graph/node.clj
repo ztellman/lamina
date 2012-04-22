@@ -82,7 +82,7 @@
 ;; closed       no further messages can propagate through the node, messages still in queue
 ;; drained      no further messages can propagate through the node, queue is empty
 ;; error        an error prevents any further messages from being propagated
-(deftype NodeState
+(deftype-once NodeState
   [mode
    ^long downstream-count
    split
@@ -188,7 +188,7 @@
 
 (declare split-node join node?)
 
-(deftype Node
+(deftype-once Node
   [^AsymmetricLock lock
    operator
    description

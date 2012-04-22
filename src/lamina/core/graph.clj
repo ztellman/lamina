@@ -72,7 +72,7 @@
 (import-fn p/bridge-join)
 (import-fn p/terminal-propagator)
 (import-fn p/callback-propagator)
-(import-fn p/multiplexing-propagator)
+(import-fn p/distributing-propagator)
 
 ;;;
 

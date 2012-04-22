@@ -29,7 +29,7 @@
 (defprotocol-once IProbe
   (probe-enabled? [_] "Returns true if the probe has downstream channels."))
 
-(deftype ProbeChannel
+(deftype-once ProbeChannel
   [^AtomicBoolean enabled?
    channel
    log-on-disabled?
@@ -137,7 +137,7 @@
 
 ;;;
 
-(deftype SympatheticProbeChannel
+(deftype-once SympatheticProbeChannel
   [^AtomicBoolean enabled?
    receiver
    emitter]

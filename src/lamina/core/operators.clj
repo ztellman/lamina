@@ -8,7 +8,7 @@
 
 (ns lamina.core.operators
   (:use
-    [potemkin :only (unify-gensyms)]
+    [potemkin]
     [lamina.core channel utils])
   (:require
     [lamina.core.graph :as g]
@@ -33,7 +33,7 @@
 ;; TODO: think about race conditions with closing the destination channel while a message is en-route
 ;; hand-over-hand locking in the node when ::consumed?
 
-(deftype FinalValue [val])
+(deftype-once FinalValue [val])
 
 (defmacro consume
   "something goes here"

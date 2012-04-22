@@ -46,15 +46,15 @@
        (map* (constantly 1))
        (sum interval))))
 
-(defn average
+(defn mean
   "Returns a channel that will periodically emit the moving average over all messages emitted by
    the source channel every 'interval' milliseconds, defaulting to once every five seconds.  This
    moving average is exponentially weighted to the last 'window' milliseconds, defaulting to the
    last five minutes."
   ([ch]
-     (average (t/seconds 5) ch))
+     (mean (t/seconds 5) ch))
   ([interval ch]
-     (average interval (t/minutes 5) ch))
+     (mean interval (t/minutes 5) ch))
   ([interval window ch]
      (let [avg (avg/moving-average interval window)
            ch* (channel)]

@@ -29,7 +29,7 @@
 
 ;;;
 
-(deftype AsymmetricLock [^ReentrantReadWriteLock lock]
+(deftype-once AsymmetricLock [^ReentrantReadWriteLock lock]
   ILock
   (acquire [this]
     (-> lock .readLock .lock))
@@ -47,7 +47,7 @@
 (defn asymmetric-lock []
   (AsymmetricLock. (ReentrantReadWriteLock. false)))
 
-(deftype Lock [^ReentrantLock lock]
+(deftype-once Lock [^ReentrantLock lock]
   ILock
   (acquire-exclusive [_] (.lock lock))
   (release-exclusive [_] (.unlock lock))

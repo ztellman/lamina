@@ -69,7 +69,7 @@
        (assoc timing# :start-stage ~'start-stage)
        timing#)))
 
-(deftype EnqueuedTimer
+(deftype-once EnqueuedTimer
   [executor
    description
    return-probe
@@ -165,7 +165,7 @@
    args
    result])
 
-(deftype Timer
+(deftype-once Timer
   [description
    return-probe
    error-probe
