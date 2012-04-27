@@ -1,3 +1,7 @@
+(in-ns 'clojure.core)
+
+(defn reciprocal [x] (/ 1 x))
+
 (ns lamina.wiki.channel-diagrams
   (:use
     [lamina core viz])
@@ -15,10 +19,12 @@
 (defmacro render-graph-diagram [name [ch] & body]
   `(try
      (let [~ch (channel)
-           _# (do ~@body)
-           ch# ~ch
+           result# (do ~@body)
+           chs# (if (and (sequential? result#) (every? channel? result#))
+                 result#
+                 [~ch])
            ^java.io.File file# (io/file (str image-path ~(str name) ".png"))
-           image# (render-graph {:pad padding} ch#)]
+           image# (apply render-graph {:pad padding} chs#)]
        (when exists? (ImageIO/write image# "png" file#)))
      (catch Exception e#
        )))
@@ -115,6 +121,18 @@
 (render-graph-diagram channel-21 [ch]
   (close ch))
 
+(render-graph-diagram channel-22 [ch]
+  (->> ch (map* inc) (map* dec))
+  (->> ch (map* dec) (map* inc)))
 
+(render-graph-diagram channel-23 [ch]
+  (->> ch (map* inc) (map* dec))
+  (->> ch (map* dec) (map* inc) close))
 
+(render-propagation-diagram channel-24 [ch 2]
+  (map* reciprocal ch))
 
+(render-graph-diagram channel-25 [ch]
+  (let [ch* (map* reciprocal ch)]
+    (enqueue ch 0)
+    [ch ch*]))

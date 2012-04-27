@@ -151,6 +151,8 @@
   (drain [_] nil)
   (messages [_] nil)
   (enqueue [_ _ _ _] false)
+  (receive [this]
+    (receive this nil nil nil))
   (receive [_ _ _ result-channel]
     (if result-channel
       (do
@@ -172,6 +174,8 @@
   (drain [_] nil)
   (messages [_] nil)
   (enqueue [_ _ _ _] false)
+  (receive [this]
+    (receive this nil nil nil))
   (receive [_ _ _ result-channel]
     (if result-channel
       (do
