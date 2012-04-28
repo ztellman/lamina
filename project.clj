@@ -28,7 +28,7 @@
   :repositories {"sonatype-oss-public" "https://oss.sonatype.org/content/groups/public/"}
   :exclusions [org.clojure/contrib
                org.clojure/clojure-contrib]
-  :test-selectors {:default #(not (some #{:benchmark :stress} (cons (:tag %) (keys %))))
+  :test-selectors {:default #(not (some #{:wiki :benchmark :stress} (cons (:tag %) (keys %))))
                    :benchmark :benchmark
                    :stress #(or (:stress %) (= :stress (:tag %)))
                    :all (constantly true)}
