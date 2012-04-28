@@ -92,13 +92,15 @@
             "[ \u2026 ]"
             "[ ]"))))))
 
-(deftype-once SplicedChannel [^Channel receiver ^Channel emitter]
+(deftype-once SplicedChannel [^Channel receiver ^Channel emitter metadata]
   clojure.lang.Counted
   (count [_]
     (count emitter))
+
   IEnqueue
   (enqueue [_ msg]
     (g/propagate (receiver-node receiver) msg true))
+
   IChannel
   (receiver-node [_]
     (receiver-node receiver))
@@ -106,6 +108,12 @@
     (emitter-node emitter))
   (split-receiver [_]
     (split-receiver receiver))
+
+  clojure.lang.IMeta
+  clojure.lang.IObj
+  (meta [_] metadata)
+  (withMeta [_ meta] (SplicedChannel. receiver emitter meta))
+
   Object
   (toString [_]
     (str emitter)))
@@ -161,7 +169,8 @@
       receiver)
     (if (instance? SplicedChannel emitter)
       (.emitter ^SplicedChannel emitter)
-      emitter)))
+      emitter)
+    nil))
 
 (defn channel?
   "Returns true if 'x' is a channel.  This does not encompass result-channels."
