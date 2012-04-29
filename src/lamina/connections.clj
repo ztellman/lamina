@@ -146,6 +146,18 @@
       (meta f))
     f))
 
+(defmacro handle-request [[reset-fn close-fn] request & body]
+  `(let [request# ~request]
+     (cond
+       (identical? ::close request#)
+       (~close-fn)
+
+       (identical? ::reset request#)
+       (~reset-fn)
+
+       :else
+       (do ~@body))))
+
 (deftype-once RequestTuple [request result channel])
 
 (defn client
@@ -203,14 +215,12 @@
              ::reset-fn reset-fn}
            (fn
              ([request]
-                (if (identical? ::close request)
-                  (close-fn)
+                (handle-request [reset-fn close-fn] request
                   (let [result (result-channel)]
                     (enqueue requests (RequestTuple. request result nil))
                     result)))
              ([request timeout]
-                (if (identical? ::close request)
-                  (close-fn)
+                (handle-request [reset-fn close-fn] request
                   (let [result (expiring-result timeout)]
                     (enqueue requests (RequestTuple. request result nil))
                     result)))))))))
@@ -282,14 +292,12 @@
              ::reset-fn reset-fn}
            (fn
              ([request]
-                (if (identical? ::close request)
-                  (close-fn)
+                (handle-request [reset-fn close-fn] request
                   (let [result (result-channel)]
                     (enqueue requests (RequestTuple. request result nil))
                     result)))
              ([request timeout]
-                (if (identical? ::close request)
-                  (close-fn)
+                (handle-request [reset-fn close-fn] request
                   (let [result (expiring-result timeout)]
                     (enqueue requests (RequestTuple. request result nil))
                     result)))))))))
