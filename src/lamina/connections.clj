@@ -80,9 +80,9 @@
      (let [latch (atom false)
            connection (delay (connection-loop name connection-generator latch on-connected))
            reset-fn (fn []
-                      (when-let [ch @@connection]
-                        (when (channel? ch)
-                          (close ch))))
+                      (run-pipeline @@connection
+                        #(when (channel? %)
+                           (close %))))
            close-fn (fn []
                       (reset! latch true)
                       (reset-fn))]
