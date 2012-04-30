@@ -205,7 +205,31 @@
                    (recur)))
                result#)))))))
 
-(deftype-once ResultChannel
+(defmacro def-result-channel [params & body]
+  (let [{:keys [major minor]} *clojure-version*]
+    `(deftype-once ~'ResultChannel
+       ~params
+       ~@(when-not (and (= 1 major) (= 2 minor))
+           `(
+             clojure.lang.IPending
+             (isRealized [this#] (boolean (result this#)))
+             
+             clojure.lang.IBlockingDeref
+             (deref [this# timeout-ms# timeout-val#]
+               (let [r# (result-channel)]
+                 (t/delay-invoke r# timeout-ms# #(success r# timeout-val#))
+                 (subscribe this#
+                   (result-callback
+                     #(success r# %)
+                     #(error r# %)))
+                 @r#))))
+       ~@body)))
+
+(declare
+  result-channel
+  result-callback)
+
+(def-result-channel
   [^Lock lock
    ^{:volatile-mutable true :tag ResultState} state
    ^LinkedList subscribers]
