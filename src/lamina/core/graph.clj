@@ -124,7 +124,7 @@
                          ~(when predicate
                             (or on-false :lamina/false))
                          ~result)]
-       ~@(when (contains? options :on-timeout)
+       ~@(when (contains? options :timeout)
            `((let [timeout# ~timeout]
                (when (and timeout# (instance? ResultChannel ~result-sym))
                  (t/delay-invoke timeout#
