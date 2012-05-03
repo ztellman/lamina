@@ -1,8 +1,8 @@
-An event is a value that we don't yet have, a value which is **unrealized**.  Lamina contains a rich set of operators for dealing with unrealized values, both individually and collectively.  
+An event is a value that we don't yet have, a value which is unrealized.  Lamina contains a rich set of operators for dealing with unrealized values, both individually and collectively.  
 
-Individual events are represented by **async-results**.  If you haven't used Lamina before, you should start by [reading about them](https://github.com/ztellman/lamina/wiki/Introduction).
+Individual events are represented by async-results.  If you're new to Lamina, you should start by [reading about them](https://github.com/ztellman/lamina/wiki/Introduction).
 
-Streams of events are represented by **channels**.  They are used in [Aleph](https://github.com/ztellman/aleph) to model network communication over a variety of protocols.
+Streams of events are represented by channels.  They are used in [Aleph](https://github.com/ztellman/aleph) to model network communication over a variety of protocols.
 
 Much like Clojure's sequences, we can apply transforms to all events that pass through the channel:
 
