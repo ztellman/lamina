@@ -197,7 +197,7 @@
 
 (defmacro split
   "Returns a channel which will forward each message to all downstream-channels.
-   This can be used with channel->>, siphon->>, and join->> to define complex
+   This can be used with sink->>, siphon->>, and join->> to define complex
    message flows:
 
    (join->> (map* inc)
@@ -211,7 +211,7 @@
      ch#))
 
 (defmacro siphon->>
-  "A variant of channel->> where the last argument is assumed to be a channel,
+  "A variant of sink->> where the last argument is assumed to be a channel,
    and the contents of the transform chain are siphoned into it.
 
    (siphon->> (map* inc) (map* dec) (named-channel :foo))
@@ -236,7 +236,7 @@
          ch##))))
 
 (defmacro join->>
-  "A variant of channel->> where the last argument is assumed to be a channel,
+  "A variant of sink->> where the last argument is assumed to be a channel,
    and the transform chain is joined to it.
 
    (join->> (map* inc) (map* dec) (named-channel :foo))
