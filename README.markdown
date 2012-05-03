@@ -35,8 +35,8 @@ nil
 
 ![](https://github.com/ztellman/lamina/wiki/images/readme-1.png)
 
-Since we can have multiple consumers for any stream of data, we can easily analyze a stream without affecting other code.  Lamina provides a [variety of operators](https://ztellman.github.com/lamina/lamina.stats.html) for analyzing the data flowing through channels.
+Since we can have multiple consumers for any stream of data, we can easily analyze a stream without affecting other code.  Lamina provides a [variety of operators](http://ztellman.github.com/lamina/lamina.stats.html) for analyzing the data flowing through channels.
 
-Lamina also provides [mechanisms to instrument code](https://ztellman.github.com/lamina/lamina.stats.html), allowing the execution of data to throw off a stream of events that can be aggregated, analyzed, and used to better understand your software.
+Lamina also provides [mechanisms to instrument code](http://ztellman.github.com/lamina/lamina.stats.html), allowing the execution of data to throw off a stream of events that can be aggregated, analyzed, and used to better understand your software.
 
-To learn more, read the [wiki](https://github.com/ztellman/lamina/wiki/Introduction) or the [complete documentation](https://ztellman.github.com/lamina/)
+To learn more, read the [wiki](https://github.com/ztellman/lamina/wiki/Introduction) or the [complete documentation](http://ztellman.github.com/lamina/)
