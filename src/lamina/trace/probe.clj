@@ -63,7 +63,9 @@
 
     (ProbeChannel. flag ch log-on-disabled? description)))
 
-(defn canonical-probe-name [x]
+(defn canonical-probe-name
+  "something goes here"
+  [x]
   (cond
     (string? x) x
     (keyword? x) (name x)

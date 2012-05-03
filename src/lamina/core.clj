@@ -170,36 +170,40 @@
 (import-fn op/partition-every)
 (import-fn op/periodically)
 
-(defmacro channel->>
-  "Creates a channel, pipes it through the ->> operator, and returns that same
-   channel. This can be useful when defining :probes for an instrumented
-   function, among other places.
+(defmacro sink->>
+  "Creates a channel, pipes it through the ->> operator, and sends the
+   resulting stream into the callback. This can be useful when defining
+   :probes for an instrumented function, among other places.
 
-   (channel->> (map* inc) (map* dec) (sink println))
+   (sink->> (map* inc) (map* dec) println)
 
    expands to
 
    (let [ch (channel)]
-     (->> ch (map* inc) (map* dec) (sink println))
+     (receive-all
+       (->> ch (map* inc) (map* dec))
+       println)
      ch)"
-  [& transforms]
-  (unify-gensyms
-    `(let [ch## (channel)]
-       ~(if (empty? transforms)
-          `ch##
-          `(do
-             (->> ch## ~@transforms)
-             ch##)))))
+  [& transforms+callback]
+  (let [transforms (butlast transforms+callback)
+        callback (last transforms+callback)]
+   (unify-gensyms
+     `(let [ch## (channel)]
+        ~(if (empty? transforms)
+           `(receive-all ch## ~callback)
+           `(do
+              (receive-all (->> ch## ~@transforms) ~callback)
+              ch##))))))
 
-(defmacro split->>
+(defmacro split
   "Returns a channel which will forward each message to all downstream-channels.
    This can be used with channel->>, siphon->>, and join->> to define complex
    message flows:
 
    (join->> (map* inc)
-     (split->>
-       (channel->> (filter* even?) (sink log-even))
-       (channel->> (filter* odd?) (sink log-odd))))"
+     (split
+       (sink->> (filter* even?) log-even)
+       (sink->> (filter* odd?) log-odd)))"
   [& downstream-channels]
   `(let [ch# (channel)]
      (doseq [x# ~downstream-channels]
