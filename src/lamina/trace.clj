@@ -33,7 +33,9 @@
 (import-fn pr/select-probes)
 (import-fn pr/probe-names)
 
-(defmacro trace* [probe & body]
+(defmacro trace*
+  "A variant of trace that allows the probe name to be resolved at runtime."
+  [probe & body]
   (let [probe (if (keyword? probe)
                 (name probe)
                 probe)]
@@ -44,7 +46,13 @@
            true)
          false))))
 
-(defmacro trace [probe & body]
+(defmacro trace
+  "Enqueues a value into the probe-channel described by 'probe'.  The body is executed only
+   if there is a consumer for the probe channel; this is essentially a log statement that is
+   only active if someone is paying attention.
+
+   For performance reasons, the probe name must be something that can be resolved at compile-time."
+  [probe & body]
   (when-not (or (keyword? probe) (string? probe))
     (println
       (str

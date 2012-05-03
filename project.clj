@@ -22,7 +22,8 @@
                     lamina.executor
                     lamina.stats
                     lamina.api
-                    lamina.time]}
+                    lamina.time]
+          :output-dir "autodoc"}
   ;;:jvm-opts ["-server" "-XX:+UseConcMarkSweepGC" "-Xmx16m"]
   :jvm-opts ["-server" "-XX:+UseConcMarkSweepGC" "-Xmx2g" "-XX:NewSize=1g"]
   :repositories {"sonatype-oss-public" "https://oss.sonatype.org/content/groups/public/"}
@@ -30,6 +31,7 @@
                org.clojure/clojure-contrib]
   :test-selectors {:default #(not (some #{:wiki :benchmark :stress} (cons (:tag %) (keys %))))
                    :benchmark :benchmark
+                   :wiki :wiki
                    :stress #(or (:stress %) (= :stress (:tag %)))
                    :all (constantly true)}
   :license {:name "Eclipse Public License - v 1.0"

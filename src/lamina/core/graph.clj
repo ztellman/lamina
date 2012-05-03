@@ -90,6 +90,7 @@
     :transactional? (transactional? node)
     :permanent? (permanent? node)
     :grounded? (grounded? node)))
+
 ;;;
 
 (defn on-event [result-fn]

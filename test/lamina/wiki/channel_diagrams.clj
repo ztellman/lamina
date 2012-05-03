@@ -18,7 +18,7 @@
 (def padding [0.25 0.25])
 
 (defmacro render-graph-diagram [name [ch] & body]
-  `(deftest ~(with-meta name {:tag :wiki})
+  `(deftest ~(with-meta name {:tag :wiki :wiki true})
      (try
        (let [~ch (channel)
              result# (do ~@body)
@@ -32,7 +32,7 @@
          ))))
 
 (defmacro render-propagation-diagram [name [ch msg] & body]
-  `(deftest ~(with-meta name {:tag :wiki})
+  `(deftest ~(with-meta name {:tag :wiki :wiki true})
      (try
        (let [~ch (channel)
              _# (do ~@body)
@@ -42,6 +42,11 @@
          (when exists? (ImageIO/write image# "png" file#)))
        (catch Exception e#
          ))))
+
+(render-graph-diagram readme-1 [ch]
+  (map* inc ch)
+  (map* dec ch)
+  (enqueue ch 1 2 3))
 
 (render-graph-diagram channel-1 [ch]
   )
