@@ -55,7 +55,7 @@ channel is closed all forked channels are closed.  Similar propagation rules app
 states.</pre></div><div class="public" id="var-ground"><h3>ground</h3><div class="usage"><code>(ground ch)</code></div><pre class="doc">Ensures that messages will not accumulate in the channel's queue.
 </pre></div><div class="public" id="var-grounded-channel"><h3>grounded-channel</h3><div class="usage"><code>(grounded-channel)</code></div><pre class="doc">Returns a channel that cannot accumulate messages.
 </pre></div><div class="public" id="var-join"><h3>join</h3><div class="usage"><code>(join src dst)</code><code>(join src dst &amp; rest)</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-join-%3E%3E"><h3>join-&gt;&gt;</h3><div class="usage"><code>(join-&gt;&gt; &amp; transforms+downstream-channel)</code></div><pre class="doc">A variant of channel-&gt;&gt; where the last argument is assumed to be a channel,
+</pre></div><div class="public" id="var-join-%3E%3E"><h3>join-&gt;&gt;</h3><div class="usage"><code>(join-&gt;&gt; &amp; transforms+downstream-channel)</code></div><pre class="doc">A variant of sink-&gt;&gt; where the last argument is assumed to be a channel,
 and the transform chain is joined to it.
 
 (join-&gt;&gt; (map* inc) (map* dec) (named-channel :foo))
@@ -138,7 +138,7 @@ expands to
     (-&gt;&gt; ch (map* inc) (map* dec))
     println)
   ch)</pre></div><div class="public" id="var-siphon"><h3>siphon</h3><div class="usage"><code>(siphon src dst)</code><code>(siphon src dst &amp; rest)</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-siphon-%3E%3E"><h3>siphon-&gt;&gt;</h3><div class="usage"><code>(siphon-&gt;&gt; &amp; transforms+downstream-channel)</code></div><pre class="doc">A variant of channel-&gt;&gt; where the last argument is assumed to be a channel,
+</pre></div><div class="public" id="var-siphon-%3E%3E"><h3>siphon-&gt;&gt;</h3><div class="usage"><code>(siphon-&gt;&gt; &amp; transforms+downstream-channel)</code></div><pre class="doc">A variant of sink-&gt;&gt; where the last argument is assumed to be a channel,
 and the contents of the transform chain are siphoned into it.
 
 (siphon-&gt;&gt; (map* inc) (map* dec) (named-channel :foo))
@@ -151,7 +151,7 @@ expands to
     (named-channel :foo))
   ch)</pre></div><div class="public" id="var-splice"><h3>splice</h3><div class="usage"><code>(splice emitter receiver)</code></div><pre class="doc">Returns a channel where all messages are enqueud into 'receiver', and
 consumed from 'emitter'.</pre></div><div class="public" id="var-split"><h3>split</h3><div class="usage"><code>(split &amp; downstream-channels)</code></div><pre class="doc">Returns a channel which will forward each message to all downstream-channels.
-This can be used with channel-&gt;&gt;, siphon-&gt;&gt;, and join-&gt;&gt; to define complex
+This can be used with sink-&gt;&gt;, siphon-&gt;&gt;, and join-&gt;&gt; to define complex
 message flows:
 
 (join-&gt;&gt; (map* inc)
