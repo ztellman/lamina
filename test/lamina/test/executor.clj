@@ -22,8 +22,8 @@
 (def n 1e3)
 
 (defn benchmark-active-probe [description probe]
-   (let [nm (gensym "name")
-        x (executor :name nm :max-thread-count 1)
+  (let [nm (gensym "name")
+        x (executor {:name nm :max-thread-count 1})
         p (probe-channel [nm probe])
         f (instrument #(.countDown ^CountDownLatch %)
             :executor x
@@ -42,7 +42,7 @@
         (dotimes [_ n]
           (.execute x #(.countDown latch)))
         (.await latch))))
-  (let [x (executor :name "test" :max-thread-count 1)
+  (let [x (executor {:name "test" :max-thread-count 1})
         f (instrument #(.countDown ^CountDownLatch %)
             :executor x
             :name :foo)]

@@ -16,13 +16,16 @@
     [lamina.executor.utils :as ex]
     [lamina.trace.timer :as t]))
 
-(defrecord Enter [^long timestamp args])
+(defrecord Enter [description ^long timestamp args])
+
+(defmethod print-method Enter [x writer]
+  (print-method (into {} x) writer))
 
 (defmacro instrument-task-body
   [nm executor enter-probe return-probe implicit? with-bindings? timeout invoke args]
   `(do
      (when (probe-enabled? ~enter-probe)
-       (enqueue ~enter-probe (Enter. (System/currentTimeMillis) ~args)))
+       (enqueue ~enter-probe (Enter. ~nm (System/currentTimeMillis) ~args)))
      (let [timer# (t/enqueued-timer
                     ~executor
                     :description ~nm
@@ -68,7 +71,7 @@
 (defmacro instrument-body [nm enter-probe return-probe implicit? invoke args]
   `(do
      (when (probe-enabled? ~enter-probe)
-       (enqueue ~enter-probe (Enter. (System/currentTimeMillis) ~args)))
+       (enqueue ~enter-probe (Enter. ~nm (System/currentTimeMillis) ~args)))
      (let [timer# (t/timer
                     :description ~nm
                     :args ~args
@@ -159,10 +162,10 @@
   computing the value, and the 'return' probe will include an :enqueued-duration
   parameter that describes the time, in nanoseconds, spent waiting to be executed."
   
-  [f & {:keys [executor timeout probes implicit? with-bindings?]
-        :as options
-        :or {implicit? true
-             with-bindings? false}}]
+  [f {:keys [executor timeout probes implicit? with-bindings?]
+      :as options
+      :or {implicit? true
+           with-bindings? false}}]
   (when-not (contains? options :name)
     (throw (IllegalArgumentException. "Instrumented functions must have a :name defined.")))
   (if executor

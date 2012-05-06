@@ -20,7 +20,7 @@
 (defn boom [_]
   (throw (Exception. "boom")))
 
-(def exc (executor :name :test-pipeline))
+(def exc (executor {:name :test-pipeline}))
 
 (defmacro repeated-pipeline [n f]
   `(pipeline ~@(repeat n f)))

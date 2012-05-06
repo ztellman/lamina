@@ -62,6 +62,7 @@
                                -1
                                (unchecked-subtract (long ~'return) (long ~'enter)))
                    :args ~'args
+                   :result ~'result
                    :sub-tasks (when-not (.isEmpty ~'sub-tasks)
                                 (doall (map #(timing % start#) ~'sub-tasks)))
                    ~@extras)]
@@ -78,6 +79,7 @@
    ^long timestamp
    ^long enqueued
    args
+   ^{:volatile-mutable true} result
    ^{:volatile-mutable true, :tag long} enter
    ^{:volatile-mutable true, :tag long} return
    ^ConcurrentLinkedQueue sub-tasks]
@@ -100,11 +102,11 @@
       (ex/trace-error executor timing)))
   (mark-return [this val]
     (set! return (System/nanoTime))
-    (let [timing (make-timing EnqueuedTiming enter
+    (set! result val)
+    (let [timing (make-timing EnqueuedTiming enqueued
                    :enqueued-duration (if (= Long/MIN_VALUE enter)
                                         -1
-                                        (unchecked-subtract (long enter) (long enqueued)))
-                   :result val)]
+                                        (unchecked-subtract (long enter) (long enqueued))))]
       (when return-probe
         (enqueue return-probe timing))
       (ex/trace-return executor timing))))
@@ -124,6 +126,7 @@
                     (System/currentTimeMillis)
                     (System/nanoTime)
                     args
+                    nil
                     Long/MIN_VALUE
                     Long/MIN_VALUE
                     (ConcurrentLinkedQueue.))]
@@ -171,6 +174,7 @@
    error-probe
    ^long start-stage
    args
+   ^{:volatile-mutable true} result
    ^long timestamp
    ^long enter
    ^{:volatile-mutable true, :tag long} return
@@ -189,11 +193,10 @@
       (assoc (timing this enter) :error err)))
   (mark-return [this val]
     (set! return (System/nanoTime))
-
+    (set! result val)
     (when return-probe
       (enqueue return-probe
-        (make-timing Timing enter
-          :result val)))))
+        (make-timing Timing enter)))))
 
 (defn timer-
   [description
@@ -213,6 +216,7 @@
                     error-probe
                     start-stage
                     args
+                    nil
                     (System/currentTimeMillis)
                     (System/nanoTime)
                     Long/MIN_VALUE

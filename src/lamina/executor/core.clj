@@ -49,15 +49,15 @@
   "Defines a thread pool that can be used with instrument and defn-instrumented.
 
    more goes here"
-  [& {:keys [idle-timeout
-             min-thread-count
-             max-thread-count
-             interrupt?]
-      :or {idle-timeout 60000
-           min-thread-count 1
-           max-thread-count Integer/MAX_VALUE
-           interrupt? true}
-      :as options}]
+  [{:keys [idle-timeout
+           min-thread-count
+           max-thread-count
+           interrupt?]
+    :or {idle-timeout 60000
+         min-thread-count 1
+         max-thread-count Integer/MAX_VALUE
+         interrupt? true}
+    :as options}]
   (when-not (contains? options :name)
     (throw (IllegalArgumentException. "Every executor must have a :name specified.")))
   (let [nm (name (:name options))
@@ -141,5 +141,5 @@
 (def
   ^{:doc "A default executor with an unbounded maximum thread count."}
   default-executor (executor
-                     :name "lamina-default-executor"
-                     :idle-timeout 15000))
+                     {:name "lamina-default-executor"
+                      :idle-timeout 15000}))

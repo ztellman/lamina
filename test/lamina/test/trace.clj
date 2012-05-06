@@ -30,7 +30,7 @@
 
 ;;;
 
-(def exc (executor :name :test-executor))
+(def exc (executor {:name :test-executor}))
 
 ;;;
 
@@ -46,7 +46,7 @@
   (let [nm (gensym "name")
         probe (probe-channel [nm probe-type])
         [val callback] (capture)
-        f (apply instrument f (apply concat (assoc options :name nm)))]
+        f (instrument f (assoc options :name nm))]
     (receive-all probe callback)
     (try
       (let [result (apply f args)]
@@ -139,7 +139,7 @@
 (defn benchmark-active-probe [description probe]
   (let [nm (gensym "name")
         p (probe-channel [nm probe])
-        f (instrument + :name nm)]
+        f (instrument + {:name nm})]
     (receive-all p (fn [_]))
     (bench description
       (f 1 1))))
@@ -149,13 +149,13 @@
     (+ 1 1 1))
   (bench "baseline addition with apply"
     (apply + [1 1 1]))
-  (let [f (instrument + :name :foo)]
+  (let [f (instrument + {:name :foo})]
     (bench "instrument addition with one arg"
       (f 1)))
-  (let [f (instrument + :name :foo)]
+  (let [f (instrument + {:name :foo})]
     (bench "instrument addition with three args"
       (f 1 1 1)))
-  (let [f (instrument + :name :foo)]
+  (let [f (instrument + {:name :foo})]
     (bench "instrument addition with five args"
       (f 1 1 1 1 1)))
   (benchmark-active-probe "instrument addition with return probe" :return)

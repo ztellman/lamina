@@ -189,11 +189,11 @@
         callback (last transforms+callback)]
    (unify-gensyms
      `(let [ch## (channel)]
-        ~(if (empty? transforms)
-           `(receive-all ch## ~callback)
-           `(do
-              (receive-all (->> ch## ~@transforms) ~callback)
-              ch##))))))
+        (do
+          ~(if (empty? transforms)
+             `(receive-all ch## ~callback)
+             `(receive-all (->> ch## ~@transforms) ~callback))
+          ch##)))))
 
 (defmacro split
   "Returns a channel which will forward each message to all downstream-channels.
