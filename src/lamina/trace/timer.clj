@@ -85,7 +85,7 @@
    ^ConcurrentLinkedQueue sub-tasks]
   ITimed
   (timing [_ start]
-    (make-timing EnqueuedTiming start
+    (make-timing EnqueuedTiming enqueued
       :enqueued-duration (if (= Long/MIN_VALUE enter)
                            -1
                            (unchecked-subtract (long enter) (long enqueued)))))
