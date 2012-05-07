@@ -26,14 +26,14 @@
   (mark-return [_ val])
   (add-sub-task [_ timer]))
 
-(defn dummy-timer [description enqueue-error?]
+(defn dummy-timer [name enqueue-error?]
   (reify
     ITimed
     (timing [_ start]
       {})
     (mark-error [_ err]
       (when enqueue-error?
-        (enqueue (p/error-probe-channel [description :error]) {:error err})))
+        (enqueue (p/error-probe-channel [name :error]) {:error err})))
     (mark-enter [_])
     (mark-return [_ _])
     (add-sub-task [_ _] )))
@@ -41,7 +41,7 @@
 ;;;
 
 (defrecord EnqueuedTiming
-  [description
+  [name
    ^long offset
    ^long timestamp
    ^long duration
@@ -50,12 +50,13 @@
    args
    result])
 
-(defmacro make-timing [type start & extras]
-  `(let [start# ~start
+(defmacro make-timing [type root-start start & extras]
+  `(let [root-start# ~root-start 
+         start# ~start
          timing# (make-record ~type
-                   :description ~'description
+                   :name ~'name
                    :timestamp ~'timestamp
-                   :offset (unchecked-subtract (long ~'enter) (long start#))
+                   :offset (unchecked-subtract (long start#) (long root-start#))
                    :duration (if (or
                                    (= Long/MIN_VALUE ~'return)
                                    (= Long/MIN_VALUE ~'enter))
@@ -64,7 +65,7 @@
                    :args ~'args
                    :result ~'result
                    :sub-tasks (when-not (.isEmpty ~'sub-tasks)
-                                (doall (map #(timing % start#) ~'sub-tasks)))
+                                (doall (map #(timing % root-start#) ~'sub-tasks)))
                    ~@extras)]
      (if-not (neg? ~'start-stage)
        (assoc timing# :start-stage ~'start-stage)
@@ -72,7 +73,8 @@
 
 (deftype-once EnqueuedTimer
   [executor
-   description
+   capture
+   name
    return-probe
    error-probe
    ^long start-stage
@@ -85,7 +87,7 @@
    ^ConcurrentLinkedQueue sub-tasks]
   ITimed
   (timing [_ start]
-    (make-timing EnqueuedTiming enqueued
+    (make-timing EnqueuedTiming start enqueued
       :enqueued-duration (if (= Long/MIN_VALUE enter)
                            -1
                            (unchecked-subtract (long enter) (long enqueued)))))
@@ -97,13 +99,15 @@
     (set! return (System/nanoTime))
     (let [timing (assoc (timing this enter) :error err)]
       (enqueue
-        (or error-probe (p/error-probe-channel [description :error]))
+        (or error-probe (p/error-probe-channel [name :error]))
         timing)
       (ex/trace-error executor timing)))
   (mark-return [this val]
     (set! return (System/nanoTime))
-    (set! result val)
-    (let [timing (make-timing EnqueuedTiming enqueued
+    (case capture
+      (:out :in-out) (set! result val)
+      nil)
+    (let [timing (make-timing EnqueuedTiming enqueued enqueued
                    :enqueued-duration (if (= Long/MIN_VALUE enter)
                                         -1
                                         (unchecked-subtract (long enter) (long enqueued))))]
@@ -112,20 +116,31 @@
       (ex/trace-return executor timing))))
 
 (defn enqueued-timer-
-  [executor description args return-probe error-probe start-stage implicit? enqueue-error?]
+  [executor
+   capture
+   name
+   args
+   return-probe
+   error-probe
+   start-stage
+   implicit?
+   enqueue-error?]
   (let [enabled? (and return-probe (p/probe-enabled? return-probe))
         parent (when (or enabled? implicit?)
                  (context/timer))]
     (if (or enabled? parent)
       (let [timer (EnqueuedTimer.
                     executor
-                    description
+                    capture
+                    name
                     (when enabled? return-probe)
                     error-probe
                     start-stage
                     (System/currentTimeMillis)
                     (System/nanoTime)
-                    args
+                    (case capture
+                      (:in :in-out) args
+                      nil)
                     nil
                     Long/MIN_VALUE
                     Long/MIN_VALUE
@@ -133,11 +148,12 @@
         (when parent
           (add-sub-task parent timer))
         timer)
-      (dummy-timer description enqueue-error?))))
+      (dummy-timer name enqueue-error?))))
 
 (defmacro enqueued-timer
   [executor
-   & {:keys [description
+   & {:keys [name
+             capture
              args
              return-probe
              error-probe
@@ -149,7 +165,8 @@
            start-stage -1}}]
   `(enqueued-timer-
      ~executor
-     ~description
+     ~capture
+     ~name
      ~args
      ~return-probe
      ~error-probe
@@ -160,7 +177,7 @@
 ;;;
 
 (defrecord Timing
-  [description
+  [name
    ^long timestamp
    ^long offset
    ^long duration
@@ -169,7 +186,8 @@
    result])
 
 (deftype-once Timer
-  [description
+  [capture
+   name
    return-probe
    error-probe
    ^long start-stage
@@ -181,7 +199,7 @@
    ^ConcurrentLinkedQueue sub-tasks]
   ITimed
   (timing [_ start]
-    (make-timing Timing start))
+    (make-timing Timing start enter))
   (add-sub-task [_ timer]
     (.add sub-tasks timer))
   (mark-enter [_]
@@ -189,17 +207,20 @@
   (mark-error [this err]
     (set! return (System/nanoTime))
     (enqueue
-      (or error-probe (p/error-probe-channel [description :error]))
+      (or error-probe (p/error-probe-channel [name :error]))
       (assoc (timing this enter) :error err)))
   (mark-return [this val]
     (set! return (System/nanoTime))
-    (set! result val)
+    (case capture
+      (:out :in-out) (set! result val)
+      nil)
     (when return-probe
       (enqueue return-probe
-        (make-timing Timing enter)))))
+        (make-timing Timing enter enter)))))
 
 (defn timer-
-  [description
+  [capture
+   name
    args
    return-probe
    error-probe
@@ -211,11 +232,14 @@
                  (context/timer))]
     (if (or enabled? parent)
       (let [timer (Timer.
-                    description
+                    capture
+                    name
                     (when enabled? return-probe)
                     error-probe
                     start-stage
-                    args
+                    (case capture
+                      (:in :in-out) args
+                      nil)
                     nil
                     (System/currentTimeMillis)
                     (System/nanoTime)
@@ -224,10 +248,11 @@
         (when parent
           (add-sub-task parent timer))
         timer)
-      (dummy-timer description enqueue-error?))))
+      (dummy-timer name enqueue-error?))))
 
 (defmacro timer
-  [& {:keys [description
+  [& {:keys [name
+             capture
              args
              return-probe
              error-probe
@@ -238,7 +263,8 @@
            enqueue-error? true
            start-stage -1}}]
   `(timer-
-     ~description
+     ~capture
+     ~name
      ~args
      ~return-probe
      ~error-probe
@@ -274,7 +300,7 @@
     :else (duration n "s")))
 
 (defn format-timing [t]
-  (let [desc (:description t)
+  (let [desc (:name t)
         desc (if (instance? clojure.lang.Named desc)
                (name desc)
                (str desc))

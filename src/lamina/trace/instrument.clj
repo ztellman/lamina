@@ -22,13 +22,14 @@
   (print-method (into {} x) writer))
 
 (defmacro instrument-task-body
-  [nm executor enter-probe return-probe implicit? with-bindings? timeout invoke args]
+  [nm capture executor enter-probe return-probe implicit? with-bindings? timeout invoke args]
   `(do
      (when (probe-enabled? ~enter-probe)
        (enqueue ~enter-probe (Enter. ~nm (System/currentTimeMillis) ~args)))
      (let [timer# (t/enqueued-timer
                     ~executor
-                    :description ~nm
+                    :capture ~capture
+                    :name ~nm
                     :args ~args
                     :return-probe ~return-probe
                     :implicit? ~implicit?)]
@@ -37,9 +38,10 @@
          ~(when timeout `(when ~timeout (~timeout ~args)))))))
 
 (defn instrument-task
-  [f & {:keys [executor timeout implicit? with-bindings?]
+  [f & {:keys [executor capture timeout implicit? with-bindings?]
         :as options
         :or {implicit? true
+             capture :in-out
              with-bindings? false}}]
   (let [nm (name (:name options))
         enter-probe (probe-channel [nm :enter])
@@ -47,33 +49,34 @@
         error-probe (probe-channel [nm :error])]
     (fn
       ([]
-         (instrument-task-body nm executor enter-probe return-probe implicit? with-bindings? timeout
+         (instrument-task-body nm capture executor enter-probe return-probe implicit? with-bindings? timeout
            (f) [])) 
       ([a]
-         (instrument-task-body nm executor enter-probe return-probe implicit? with-bindings? timeout
+         (instrument-task-body nm capture executor enter-probe return-probe implicit? with-bindings? timeout
            (f a) [a]))
       ([a b]
-         (instrument-task-body nm executor enter-probe return-probe implicit? with-bindings? timeout
+         (instrument-task-body nm capture executor enter-probe return-probe implicit? with-bindings? timeout
            (f a b) [a b]))
       ([a b c]
-         (instrument-task-body nm executor enter-probe return-probe implicit? with-bindings? timeout
+         (instrument-task-body nm capture executor enter-probe return-probe implicit? with-bindings? timeout
            (f a b c) [a b c]))
       ([a b c d]
-         (instrument-task-body nm executor enter-probe return-probe implicit? with-bindings? timeout
+         (instrument-task-body nm capture executor enter-probe return-probe implicit? with-bindings? timeout
            (f a b c d) [a b c d]))
       ([a b c d e] 
-         (instrument-task-body nm executor enter-probe return-probe implicit? with-bindings? timeout
+         (instrument-task-body nm capture executor enter-probe return-probe implicit? with-bindings? timeout
            (f a b c d e) [a b c d e]))
       ([a b c d e & rest]
-         (instrument-task-body nm executor enter-probe return-probe implicit? with-bindings? timeout
+         (instrument-task-body nm capture executor enter-probe return-probe implicit? with-bindings? timeout
            (apply f a b c d e rest) (list* a b c d e rest))))))
 
-(defmacro instrument-body [nm enter-probe return-probe implicit? invoke args]
+(defmacro instrument-body [nm capture enter-probe return-probe implicit? invoke args]
   `(do
      (when (probe-enabled? ~enter-probe)
        (enqueue ~enter-probe (Enter. ~nm (System/currentTimeMillis) ~args)))
      (let [timer# (t/timer
-                    :description ~nm
+                    :capture ~capture
+                    :name ~nm
                     :args ~args
                     :return-probe ~return-probe
                     :implicit? ~implicit?)]
@@ -122,7 +125,7 @@
 
    When the function is invoked, the 'enter' probe emits a hash of the form
 
-     :description - the :name specified in the options
+     :name        - the :name specified in the options
      :timestamp   - time of invocation in milliseconds since the epoch
      :args        - a list of arguments passed to the function
 
@@ -162,9 +165,10 @@
   computing the value, and the 'return' probe will include an :enqueued-duration
   parameter that describes the time, in nanoseconds, spent waiting to be executed."
   
-  [f {:keys [executor timeout probes implicit? with-bindings?]
+  [f {:keys [executor capture timeout probes implicit? with-bindings?]
       :as options
       :or {implicit? true
+           capture :in-out
            with-bindings? false}}]
   (when-not (contains? options :name)
     (throw (IllegalArgumentException. "Instrumented functions must have a :name defined.")))
@@ -178,25 +182,25 @@
         (siphon (probe-channel [~nm k]) v))
       (fn
         ([]
-           (instrument-body nm enter-probe return-probe implicit?
+           (instrument-body nm capture enter-probe return-probe implicit?
              (f) []))
         ([a]
-           (instrument-body nm enter-probe return-probe implicit?
+           (instrument-body nm capture enter-probe return-probe implicit?
              (f a) [a]))
         ([a b]
-           (instrument-body nm enter-probe return-probe implicit?
+           (instrument-body nm capture enter-probe return-probe implicit?
              (f a b) [a b]))
         ([a b c]
-           (instrument-body nm enter-probe return-probe implicit?
+           (instrument-body nm capture enter-probe return-probe implicit?
              (f a b c) [a b c]))
         ([a b c d]
-           (instrument-body nm enter-probe return-probe implicit?
+           (instrument-body nm capture enter-probe return-probe implicit?
              (f a b c d) [a b c d]))
          ([a b c d e] 
-           (instrument-body nm enter-probe return-probe implicit?
+           (instrument-body nm capture enter-probe return-probe implicit?
              (f a b c d e) [a b c d e]))
         ([a b c d e & rest]
-           (instrument-body nm enter-probe return-probe implicit?
+           (instrument-body nm capture enter-probe return-probe implicit?
              (apply f a b c d e rest) (list* a b c d e rest)))))))
 
 ;;;
@@ -211,11 +215,13 @@
   [{:keys
     [name
      executor
+     capture
      with-bindings?
      implicit?
      timeout
      probes]
-    :or {with-bindings? false
+    :or {capture :in-out
+         with-bindings? false
          implicit? true}}
    & fn-tail]
   (when-not name
@@ -225,15 +231,16 @@
            return-probe## (probe-channel [~name :return])
            error-probe## (probe-channel [~name :error])
            executor## ~executor
-           implicit?## ~implicit?]
+           implicit?## ~implicit?
+           capture## ~capture]
        (doseq [[k# v#] ~probes]
          (siphon (probe-channel [~name k#]) v#))
        ~(transform-fn-bodies
           (fn [args body]
             (if executor
-              `((instrument-task-body ~name executor## enter-probe## return-probe## ~implicit? ~with-bindings? ~timeout
+              `((instrument-task-body ~name capture## executor## enter-probe## return-probe## ~implicit? ~with-bindings? ~timeout
                   (do ~@body) ~args))
-              `((instrument-body ~name enter-probe## return-probe## ~implicit?
+              `((instrument-body ~name capture## enter-probe## return-probe## ~implicit?
                   (do ~@body) ~args))))
           `(fn ~@fn-tail)))))
 

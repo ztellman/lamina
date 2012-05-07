@@ -107,15 +107,17 @@
   (keys probes))
 
 (defn select-probes
-  "Activates all probes that match the given string or regex, and returns a channel that will emit
+  "Activates all probes that match the given strings or regexes, and returns a channel that will emit
    all messages from these probes."
-  [wildcard-string-or-regex]
+  [& wildcard-strings-or-regexes]
   (let [ch (c/channel)
-        regex (if (string? wildcard-string-or-regex)
-                (-> wildcard-string-or-regex (str/replace "*" ".*") Pattern/compile)
-                wildcard-string-or-regex)
+        regexes (map
+                  #(if (string? %)
+                     (-> % (str/replace "*" ".*") Pattern/compile)
+                     %)
+                  wildcard-strings-or-regexes)
         callback (fn [id]
-                   (when (re-matches regex id)
+                   (when (some #(re-matches % id) regexes)
                      (c/siphon (probe-channel id) ch)))]
     (c/receive-all new-probe-broadcaster callback)
     (c/on-closed ch #(c/cancel-callback new-probe-broadcaster callback))
