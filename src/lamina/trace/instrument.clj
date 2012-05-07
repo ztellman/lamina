@@ -37,10 +37,10 @@
          ~(when timeout `(when ~timeout (~timeout ~args)))))))
 
 (defn instrument-task
-  [f & {:keys [executor timeout implicit? with-bindings?]
-        :as options
-        :or {implicit? true
-             with-bindings? false}}]
+  [f {:keys [executor timeout implicit? with-bindings?]
+      :as options
+      :or {implicit? true
+           with-bindings? false}}]
   (let [nm (name (:name options))
         enter-probe (probe-channel [nm :enter])
         return-probe (probe-channel [nm :return])
@@ -48,7 +48,7 @@
     (fn
       ([]
          (instrument-task-body nm executor enter-probe return-probe implicit? with-bindings? timeout
-           (f) [])) 
+           (f) []))
       ([a]
          (instrument-task-body nm executor enter-probe return-probe implicit? with-bindings? timeout
            (f a) [a]))
@@ -61,7 +61,7 @@
       ([a b c d]
          (instrument-task-body nm executor enter-probe return-probe implicit? with-bindings? timeout
            (f a b c d) [a b c d]))
-      ([a b c d e] 
+      ([a b c d e]
          (instrument-task-body nm executor enter-probe return-probe implicit? with-bindings? timeout
            (f a b c d e) [a b c d e]))
       ([a b c d e & rest]
@@ -161,7 +161,7 @@
   In this case, :timeout will also interrupt the thread if it is still actively
   computing the value, and the 'return' probe will include an :enqueued-duration
   parameter that describes the time, in nanoseconds, spent waiting to be executed."
-  
+
   [f {:keys [executor timeout probes implicit? with-bindings?]
       :as options
       :or {implicit? true
@@ -169,7 +169,7 @@
   (when-not (contains? options :name)
     (throw (IllegalArgumentException. "Instrumented functions must have a :name defined.")))
   (if executor
-    (apply instrument-task f (apply concat options))
+    (instrument-task f options)
     (let [nm (name (:name options))
           enter-probe (probe-channel [nm :enter])
           return-probe (probe-channel [nm :return])
@@ -192,7 +192,7 @@
         ([a b c d]
            (instrument-body nm enter-probe return-probe implicit?
              (f a b c d) [a b c d]))
-         ([a b c d e] 
+         ([a b c d e]
            (instrument-body nm enter-probe return-probe implicit?
              (f a b c d e) [a b c d e]))
         ([a b c d e & rest]
