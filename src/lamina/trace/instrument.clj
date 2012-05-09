@@ -38,11 +38,11 @@
          ~(when timeout `(when ~timeout (~timeout ~args)))))))
 
 (defn instrument-task
-  [f & {:keys [executor capture timeout implicit? with-bindings?]
-        :as options
-        :or {implicit? true
-             capture :in-out
-             with-bindings? false}}]
+  [f {:keys [executor capture timeout implicit? with-bindings?]
+      :as options
+      :or {implicit? true
+           capture :in-out
+           with-bindings? false}}]
   (let [nm (name (:name options))
         enter-probe (probe-channel [nm :enter])
         return-probe (probe-channel [nm :return])
@@ -173,7 +173,7 @@
   (when-not (contains? options :name)
     (throw (IllegalArgumentException. "Instrumented functions must have a :name defined.")))
   (if executor
-    (apply instrument-task f (apply concat options))
+    (instrument-task f options)
     (let [nm (name (:name options))
           enter-probe (probe-channel [nm :enter])
           return-probe (probe-channel [nm :return])

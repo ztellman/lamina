@@ -116,7 +116,7 @@
           :or {timeout 5000
                interval 10000}
            :as heartbeat} (:heartbeat options)]
-      
+
       (when-not (contains? heartbeat :request)
         (throw (IllegalArgumentException. "heartbeat must specify :request")))
 
@@ -142,7 +142,7 @@
 (defn try-instrument [options f]
   (if (contains? options :name)
     (with-meta
-      (apply instrument f (apply concat options))
+      (instrument f options)
       (meta f))
     f))
 
