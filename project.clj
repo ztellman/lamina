@@ -1,4 +1,4 @@
-(defproject lamina "0.5.0-SNAPSHOT"
+(defproject lamina "0.5.0-alpha3"
   :description "event-driven data structures for clojure"
   :dependencies [[org.clojure/clojure "1.4.0"]
                  [org.clojure/tools.logging "0.2.3"]
@@ -14,7 +14,7 @@
                "1.2" [[org.clojure/clojure "1.2.1"]]
                "1.4" [[org.clojure/clojure "1.4.0"]]
                }
-  :dev-dependencies [[criterium "0.2.1-SNAPSHOT"]
+  :dev-dependencies [[criterium "0.2.1"]
                      [codox "0.4.1"]]
   :codox {:include [lamina.core
                     lamina.trace
