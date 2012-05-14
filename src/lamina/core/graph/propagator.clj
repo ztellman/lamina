@@ -89,7 +89,7 @@
    ^AtomicBoolean transactional?
    ^ConcurrentHashMap downstream]
   IDescribed
-  (description [_] "demux")
+  (description [_] "distributor")
   IPropagator
   (close [_]
     (doseq [n (close-and-clear lock closed? downstream)]

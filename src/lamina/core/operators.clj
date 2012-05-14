@@ -449,7 +449,7 @@
         ch* (channel* :description "combine-latest")]
 
     (doseq [[idx ch] (map vector (range cnt) channels)]
-      (bridge-join ch nil
+      (bridge-join ch ""
         (fn [msg]
           (.set vals idx msg)
 

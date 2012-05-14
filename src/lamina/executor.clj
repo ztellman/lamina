@@ -18,6 +18,7 @@
 
 (import-fn c/executor)
 (import-fn c/default-executor)
+(import-macro c/defexecutor)
 (import-fn u/shutdown)
 
 (defmacro task

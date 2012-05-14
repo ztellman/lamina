@@ -16,7 +16,7 @@
     [lamina.executor.utils :as ex]
     [lamina.trace.timer :as t]))
 
-(defrecord Enter [description ^long timestamp args])
+(defrecord Enter [name ^long timestamp args])
 
 (defmethod print-method Enter [x writer]
   (print-method (into {} x) writer))

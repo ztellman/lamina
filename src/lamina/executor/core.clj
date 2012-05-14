@@ -143,3 +143,11 @@
   default-executor (executor
                      {:name "lamina-default-executor"
                       :idle-timeout 15000}))
+
+(defmacro defexecutor [name options]
+  (let [default-name (str (-> (ns-name *ns*) str (.replace \. \:)) ":" (str name))]
+    `(def ~name
+       (executor
+         (merge
+           {:name ~default-name}
+           ~options)))))

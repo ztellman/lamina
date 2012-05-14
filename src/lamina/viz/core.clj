@@ -50,9 +50,13 @@
 
 ;;;
 
+(defn escape-string [s]
+  (-> s
+    (str/replace "\"" "\\\"")))
+
 (defn format-options-value [v]
   (cond
-    (string? v) (str \" (str/replace v "\\" "\\\\") \")
+    (string? v) (str \" (escape-string v) \")
     (keyword? v) (name v)
     (coll? v) (str "\""
                 (->> v

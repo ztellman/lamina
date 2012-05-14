@@ -58,7 +58,7 @@
   ([interval window ch]
      (let [avg (avg/moving-average interval window)
            ch* (channel)]
-       (bridge-join ch "average" #(update avg (long %)) ch*)
+       (bridge-join ch "mean" #(update avg (long %)) ch*)
        (siphon
          (periodically interval #(deref avg))
          ch*)
@@ -156,7 +156,6 @@
              (update avg val)
              (swap! vr update val)
              (when-let [f @f]
-               (prn val (f val))
                (when (f val)
                  (enqueue ch* msg)))))
          ch*)

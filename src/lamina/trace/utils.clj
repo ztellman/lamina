@@ -21,7 +21,7 @@
 (defn capture-timings
   [description probe-channel f]
   (let [timer (t/timer
-                :description description
+                :name description
                 :return-probe probe-channel
                 :error-probe probe-channel)
         unwrap? (atom true)

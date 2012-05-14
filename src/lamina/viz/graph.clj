@@ -12,6 +12,7 @@
     [lamina.walk]
     [lamina.viz core])
   (:require
+    [clojure.string :as str]
     [lamina.core.graph :as g]
     [lamina.core.queue :as q]
     [lamina.core.result :as r]
@@ -27,13 +28,23 @@
     (not drained?)
     (or consumed? (zero? downstream-count))))
 
+(defn message-str [x]
+  (-> x
+    pr-str
+    (str/replace "{" "\\{")
+    (str/replace "}" "\\}")))
+
 (defn message-string [messages]
   (let [cnt (count messages)
         trim? (> cnt 3)
         msgs (take 3 messages)]
     (str
       (when trim? "... |")
-      (->> msgs reverse (map pr-str) (interpose " | ") (apply str)))))
+      (->> msgs
+        reverse
+        (map message-str)
+        (interpose " | ")
+        (apply str)))))
 
 (defn edge-seq->nodes [es]
   (->> es
@@ -59,7 +70,7 @@
                 error
                 (str error)
 
-                grounded?
+                (and grounded? (not description))
                 "\u23DA"
                 
                 :else

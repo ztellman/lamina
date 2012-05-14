@@ -175,9 +175,7 @@
 (defn channel?
   "Returns true if 'x' is a channel.  This does not encompass result-channels."
   [x]
-  (or
-    (instance? Channel x)
-    (instance? SplicedChannel x)))
+  (satisfies? IChannel x))
 
 ;;;
 
@@ -440,7 +438,7 @@
     (r/result-callback
       (fn [_] (close ch))
       (fn [_])))
-  nil)
+  ch)
 
 ;;;
 

@@ -54,7 +54,7 @@
         ch (c/channel*
              :grounded? true
              :permanent? true
-             :description (name description))]
+             :description (str "probe: " (name description)))]
 
     ;; set the flag whenever the downstream count changes
     (g/on-state-changed (c/emitter-node ch) nil
@@ -74,6 +74,9 @@
 
 (def ^ConcurrentHashMap probes (ConcurrentHashMap.))
 (def new-probe-broadcaster (c/channel* :grounded? true, :permanent? true))
+
+(defn reset-probes []
+  (.clear probes))
 
 (defn probe-channel-generator [f]
   (fn [id]
