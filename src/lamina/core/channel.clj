@@ -370,7 +370,7 @@
    (distributor :type
      (fn [facet ch]
        (siphon
-         (->> ch (map* :value) average)
+         (->> ch (map* :value) mean)
          (sink #(println \"average for\" facet \"is\" %)))))"
   [facet channel-initializer]
   (let [receiver (g/node identity)
