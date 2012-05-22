@@ -368,7 +368,7 @@
    types:
 
    (distributor :type
-     (fn [ch facet]
+     (fn [facet ch]
        (siphon
          (->> ch (map* :value) average)
          (sink #(println \"average for\" facet \"is\" %)))))"
