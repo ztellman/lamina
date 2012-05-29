@@ -195,11 +195,12 @@
     (when-not (empty? msgs)
       (let [msg (first msgs)]
 	(when (compare-and-set! val ::empty msg)
-	  (locking observers
-	    (let [s (vals @observers)]
-	      (reset! observers nil)
-	      (doseq [o s]
-		(on-message o [msg])))))))
+	  (let [s (locking observers
+                    (let [s (vals @observers)]
+                      (reset! observers nil)
+                      s))]
+            (doseq [o s]
+              (on-message o [msg]))))))
     false)
   (close [this]
     (message this [nil]))
