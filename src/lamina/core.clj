@@ -10,6 +10,7 @@
   (:use
     [potemkin])
   (:require
+    [lamina.core.watch :as w]
     [lamina.core.named :as n]
     [lamina.core.utils :as u]
     [lamina.core.channel :as ch]
@@ -63,6 +64,9 @@
 (import-fn ch/read-channel)
 
 (import-fn ch/sink)
+
+(import-fn w/atom-sink)
+(import-fn w/watch-channel)
 
 (import-fn op/receive-in-order)
 

@@ -28,8 +28,10 @@
 
    It is assumed that all numbers emitted by the source channel are integral values."
   ([ch]
-     (sum 1000 ch))
-  ([interval ch]
+     (sum nil ch))
+  ([{:keys [interval]
+     :or {interval 1000}}
+    ch]
      (let [ch* (channel)
            cnt (AtomicLong. 0)]
        (bridge-join ch "sum" #(.addAndGet cnt (long %)) ch*)
@@ -40,8 +42,10 @@
   "Returns a channel that will periodically emit the number of messages emitted by the source
    channel over the last 'interval' milliseconds, with a default of 1000."
   ([ch]
-     (rate 1000 ch))
-  ([interval ch]
+     (rate nil ch))
+  ([{:keys [interval]
+     :or {interval 1000}}
+    ch]
      (->> ch
        (map* (constantly 1))
        (sum interval))))
@@ -52,10 +56,12 @@
    moving average is exponentially weighted to the last 'window' milliseconds, defaulting to the
    last five minutes."
   ([ch]
-     (mean (t/seconds 5) ch))
-  ([interval ch]
-     (mean interval (t/minutes 5) ch))
-  ([interval window ch]
+     (mean nil ch))
+  ([{:keys [interval
+            window]
+     :or {interval (t/seconds 5)
+          window (t/minutes 5)}}
+    ch]
      (let [avg (avg/moving-average interval window)
            ch* (channel)]
        (bridge-join ch "mean" #(update avg (long %)) ch*)
@@ -77,11 +83,15 @@
    By default, the above quantiles will be used, these can be specified as a sequence of quantiles
    of the form [50 98 99.9 99.99]."
   ([ch]
-     (quantiles (t/seconds 5) ch))
-  ([interval ch]
-     (quantiles interval [50 75 95 99 99.9] ch))
-  ([interval quantiles ch]
-     (let [sample (ExponentiallyDecayingSample. 1028 0.015)
+     (quantiles nil ch))
+  ([{:keys [interval
+            window
+            quantiles]
+     :or {quantiles [50 75 95 99 99.9]
+          interval (t/seconds 5)
+          window (t/minutes 5)}}
+    ch]
+     (let [sample (ExponentiallyDecayingSample. 1024 0.015)
            ch* (channel)
            scaled-quantiles (map #(/ % 100) quantiles)]
        (bridge-join ch "quantiles" #(.update sample (long %)) ch*)
@@ -99,8 +109,10 @@
   "Returns a channel that will periodically emit the variance of all values emitted by the source
    channel every 'interval' milliseconds."
   ([ch]
-     (variance (t/seconds 5) ch))
-  ([interval ch]
+     (variance nil ch))
+  ([{:keys [interval]
+     :or {interval (t/seconds 5)}}
+    ch]
      (let [vr (atom (var/create-variance))
            ch* (channel)]
        (bridge-join ch "variance" #(swap! vr update (long %)) ch*)
@@ -108,6 +120,9 @@
          (periodically interval #(var/variance @vr))
          ch*)
        ch*)))
+
+(defn- abs [x]
+  (Math/abs x))
 
 (defn outliers
   "Returns a channel that will emit outliers from the source channel, as measured by the standard
@@ -121,34 +136,36 @@
 
      (outliers :duration (probe-channel :name:return))
 
-   To only receive outliers that are longer than the mean, define a custom deviation-predicate:
+   To only receive outliers that are longer than the mean, define a custom :predicate
 
-     (outliers :duration (lamina.time/minutes 5) #(< % 3) (probe-channel :name:return))
+     (outliers
+       :duration
+       {:window (lamina.time/minutes 15)
+        :predicate #(< % 3)}
+       (probe-channel :name:return))
 
-   'window' describes the window of the moving average, which defaults to five minutes.  This can
-    be used to adjust the responsiveness to long-term changes to the mean."
+   :window describes the window of the moving average, which defaults to five minutes.  This can
+   be used to adjust the responsiveness to long-term changes to the mean."
   ([facet ch]
-     (outliers facet (t/minutes 5) ch))
-  ([facet window ch]
-     (outliers facet window #(< 3 (Math/abs (double %))) ch))
-  ([facet window deviation-predicate ch]
-     (let [f (atom nil)
-           avg (avg/moving-average (t/seconds 5) window)
+     (outliers facet nil ch))
+  ([facet
+    {:keys [window
+            predicate]
+     :or {window (t/minutes 5)
+          predicate #(< 3 (abs (double %)))}}
+    ch]
+     (let [avg (avg/moving-average (t/seconds 5) window)
            vr (atom (var/create-variance))
            ch* (mimic ch)
-
-           predicate-updater
-           (periodically 5000
-             (fn []
-               (let [mean @avg
-                     std-dev (var/std-dev @vr)]
-                 (when-not (zero? std-dev)
-                   #(deviation-predicate
-                      (/ (- (facet %) mean) std-dev))))))]
-
-       ;; periodically update the outlier predicate
-       (receive-all predicate-updater #(reset! f %))
-       (on-drained ch #(close predicate-updater))
+           predicates (periodically 5000
+                        (fn []
+                          (let [mean @avg
+                                std-dev (var/std-dev @vr)]
+                            (when-not (zero? std-dev)
+                              #(predicate (/ (- (facet %) mean) std-dev))))))
+           f (atom-sink predicates)]
+       
+       (on-drained ch #(close predicates))
 
        (bridge-join ch "outliers"
          (fn [msg]

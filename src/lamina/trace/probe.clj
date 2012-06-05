@@ -75,7 +75,9 @@
 (def ^ConcurrentHashMap probes (ConcurrentHashMap.))
 (def new-probe-broadcaster (c/channel* :grounded? true, :permanent? true))
 
-(defn reset-probes []
+(defn reset-probes
+  "something goes here"
+  []
   (.clear probes))
 
 (defn probe-channel-generator [f]
