@@ -10,7 +10,9 @@
     [lamina core]
     [lamina.core threads]
     [clojure test]
-    [lamina.test utils]))
+    [lamina.test utils])
+  (:require
+    [lamina.executor :as ex]))
 
 (defmacro dosync* [flag & body]
   `(let [f# (fn [] ~@body)]
@@ -25,18 +27,18 @@
   [transactional? ch messages]
   (task
     (doseq [m messages]
-      (Thread/yield)
+      (Thread/sleep 10)
       (dosync* transactional?
         (enqueue ch m)))
-    (Thread/yield)
+    (Thread/sleep 10)
     (dosync* transactional?
       (close ch))))
 
 (defn result [f ch]
   (let [ch* (f ch)
         result (if (channel? ch*)
-                 (doall (lazy-channel-seq ch*))
-                 @ch*)]
+                 (wait-for-result (ex/task (doall (lazy-channel-seq ch*))) 10000)
+                 (wait-for-result ch* 10000))]
     (when (channel? ch*)
       (is (drained? ch*)))
     result))
@@ -76,9 +78,10 @@
         (tick)))
 
     (testing "async enqueue into transactional channel"
-      (dotimes [_ n] (let [ch (channel* :transactional? true)]
-                       (async-enqueue true ch input)
-                       (is (= expected (result trans-f* ch))))
+      (dotimes [_ n]
+        (let [ch (channel* :transactional? true)]
+          (async-enqueue true ch input)
+          (is (= expected (result trans-f* ch))))
         (tick)))
 
     true))
