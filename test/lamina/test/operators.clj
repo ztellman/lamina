@@ -27,17 +27,33 @@
   [transactional? ch messages]
   (task
     (doseq [m messages]
-      (Thread/sleep 10)
+      (Thread/sleep 25)
       (dosync* transactional?
         (enqueue ch m)))
-    (Thread/sleep 10)
+    (Thread/sleep 25)
     (dosync* transactional?
       (close ch))))
+
+(defn print-all-threads []
+  (doseq [[k v] (Thread/getAllStackTraces)]
+    (prn (.getName k))
+    (doseq [s v]
+      (prn s))))
+
+(defn realize-and-print [ch*]
+  (let [acc (atom [])]
+    (try
+      (wait-for-result (ex/task (seq (doall (map #(do (swap! acc conj %) %) (lazy-channel-seq ch*))))) 10000)
+      (catch Exception e
+        (print-all-threads)
+        ;;(prn @acc)
+        (throw e)))))
 
 (defn result [f ch]
   (let [ch* (f ch)
         result (if (channel? ch*)
-                 (wait-for-result (ex/task (doall (lazy-channel-seq ch*))) 10000)
+                 ;;(wait-for-result (ex/task (doall (lazy-channel-seq ch*))) 10000)
+                 (realize-and-print ch*)
                  (wait-for-result ch* 10000))]
     (when (channel? ch*)
       (is (drained? ch*)))
@@ -54,16 +70,18 @@
         expected (if (sequential? expected)
                    (seq expected)
                    expected)
-        trans-f* #(dosync (f* %))]
+        trans-f* #(let [v (dosync (f* %))]
+                    (Thread/sleep 100)
+                    v)]
 
-    (testing "pre-populated non-transactional channel"
+    #_(testing "pre-populated non-transactional channel"
       (dotimes [_ n]
         (let [ch (channel* :messages input)]
           (close ch)
           (is (= expected (result f* ch))))
         (tick)))
 
-    (testing "async enqueue into non-transactional channel"
+    #_(testing "async enqueue into non-transactional channel"
       (dotimes [_ n]
         (let [ch (channel)]
           (async-enqueue false ch input)
