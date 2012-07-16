@@ -30,7 +30,8 @@
     (bench "moving-average update"
       (update avg 1)))
   (let [avg (avg/moving-average 1 1)]
-    (ground (update avg 1))
+    (ground avg)
+    (update avg 1)
     (bench "moving-average deref"
       @avg))
   (let [ch (channel)]

@@ -217,7 +217,9 @@
              (r/error result# ex#)
              (r/error-result ex#)))))))
 
-(defmacro pipeline [& opts+stages]
+(defmacro pipeline
+  "something goes here"
+  [& opts+stages]
   (let [[options stages] (split-options opts+stages (meta &form))
         {:keys [result
                 error-handler
@@ -247,7 +249,7 @@
        (reify IPipeline
 
          (implicit? [_#]
-           implicit?)
+           ~implicit?)
 
          ~(unify-gensyms
             `(gen-timer [_# stage##]
@@ -321,25 +323,33 @@
                 :else
                 `(start-pipeline this## nil val##))))))))
 
-(defmacro run-pipeline [value & opts+stages]
+(defmacro run-pipeline
+  "something goes here"
+  [value & opts+stages]
   `(let [p# ~(with-meta `(pipeline ~@opts+stages) (meta &form))
          value# ~value]
      (p# value#)))
 
 ;;;
 
-(defn read-merge [read-fn merge-fn]
+(defn read-merge
+  "something goes here"
+  [read-fn merge-fn]
   (pipeline
     (fn [val]
       (run-pipeline (read-fn)
         #(merge-fn val %)))))
 
-(defn complete [value]
+(defn complete
+  "something goes here"
+  [value]
   (redirect
     (pipeline (constantly value))
     nil))
 
-(defmacro wait-stage [interval]
+(defmacro wait-stage
+  "something goes here"
+  [interval]
   `(fn [x#]
      (r/timed-result ~interval x#)))
 

@@ -128,6 +128,7 @@
 (import-fn ch/cancel-callback)
 
 (defn enqueue-and-close
+  "something goes here"
   [ch & messages]
   (apply enqueue ch messages)
   (close ch))

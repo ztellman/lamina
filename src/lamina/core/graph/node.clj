@@ -547,14 +547,7 @@
                     ::consumed
                     (if-not (= edge (first edges))
                       false
-                      (let [q (.queue s)]
-                        (.clear edges)
-                        (set-state! this s
-                          :mode (if (q/closed? q)
-                                  ::closed
-                                  ::open)
-                          :downstream-count 0)
-                        (q/closed? q)))
+                      (close-node! this edges s))
 
                     false))))]
         (if (identical? ::split result)

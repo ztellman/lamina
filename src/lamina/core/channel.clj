@@ -381,6 +381,7 @@
     (Channel. receiver receiver nil)))
 
 (defn aggregate
+  "something goes here"
   [facet ch]
   (let [ch* (mimic ch)
         lock (l/lock)
@@ -400,6 +401,7 @@
     ch*))
 
 (defn distribute-aggregate
+  "something goes here"
   [facet channel-initializer ch]
   (let [ch* (mimic ch)
         aggr (->> ch*
@@ -426,14 +428,18 @@
           (r/success result true)
           (check-idle last-message interval result))))))
 
-(defn idle-result [interval ch]
+(defn idle-result
+  "something goes here"
+  [interval ch]
   (let [last-message (AtomicLong. (System/currentTimeMillis))
         result (r/result-channel)]
     (receive-all ch (fn [_] (.set last-message (System/currentTimeMillis))))
     (check-idle last-message interval result)
     result))
 
-(defn close-on-idle [interval ch]
+(defn close-on-idle
+  "something goes here"
+  [interval ch]
   (r/subscribe (idle-result interval ch)
     (r/result-callback
       (fn [_] (close ch))

@@ -129,8 +129,9 @@
                          {:error-handler (fn [_#])}
 
                          (fn [msg##]
-                           ;; if we didn't read a message, clean up
-                           (if (identical? ::close msg##)
+                           ;; if we didn't read a message or the destination is closed, clean up
+                           (if (or (and dst## (closed? dst##))
+                                 (identical? ::close msg##))
                              (cleanup# val##)
 
                              ;; update the reduce value

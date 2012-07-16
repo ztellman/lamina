@@ -26,8 +26,8 @@
         x (executor {:name nm :max-thread-count 1})
         p (probe-channel [nm probe])
         f (instrument #(.countDown ^CountDownLatch %)
-            :executor x
-            :name nm)]
+            {:executor x
+             :name nm})]
     (receive-all p (fn [_]))
     (bench description
       (let [latch (CountDownLatch. (int n))]
@@ -44,8 +44,8 @@
         (.await latch))))
   (let [x (executor {:name "test" :max-thread-count 1})
         f (instrument #(.countDown ^CountDownLatch %)
-            :executor x
-            :name :foo)]
+            {:executor x
+             :name :foo})]
     (bench "executor countdown"
       (let [latch (CountDownLatch. (int n))]
         (dotimes [_ n]
