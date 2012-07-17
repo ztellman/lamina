@@ -12,7 +12,7 @@
 (defn print-timing-result [r]
   (let [^Writer out *out*]
     (run-pipeline r
-      {:error-handler (fn [_])}
+      {:error-handler (fn [ex] )}
       #(do
          (.write out (t/format-timing %))
          (.write out "\n")

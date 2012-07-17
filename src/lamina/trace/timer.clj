@@ -298,14 +298,14 @@
     (apply str)))
 
 (def durations
-  {"ns" 0
+  {"ns" 1
    "us" 1e3
    "ms" 1e6
    "s" 1e9})
 
 (defn duration [n scale]
   (str
-    (format "%.1f" (/ n (durations scale)))
+    (format "%.1f" (float (/ n (durations scale))))
     scale))
 
 (defn format-duration [n]
@@ -321,24 +321,24 @@
                (name desc)
                (str desc))
         duration (:duration t)
+        compute (:compute-duration t)
         enqueued (:enqueued-duration t)]
-    (prn t)
     (str/trim
-      (str desc " - "
-        (cond
-          (and (not duration) (not enqueued))
-          "still running"
-
-          (not enqueued)
-          (format-duration duration)
-
-          (not duration)
-          (str "enqueued for " (format-duration enqueued) ", still running")
-
-          :else
-          (str (format-duration (+ enqueued duration))
-            " (enqueued for " (format-duration enqueued) ", "
-            "ran for " (format-duration duration) ")"))
+      (str desc
+        " - "
+        (if duration
+          (format-duration (+ (or enqueued 0) duration))
+          "incomplete")
+        (when (or enqueued (not= compute duration))
+          " - ")
+        (when enqueued
+          (str "enqueued for " (format-duration enqueued)))
+        (when (not= compute duration)
+          (str
+            (when enqueued ", ")
+            "computed for " (format-duration compute)
+            (when duration
+              (str ", waited for " (format-duration (- duration compute))))))
         "\n"
         (indent 2
           (->> t
