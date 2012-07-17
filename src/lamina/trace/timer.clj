@@ -23,6 +23,7 @@
   (timing [_ start])
   (mark-enter [_])
   (mark-error [_ err])
+  (mark-waiting [_])
   (mark-return [_ val])
   (add-sub-task [_ timer]))
 
@@ -35,6 +36,7 @@
       (when enqueue-error?
         (enqueue (p/error-probe-channel [name :error]) {:error err})))
     (mark-enter [_])
+    (mark-waiting [_])
     (mark-return [_ _])
     (add-sub-task [_ _] )))
 
@@ -46,6 +48,7 @@
    ^long timestamp
    ^long duration
    ^long enqueued-duration
+   ^long compute-duration
    sub-tasks
    args
    result])
@@ -53,15 +56,19 @@
 (defmacro make-timing [type root-start start & extras]
   `(let [root-start# ~root-start 
          start# ~start
+         duration# (if (or
+                         (= Long/MIN_VALUE ~'return)
+                         (= Long/MIN_VALUE ~'enter))
+                     -1
+                     (unchecked-subtract (long ~'return) (long ~'enter)))
          timing# (make-record ~type
                    :name ~'name
                    :timestamp ~'timestamp
                    :offset (unchecked-subtract (long start#) (long root-start#))
-                   :duration (if (or
-                                   (= Long/MIN_VALUE ~'return)
-                                   (= Long/MIN_VALUE ~'enter))
-                               -1
-                               (unchecked-subtract (long ~'return) (long ~'enter)))
+                   :compute-duration (if (= Long/MIN_VALUE ~'waiting)
+                                       duration#
+                                       (unchecked-subtract (long ~'waiting) (long ~'enter)))
+                   :duration duration#
                    :args ~'args
                    :result ~'result
                    :sub-tasks (when-not (.isEmpty ~'sub-tasks)
@@ -83,6 +90,7 @@
    args
    ^{:volatile-mutable true} result
    ^{:volatile-mutable true, :tag long} enter
+   ^{:volatile-mutable true, :tag long} waiting
    ^{:volatile-mutable true, :tag long} return
    ^ConcurrentLinkedQueue sub-tasks]
   ITimed
@@ -102,6 +110,8 @@
         (or error-probe (p/error-probe-channel [name :error]))
         timing)
       (ex/trace-error executor timing)))
+  (mark-waiting [this]
+    (set! waiting (System/nanoTime)))
   (mark-return [this val]
     (set! return (System/nanoTime))
     (case capture
@@ -144,6 +154,7 @@
                     nil
                     Long/MIN_VALUE
                     Long/MIN_VALUE
+                    Long/MIN_VALUE
                     (ConcurrentLinkedQueue.))]
         (when parent
           (add-sub-task parent timer))
@@ -180,6 +191,7 @@
   [name
    ^long timestamp
    ^long offset
+   ^long compute-duration
    ^long duration
    sub-tasks
    args
@@ -195,6 +207,7 @@
    ^{:volatile-mutable true} result
    ^long timestamp
    ^long enter
+   ^{:volatile-mutable true, :tag long} waiting
    ^{:volatile-mutable true, :tag long} return
    ^ConcurrentLinkedQueue sub-tasks]
   ITimed
@@ -204,6 +217,8 @@
     (.add sub-tasks timer))
   (mark-enter [_]
     )
+  (mark-waiting [this]
+    (set! waiting (System/nanoTime)))
   (mark-error [this err]
     (set! return (System/nanoTime))
     (enqueue
@@ -243,6 +258,7 @@
                     nil
                     (System/currentTimeMillis)
                     (System/nanoTime)
+                    Long/MIN_VALUE
                     Long/MIN_VALUE
                     (ConcurrentLinkedQueue.))]
         (when parent
@@ -306,6 +322,7 @@
                (str desc))
         duration (:duration t)
         enqueued (:enqueued-duration t)]
+    (prn t)
     (str/trim
       (str desc " - "
         (cond

@@ -83,6 +83,8 @@
        (context/with-context (context/assoc-context :timer timer#)
          (try
            (let [result# ~invoke]
+             (when (async-result? result#)
+               (t/mark-waiting timer#))
              (run-pipeline result#
                {:error-handler (fn [err#] (t/mark-error timer# err#))}
                (fn [x#] (t/mark-return timer# x#)))

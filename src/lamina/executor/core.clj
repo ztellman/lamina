@@ -56,7 +56,7 @@
     :or {idle-timeout 60000
          min-thread-count 1
          max-thread-count Integer/MAX_VALUE
-         interrupt? true}
+         interrupt? false}
     :as options}]
   (when-not (contains? options :name)
     (throw (IllegalArgumentException. "Every executor must have a :name specified.")))
@@ -123,7 +123,10 @@
                       {:error-handler #(when timer (t/mark-error timer %))
                        :result result}
                       (fn [_]
-                        (f))
+                        (let [result (f)]
+                          (when (r/async-result? result)
+                            (t/mark-waiting timer))
+                          result))
                       (fn [x]
                         (when timer (t/mark-return timer x)) 
                         x)))

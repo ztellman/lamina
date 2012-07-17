@@ -40,7 +40,7 @@
   (hashCode [_]
     (hash result-channel)))
 
-(defrecord Consumption
+(defrecord-once Consumption
   [type ;; ::consumed, ::not-consumed, ::error, ::no-dispatch
    result
    ^ResultChannel result-channel])

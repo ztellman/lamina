@@ -1,16 +1,16 @@
-(defproject lamina "0.5.0-alpha3"
+(defproject lamina "0.5.0-SNAPSHOT"
   :description "event-driven data structures for clojure"
   :dependencies [[org.clojure/clojure "1.4.0"]
                  [org.clojure/tools.logging "0.2.3"]
-                 [useful "0.7.3"]
-                 [potemkin "0.1.3"]
-                 [com.yammer.metrics/metrics-core "2.0.2"
+                 [useful "0.8.2"]
+                 [potemkin "0.1.5-SNAPSHOT"]
+                 [com.yammer.metrics/metrics-core "2.1.0"
                   :exclusions [org.slf4j/slf4j-api]]]
-  :multi-deps {:all [[com.yammer.metrics/metrics-core "2.0.2"
+  :multi-deps {:all [[com.yammer.metrics/metrics-core "2.1.0"
                       :exclusions [org.slf4j/slf4j-api]]
                      [org.clojure/tools.logging "0.2.3"]
-                     [useful "0.7.3"]
-                     [potemkin "0.1.3"]]
+                     [useful "0.8.2"]
+                     [potemkin "0.1.5-SNAPSHOT"]]
                "1.2" [[org.clojure/clojure "1.2.1"]]
                "1.4" [[org.clojure/clojure "1.4.0"]]
                }
