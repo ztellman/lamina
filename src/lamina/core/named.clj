@@ -8,25 +8,23 @@
 
 (ns lamina.core.named
   (:use
-    [lamina.core.channel])
+    [lamina.core.channel :only (channel*)])
+  (:require
+    [lamina.cache :as cache])
   (:import
     [java.util.concurrent
      ConcurrentHashMap]))
+
+(def named-channels (cache/channel-cache #(channel* :description (pr-str %) :permanent? true)))
 
 (def ^ConcurrentHashMap named-channels (ConcurrentHashMap.))
 
 (defn named-channel
   "something goes here"
   [id on-create]
-  (if-let [ch (.get named-channels id)]
-    ch
-    (let [ch (channel* :description (pr-str id) :permanent? true)]
-      (or (.putIfAbsent named-channels id ch)
-        (do
-          (on-create ch)
-          ch)))))
+  (cache/get-or-create named-channels id on-create))
 
 (defn release-named-channel
   "something goes here"
   [id]
-  (.remove named-channels id))
+  (cache/release named-channels id))
