@@ -11,10 +11,13 @@
     [potemkin]
     [lamina.core.utils :only (enqueue)])
   (:require
+    [lamina.trace.context :as ctx]
     [lamina.trace.instrument :as i]
     [lamina.trace.timer :as t]
     [lamina.trace.utils :as u]
     [lamina.trace.probe :as pr]))
+
+(import-fn ctx/register-context-builder)
 
 (import-fn i/instrument)
 (import-macro i/instrumented-fn)

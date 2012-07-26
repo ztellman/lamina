@@ -13,6 +13,7 @@
     [lamina.core.utils :only (enqueue)])
   (:require
     [clojure.string :as str]
+    [lamina.trace.context :as trace-context]
     [lamina.trace.probe :as p]
     [lamina.core.result :as r]
     [lamina.core.context :as context]
@@ -52,6 +53,7 @@
 
 (defrecord EnqueuedTiming
   [name
+   context
    ^long offset
    ^long timestamp
    ^long duration
@@ -72,6 +74,7 @@
          timing# (make-record ~type
                    :name ~'name
                    :timestamp ~'timestamp
+                   :context (trace-context/context)
                    :offset (unchecked-subtract (long start#) (long root-start#))
                    :compute-duration (if (= Long/MIN_VALUE ~'waiting)
                                        duration#
@@ -197,6 +200,7 @@
 
 (defrecord Timing
   [name
+   context
    ^long timestamp
    ^long offset
    ^long compute-duration
