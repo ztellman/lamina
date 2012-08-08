@@ -63,12 +63,16 @@
     (is (= :a @a))
     (is (= :b @b)))
 
-  ;; enqueue, then receive with predicate
+  ;; enqueue, then receive with predicate, and then with explicit result channel
   (let [q (q-fn)]
     (enqueue q 3)
+    (enqueue q 4)
     (is (= ::nope @(receive q even? ::nope)))
     (is (= 1 @(receive q even? ::nope (r/success-result 1))))
-    (is (= 3 @(receive q odd? nil))))
+    (is (= 3 @(receive q odd? nil)))
+    (let [r (r/result-channel)]
+      (receive q even? nil r)
+      (is (= 4 @r))))
 
   ;; multi-receive with predicate, then enqueue
   (let [q (q-fn)

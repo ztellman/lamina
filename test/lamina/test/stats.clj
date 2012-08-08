@@ -35,7 +35,7 @@
     (bench "moving-average deref"
       @avg))
   (let [ch (channel)]
-    (mean ch)
+    (moving-average ch)
     (bench "mean operator"
       (enqueue ch 1))
     (close ch)))

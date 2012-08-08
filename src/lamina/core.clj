@@ -163,6 +163,8 @@
 (import-fn ch/map*)
 (import-fn ch/filter*)
 (import-fn ch/remove*)
+(import-fn op/mapcat*)
+(import-fn op/concat*)
 (import-fn op/take*)
 (import-fn op/take-while*)
 (import-fn op/reductions*)

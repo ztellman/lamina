@@ -23,8 +23,8 @@
   (def host host))
 
 (defrecord Context
-  [^long process-id
-   ^long thread-id
+  [^long pid
+   ^long tid
    host])
 
 (def context-builder (atom nil))

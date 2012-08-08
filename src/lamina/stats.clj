@@ -24,54 +24,54 @@
 
 (defn sum
   "Returns a channel that will periodically emit the sum of all messages emitted by the source
-   channel over the last 'interval' milliseconds, with a default of 1000.
+   channel over the last 'period' milliseconds, with a default of 1000.
 
    It is assumed that all numbers emitted by the source channel are integral values."
   ([ch]
      (sum nil ch))
-  ([{:keys [interval]
-     :or {interval 1000}}
+  ([{:keys [period]
+     :or {period 1000}}
     ch]
      (let [ch* (channel)
            cnt (AtomicLong. 0)]
        (bridge-join ch "sum" #(.addAndGet cnt (long %)) ch*)
-       (siphon (periodically interval #(.getAndSet cnt 0)) ch*)
+       (siphon (periodically period #(.getAndSet cnt 0)) ch*)
        ch*)))
 
 (defn rate
   "Returns a channel that will periodically emit the number of messages emitted by the source
-   channel over the last 'interval' milliseconds, with a default of 1000."
+   channel over the last 'period' milliseconds, with a default of 1000."
   ([ch]
      (rate nil ch))
-  ([{:keys [interval]
-     :or {interval 1000}}
+  ([{:keys [period]
+     :or {period 1000}}
     ch]
      (->> ch
        (map* (constantly 1))
-       (sum interval))))
+       (sum period))))
 
-(defn mean
+(defn moving-average
   "Returns a channel that will periodically emit the moving average over all messages emitted by
-   the source channel every 'interval' milliseconds, defaulting to once every five seconds.  This
+   the source channel every 'period' milliseconds, defaulting to once every five seconds.  This
    moving average is exponentially weighted to the last 'window' milliseconds, defaulting to the
    last five minutes."
   ([ch]
-     (mean nil ch))
-  ([{:keys [interval
+     (moving-average nil ch))
+  ([{:keys [period
             window]
-     :or {interval (t/seconds 5)
+     :or {period (t/seconds 5)
           window (t/minutes 5)}}
     ch]
-     (let [avg (avg/moving-average interval window)
+     (let [avg (avg/moving-average period window)
            ch* (channel)]
-       (bridge-join ch "mean" #(update avg (long %)) ch*)
+       (bridge-join ch "moving-average" #(update avg (long %)) ch*)
        (siphon
-         (periodically interval #(deref avg))
+         (periodically period #(deref avg))
          ch*)
        ch*)))
 
-(defn quantiles
-  "Returns a channel that will periodically emit a map of quantile values every 'interval'
+(defn moving-quantiles
+  "Returns a channel that will periodically emit a map of quantile values every 'period'
    millseconds, which represent the statistical distribution of values emitted by the source
    channel over the last five minutes.
 
@@ -83,20 +83,20 @@
    By default, the above quantiles will be used, these can be specified as a sequence of quantiles
    of the form [50 98 99.9 99.99]."
   ([ch]
-     (quantiles nil ch))
-  ([{:keys [interval
+     (moving-quantiles nil ch))
+  ([{:keys [period
             window
             quantiles]
      :or {quantiles [50 75 95 99 99.9]
-          interval (t/seconds 5)
+          period (t/seconds 5)
           window (t/minutes 5)}}
     ch]
      (let [sample (ExponentiallyDecayingSample. 1024 0.015)
            ch* (channel)
            scaled-quantiles (map #(/ % 100) quantiles)]
-       (bridge-join ch "quantiles" #(.update sample (long %)) ch*)
+       (bridge-join ch "moving-quantiles" #(.update sample (long %)) ch*)
        (siphon
-         (periodically interval
+         (periodically period
            (fn []
              (let [snapshot (.getSnapshot sample)]
                (zipmap
@@ -107,17 +107,17 @@
 
 (defn variance
   "Returns a channel that will periodically emit the variance of all values emitted by the source
-   channel every 'interval' milliseconds."
+   channel every 'period' milliseconds."
   ([ch]
      (variance nil ch))
-  ([{:keys [interval]
-     :or {interval (t/seconds 5)}}
+  ([{:keys [period]
+     :or {period (t/seconds 5)}}
     ch]
      (let [vr (atom (var/create-variance))
            ch* (channel)]
        (bridge-join ch "variance" #(swap! vr update (long %)) ch*)
        (siphon
-         (periodically interval #(var/variance @vr))
+         (periodically period #(var/variance @vr))
          ch*)
        ch*)))
 
