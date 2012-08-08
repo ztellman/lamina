@@ -8,19 +8,18 @@
 
 (ns lamina.trace.core
   (:use
-    [lamina.core channel seq]
-    [clojure.contrib.core :only (dissoc-in)])
+    [lamina.core channel seq])
   (:require
     [clojure.string :as str]
     [lamina.core.queue :as q]
     [lamina.core.observable :as o]
-    [clojure.contrib.logging :as log]))
+    [clojure.tools.logging :as log]))
 
 ;;;
 
 (def probe-channels (ref {}))
 (def probe-switches (atom {}))
-(def *probe-prefix* nil)
+(def ^{:dynamic true} *probe-prefix* nil)
 
 (def new-probe-publisher (channel))
 (receive-all new-probe-publisher (fn [_] ))
@@ -29,7 +28,7 @@
 
 (defn logger [level]
   #(if (instance? Throwable %)
-     (log/log level nil %)
+     (log/log level % "Error.")
      (log/log level (str %))))
 
 (defmacro def-log-channel [channel-name level]

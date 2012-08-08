@@ -11,9 +11,10 @@
     [lamina.core.pipeline]
     [lamina.core.channel :only (close channel enqueue receive drained?)]
     [lamina.core.seq :only (receive-all siphon fork channel-seq)]
+    [lamina.core.timer :only (delay-invoke)]
     [lamina trace])
   (:require
-    [clojure.contrib.logging :as log])
+    [clojure.tools.logging :as log])
   (:import
     [java.util.concurrent
      ExecutorService
@@ -29,7 +30,7 @@
 (declare default-executor)
 (def ns-executors (atom {}))
 
-(def *thread-pool-options* nil)
+(def ^{:dynamic true} *thread-pool-options* nil)
 
 (defn set-default-executor
   "Sets the default executor used by task."
@@ -76,6 +77,25 @@
    :thread-wrapper (fn [f] (.run ^Runnable f))
    :name (str (gensym "thread-pool."))})
 
+(defn contract-pool-size [^ThreadPoolExecutor pool min-thread-count]
+  (let [active (.getActiveCount pool)
+        pool-size (.getPoolSize pool)]
+    (if (< min-thread-count active pool-size)
+      (.setCorePoolSize pool (dec pool-size)))))
+
+(defn expand-pool-size [^ThreadPoolExecutor pool max-thread-count]
+  (let [active (.getActiveCount pool)
+        pool-size (.getPoolSize pool)]
+    (when (= pool-size active)
+      (.setCorePoolSize pool (min max-thread-count (inc active))))))
+
+(defn periodically-contract-pool-size [^ThreadPoolExecutor pool min-thread-count interval]
+  (when-not (.isShutdown pool)
+    (contract-pool-size pool min-thread-count)
+    (delay-invoke
+      #(periodically-contract-pool-size pool min-thread-count interval)
+      interval)))
+
 (defn thread-pool
   "Creates a thread pool that will grow to a specified size when necessary, and dispose
    of unused threads after a certain amount of inactivity.
@@ -108,6 +128,7 @@
 	   timeouts-probe (canonical-probe [(:name options) :timeouts])]
        (register-probe threads-probe results-probe errors-probe)
        (siphon-probes (:name options) (:probes options))
+       (periodically-contract-pool-size pool min-thread-count (* 1000 (:idle-threshold options)))
        ^{::options options}
        (reify Executor LaminaThreadPool
 	 (shutdown-thread-pool [_]
@@ -119,10 +140,7 @@
 	 (execute [this f]
 	   (trace threads-probe
 	     (thread-pool-state pool))
-	   (let [active (.getActiveCount pool)]
-	     (if (= (.getPoolSize pool) active)
-	       (.setCorePoolSize pool (min max-thread-count (inc active)))
-	       (.setCorePoolSize pool (max min-thread-count (inc active)))))
+           (expand-pool-size pool max-thread-count)
 	   (.execute pool
 	     (fn []
 	       (binding [*current-executor* this]

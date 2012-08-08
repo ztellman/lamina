@@ -51,7 +51,7 @@
           (success! @result ::close)
           (reset! result (success-result ::close))
 	  (reset! latch false)
-	  (run-pipeline connection close))))
+	  (run-pipeline connection #(when (channel? %) (close %))))))
 
     ;; run connection loop
     (run-pipeline nil
@@ -76,6 +76,8 @@
 	    (new-connection-callback ch))
 	  (fn [_]
 	    (future (success! @result ch))
+            (Thread/yield)
+            (when-not @latch (close ch))
             (wait-for-close ch))))
       ;; wait here for connection to drop
       (fn [_]

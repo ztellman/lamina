@@ -11,7 +11,7 @@
     [lamina.core]
     [clojure.test]))
 
-(def *sleep-interval* 10)
+(def ^{:dynamic true} *sleep-interval* 10)
 
 (defmacro task* [& body]
   `(task
@@ -46,7 +46,8 @@
   (is= 6 (task* (+ 1 (task* (+ 2 3)))))
   (is= 6 (reduce #(task* (+ %1 %2)) [1 2 3]))
   (is= 6 (->> (range 3) (map inc) (reduce +)))
-  (is= 6 (->> (range 3) (map #(task* (+ 1 %))) (reduce #(task* (+ %1 %2))))))
+  (is= 6 (->> (range 3) (map #(task* (+ 1 %))) (reduce #(task* (+ %1 %2)))))
+  (is= 1 (let [a (task* {:status true})] (if (= true (:status a)) 1 2))))
 
 (deftest test-exceptions
   (is= 3
@@ -144,15 +145,15 @@
 (deftest test-recur
   (is= [0 1 2]
     (for [x (range 3)] (task* x)))
-  (is= (range 100)
+  (is= (range 50)
     ((fn [x]
-       (if (= 100 (count x))
+       (if (= 50 (count x))
 	 x
 	 (recur (task* (conj x (count x))))))
      []))
-  (is= (range 100)
+  (is= (range 50)
     (loop [i 0 accum []]
-      (if (< 99 i)
+      (if (< 49 i)
 	accum
 	(recur (inc i) (conj accum i)))))
   (is= 4

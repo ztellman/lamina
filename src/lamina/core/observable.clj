@@ -11,7 +11,7 @@
   (:use
     [clojure.walk])
   (:require
-    [clojure.contrib.logging :as log])
+    [clojure.tools.logging :as log])
   (:import
     [java.util.concurrent
      ScheduledThreadPoolExecutor
@@ -42,19 +42,19 @@
 	   (when message-callback
 	     (message-callback msgs))
 	   (catch Exception e
-	     (log/error "Error in message callback" e))))
+	     (log/error e "Error in message callback"))))
        (on-close [_]
 	 (try
 	   (when close-callback
 	     (close-callback))
 	   (catch Exception e
-	     (log/error "Error in close callback" e))))
+	     (log/error e "Error in close callback"))))
        (on-observers-changed [_ observers]
 	 (try
 	   (when observers-callback
 	     (observers-callback observers))
 	   (catch Exception e
-	     (log/error "Error in observers-changed callback" e)))))))
+	     (log/error e "Error in observers-changed callback")))))))
 
 ;;;
 
@@ -195,11 +195,12 @@
     (when-not (empty? msgs)
       (let [msg (first msgs)]
 	(when (compare-and-set! val ::empty msg)
-	  (locking observers
-	    (let [s (vals @observers)]
-	      (reset! observers nil)
-	      (doseq [o s]
-		(on-message o [msg])))))))
+	  (let [s (locking observers
+                    (let [s (vals @observers)]
+                      (reset! observers nil)
+                      s))]
+            (doseq [o s]
+              (on-message o [msg]))))))
     false)
   (close [this]
     (message this [nil]))

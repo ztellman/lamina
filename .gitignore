@@ -4,6 +4,6 @@ lib
 classes
 push
 local-push
-DS_Store
+*DS_Store
 autodoc
-.lein-failures
+.lein*

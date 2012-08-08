@@ -30,6 +30,8 @@
     (wait-for-result (pipeline 0) 100)
     (catch TimeoutException e
       (is false))
+    #_(catch clojure.lang.ArityException e
+      (is false))
     (catch Exception e
       (is true))))
 
@@ -56,8 +58,8 @@
 ;;;
 
 (deftest test-basic-pipelines
-  (test-pipeline (apply pipeline (take 1e3 (repeat inc))) 1e3)
-  (test-pipeline (apply pipeline (take 1e3 (repeat (fn [x] (task (inc x)))))) 1e3)
+  (test-pipeline (apply pipeline (take 1e3 (repeat inc))) 1000)
+  (test-pipeline (apply pipeline (take 1e3 (repeat (fn [x] (task (inc x)))))) 1000)
   (test-pipeline (apply pipeline (take 100 (repeat slow-inc))) 100)
   (test-pipeline (pipeline #(assoc {} :result %) :result) 0))
 
@@ -86,8 +88,8 @@
   (assert-failure (pipeline :error-handler (fn [_]) inc fail))
   (assert-failure (pipeline :error-handler (fn [_]) inc fail inc))
   (assert-failure (pipeline :error-handler (fn [_]) slow-inc slow-fail))
-  (assert-failure (pipeline :error-handler (fn [_]) inc (pipeline :error-handler (fn [_ _]) inc fail) inc))
-  (assert-failure (pipeline :error-handler (fn [_]) inc #(redirect (pipeline :error-handler (fn [_ _]) inc fail) %))))
+  (assert-failure (pipeline :error-handler (fn [_]) inc (pipeline :error-handler (fn [_]) inc fail) inc))
+  (assert-failure (pipeline :error-handler (fn [_]) inc #(redirect (pipeline :error-handler (fn [_]) inc fail) %))))
 
 (deftest test-redirection-and-error-handlers
 
@@ -195,7 +197,7 @@
       500)
     (is (= @t1 @t2))))
 
-(declare to-be-bound)
+(declare ^{:dynamic true} to-be-bound)
 
 (deftest test-bindings
   (let [t1 (atom nil)

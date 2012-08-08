@@ -12,9 +12,7 @@
     [lamina.core.channel :only (listen)])
   (:use
     [clojure.test]
-    [clojure.contrib.def]
-    [clojure.walk]
-    [clojure.contrib.combinatorics]))
+    [clojure.walk]))
 
 ;;
 
@@ -30,7 +28,7 @@
       (catch Exception e
 	(.printStackTrace e)))))
 
-(declare callback)
+(declare ^{:dynamic true} callback)
 
 (defmacro output-of [f & body]
   `(let [coll# (atom [])]
@@ -129,7 +127,7 @@
 (deftest test-simple-listen
   (let [ch (channel)
 	coll (atom [])
-	num 1e3]
+	num 1000]
     (async-enqueue ch (range num) true)
     (dotimes [_ num]
       (let [watch (atom false)
@@ -147,7 +145,7 @@
   (let [ch (channel)
 	coll (atom [])
 	waiting-for (ref 0)
-	num 1e3
+	num 1000
 	latch (promise)]
     (async-enqueue ch (range num) true)
     (while (< (count @coll) num)
@@ -162,7 +160,7 @@
     (is (= (range num) @coll))))
 
 (deftest test-on-closed
-  (let [num 1e3
+  (let [num 1000
 	cnt (atom 0)]
     (dotimes [i num]
       (let [ch (channel)]
@@ -176,7 +174,7 @@
 
 (deftest test-simple-poll
   (let [ch (channel)
-	num 1e3]
+	num 1000]
     (let [coll (atom [])]
       (async-enqueue ch (range num) false)
       (dotimes [i num]
@@ -187,7 +185,7 @@
 (deftest test-poll
   (let [u (channel)
 	v (channel)
-	num 1e3]
+	num 1000]
     (let [colls {:u (atom [])
 		 :v (atom [])}]
       (async-enqueue u (range num) false)
@@ -205,7 +203,7 @@
 ;; synchronous methods
 
 (deftest test-wait-for-message
-  (let [num 1e2]
+  (let [num 100]
     (let [ch (channel)]
       (async-enqueue ch (range num) false)
       (dotimes [i num]
@@ -217,7 +215,7 @@
   (let [ch (closed-channel 1 nil)]
     (is (= [1] (channel-seq ch))))
 
-  (let [in (range 1e3)
+  (let [in (range 1000)
 	target (last in)
 	ch (channel)]
     (async-enqueue ch in false)
@@ -232,7 +230,7 @@
 ;; fork
 
 (deftest test-receive-all
-  (dotimes [i 1e2]
+  (dotimes [i 100]
     (let [result (atom [])]
       (let [s (range 10)]
 	(let [ch (channel)]
@@ -246,7 +244,7 @@
 	    (is (= @result s))))))))
 
 (deftest test-fork
-  (dotimes [i 1e2]
+  (dotimes [i 100]
     (let [s (range 10)]
       (let [ch (channel)]
 	(async-enqueue ch s false)
@@ -256,7 +254,7 @@
 	  (is (= s (lazy-channel-seq ch*))))))))
 
 (deftest test-fork-receive-all
-  (dotimes [i 1e2]
+  (dotimes [i 100]
     (let [result (atom [])]
       (let [s (range 10)]
 	(let [ch (channel)]
@@ -331,6 +329,23 @@
       (is (= s (channel-seq ch* 2500)))
       (is (drained? ch*))
       (is (drained? ch)))))
+
+(deftest test-mapcat*
+  (let [s [1 2 3]
+	f range]
+
+    (let [ch (apply closed-channel s)
+	  ch* (mapcat* f ch)]
+      (is (= (mapcat f s) (channel-seq ch*)))
+      (is (drained? ch))
+      (is (drained? ch*)))
+
+    (let [ch (channel)
+	  ch* (mapcat* f ch)]
+      (async-enqueue ch s true)
+      (is (= (mapcat f s) (channel-seq ch* 2500)))
+      (is (drained? ch))
+      (is (drained? ch*)))))
 
 (deftest test-map*
   (let [s (range 10)
@@ -419,7 +434,7 @@
     (let [ch (channel)
 	  ch* (partition-all* 4 3 ch)]
       (async-enqueue ch s false)
-      (is (= (partition-all 4 3 s) (channel-seq ch* 2500)))
+      (is (= (partition-all 4 3 s) (channel-seq ch* 5000)))
       (is (drained? ch))
       (is (drained? ch*)))))
 

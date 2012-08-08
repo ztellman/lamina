@@ -16,7 +16,7 @@
 
 ;;;
 
-(def *debug* false)
+(def ^{:dynamic true} *debug* false)
 
 (defmacro debug-print [& args]
   (when *debug*
@@ -58,7 +58,6 @@
   (and
     (seq? expr)
     (< 1 (count expr))
-    (symbol? (first expr))
     (not (apply first= expr special-forms))))
 
 (defn transform-expr [expr]
@@ -75,6 +74,7 @@
 	 result#)
       `(let [~@(apply concat non-constant-args)]
 	 (run-pipeline []
+           :error-handler (fn [_#])
 	   ~@(map
 	       (fn [arg]
 		 `(read-merge
@@ -109,6 +109,7 @@
   (if (= (resolve class-name) clojure.lang.LazySeq)
     (transform-lazy-seq expr)
     `(run-pipeline []
+       :error-handler (fn [_#])
        ~@(map
 	   (fn [arg] `(read-merge (constantly ~arg) conj))
 	   args)
@@ -118,6 +119,7 @@
 
 (defn transform-throw [[_ exception]]
   `(run-pipeline ~exception
+     :error-handler (fn [_#])
      (fn [exception#]
        (throw exception#))))
 
@@ -184,6 +186,7 @@
 		      %)
 		   body)))]
     `(run-pipeline nil
+       :error-handler (fn [_#])
        (fn [_#]
 	 ~body))))
 

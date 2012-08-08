@@ -9,8 +9,7 @@
 (ns ^{:skip-wiki true}
   lamina.core.seq
   (:use
-    [lamina.core channel pipeline utils]
-    [clojure.contrib.generic.functor])
+    [lamina.core channel pipeline utils])
   (:require
     [lamina.core.observable :as o]
     [lamina.core.queue :as q])
@@ -245,30 +244,28 @@
     (constant-channel)
     (channel)))
 
-(defn map*
-  "Returns a channel which will consume all messages from 'ch', and emit (f msg)."
+(defn mapcat*
+  "Returns a channel which will consume all messages from 'ch', and emit each message in (f msg)."
   [f ch]
   (let [f (unwrap-fn f)
 	ch* (dst-channel ch)]
     (siphon ch
       {ch* #(if (and (drained? ch) (= [nil] %))
 	      %
-	      (map f %))})
+	      (mapcat f %))})
     (on-drained ch #(close ch*))
     ch*))
+
+(defn map*
+  "Returns a channel which will consume all messages from 'ch', and emit (f msg)."
+  [f ch]
+  (mapcat* (comp list f) ch))
 
 (defn filter*
   "Returns a channel which will consume all messages from 'ch', but only emit messages
    for which (f msg) is true."
   [f ch]
-  (let [f (unwrap-fn f)
-	ch* (dst-channel ch)]
-    (siphon ch
-      {ch* #(if (and (drained? ch) (= [nil] %))
-	      %
-	      (filter f %))})
-    (on-drained ch #(close ch*))
-    ch*))
+  (mapcat* #(when (f %) (list %)) ch))
 
 (defn remove*
   "Returns a channel which will consume all messages from 'ch', but only emit messages

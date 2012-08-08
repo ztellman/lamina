@@ -12,15 +12,16 @@
     [lamina core connections trace]
     [lamina.core.pipeline :only (success-result error-result)])
   (:require
-   [clojure.contrib.logging :as log])
+   [clojure.tools.logging :as log])
   (:import java.util.concurrent.TimeoutException))
 
 ;;;
 
 (def probes
-  {:connection:lost log-info
-   :connection:opened log-info
-   :connection:failed log-info})
+  {;;:connection:lost log-info
+   ;;:connection:opened log-info
+   ;;:connection:failed log-info
+   :errors (sink (fn [_]))})
 
 (defn simple-echo-server []
   (let [[a b] (channel-pair)]
@@ -41,7 +42,10 @@
       read-channel
       #(when-not (drained? b)
 	 (enqueue b %))
-      (fn [_] (restart)))
+      (fn [_]
+        (if (drained? b)
+          (do (close a) (close b))
+          (restart))))
     [a #(do (close a) (close b))]))
 
 (defn error-server []
@@ -136,7 +140,7 @@
   (with-server alternating-delay-echo-server
     (when initially-disconnected
       (stop-server))
-    (let [f (client-fn #(connect) {:probes (comment probes) :description "dropped-and-restored"})]
+    (let [f (client-fn #(connect) {:probes probes :description "dropped-and-restored"})]
       (when-not initially-disconnected
         (stop-server))
       (try
@@ -150,19 +154,18 @@
 (defn persistent-connection-stress-test [client-fn]
   (with-server simple-echo-server
     (let [continue (atom true)
-	  f (client-fn #(connect) {:probes (comment probes) :description "stress-test"})]
-      ; periodically drop
-      (.start
-	(Thread.
-	  #(loop []
-	     (Thread/sleep 4000)
-	     (stop-server)
-             ;;(println "Disconnecting")
-	     (Thread/sleep 100)
-	     (start-server)
-             ;;(println "Reconnecting")
-	     (when @continue
-	       (recur)))))
+	  f (client-fn #(connect) {:probes probes :description "stress-test"})]
+      ;; periodically drop
+      (future
+        (loop []
+          (Thread/sleep 4000)
+          (stop-server)
+          ;;(println "Disconnecting")
+          (Thread/sleep 100)
+          (start-server)
+          ;;(println "Reconnecting")
+          (when @continue
+            (recur))))
       (try
         (let [s (range 1e4)]
 	  (is (= s
@@ -198,7 +201,7 @@
 (defn errors-propagate [client-fn]
   (with-server error-server
     (start-server)
-    (let [f (client-fn #(connect) {:description "error-server"})]
+    (let [f (client-fn #(connect) {:probes probes, :description "error-server"})]
       (is (thrown? RuntimeException @(f "fail?" 100)))
       (is (thrown? RuntimeException @(f "fail?" 100))))))
 
@@ -223,19 +226,19 @@
        ~@body)))
 
 (deftest test-server-error-handler
-  (with-handler (fn [_ _] (throw exception)) nil
+  (with-handler (fn [_ _] (throw exception)) {:probes probes}
     (enqueue ch 1 2)
     (is (= [exception exception] (channel-seq ch))))
 
-  (with-handler (fn [_ _] (run-pipeline nil :error-handler (fn [_]) (fn [_] (throw exception)))) nil
+  (with-handler (fn [_ _] (run-pipeline nil :error-handler (fn [_]) (fn [_] (throw exception)))) {:probes probes}
     (enqueue ch 1 2)
     (is (= [exception exception] (channel-seq ch))))
 
-  (with-handler (fn [_ _] (throw exception)) {:include-request true}
+  (with-handler (fn [_ _] (throw exception)) {:include-request true, :probes probes}
     (enqueue ch 1 2)
     (is (= [{:request 1, :response exception} {:request 2, :response exception}] (channel-seq ch))))
   
-  (with-handler (fn [_ _] (run-pipeline nil :error-handler (fn [_]) (fn [_] (throw exception)))) {:include-request true}
+  (with-handler (fn [_ _] (run-pipeline nil :error-handler (fn [_]) (fn [_] (throw exception)))) {:include-request true, :probes probes}
     (enqueue ch 1 2)
     (is (= [{:request 1, :response exception} {:request 2, :response exception}] (channel-seq ch)))))
 

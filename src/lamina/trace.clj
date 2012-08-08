@@ -11,7 +11,7 @@
     [lamina.core channel seq pipeline]
     potemkin)
   (:require
-    [clojure.contrib.logging :as log]
+    [clojure.tools.logging :as log]
     [lamina.trace.core :as trace]))
 
 ;;;
@@ -25,10 +25,10 @@
 
 ;;;
 
-(import-fn #'trace/register-probe)
-(import-fn #'trace/canonical-probe)
-(import-fn #'trace/on-new-probe)
-(import-fn #'trace/probe-channel)
+(import-fn trace/register-probe)
+(import-fn trace/canonical-probe)
+(import-fn trace/on-new-probe)
+(import-fn trace/probe-channel)
 
 (defn registered-probes []
   @trace/probe-switches)
@@ -86,7 +86,7 @@
                      :start-time (/ start 1e6)
                      :end-time (/ end 1e6)
                      :duration (/ (- end start) 1e6)}))
-        (log/error nil ex)))))
+        (log/error ex (str "Unconsumed error on " probe))))))
 
 (defn trace-wrap [f options]
   (when-not (:name options)
