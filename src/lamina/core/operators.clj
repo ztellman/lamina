@@ -375,15 +375,15 @@
   (->> ch (map* f) concat*))
 
 (defn periodically
-  "Returns a channel.  Every 'interval' milliseconds, 'f' is invoked with no arguments
+  "Returns a channel.  Every 'period' milliseconds, 'f' is invoked with no arguments
    and the value is emitted as a message."
-  [interval f]
+  [period f]
   (let [ch (channel* :description (str "periodically " (describe-fn f)))]
     (p/run-pipeline (System/currentTimeMillis)
 
       ;; figure out how long to sleep, given the previous target timestamp
       (fn [timestamp]
-        (let [target-timestamp (+ timestamp interval)]
+        (let [target-timestamp (+ timestamp period)]
           (r/timed-result
             (max 0.1 (- target-timestamp (System/currentTimeMillis)))
             target-timestamp)))
@@ -398,22 +398,22 @@
 
 (defn sample-every
   "Takes a source channel, and returns a channel that emits the most recent message
-   from the source channel every 'interval' milliseconds."
-  [interval ch]
+   from the source channel every 'period' milliseconds."
+  [period ch]
   (let [val (atom ::none)
         ch* (mimic ch)]
-    (bridge-join ch (str "sample-every " interval)
+    (bridge-join ch (str "sample-every " period)
       #(reset! val %)
       ch*)
     (siphon
-      (->> #(deref val) (periodically interval) (remove* #(= ::none %)))
+      (->> #(deref val) (periodically period) (remove* #(= ::none %)))
       ch*)
     ch*))
 
 (defn partition-every
   "Takes a source channel, and returns a channel that repeatedly emits a collection
-   of all messages from the source channel in the last 'interval' milliseconds."
-  [interval ch]
+   of all messages from the source channel in the last 'period' milliseconds."
+  [period ch]
   (let [q (ConcurrentLinkedQueue.)
         drain (fn []
                 (loop [msgs []]
@@ -421,10 +421,10 @@
                     msgs
                     (recur (conj msgs (.remove q))))))
         ch* (mimic ch)]
-    (bridge-join ch (str "partition-every " interval)
+    (bridge-join ch (str "partition-every " period)
       #(.add q %)
       ch*)
-    (siphon (periodically interval drain) ch*)
+    (siphon (periodically period drain) ch*)
     ch*))
 
 ;;;
