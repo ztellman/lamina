@@ -285,7 +285,7 @@
                           (map
                             #(unwind-stages % (drop % stages) depth expand-subscribe)
                             (range (inc len))))))
-                  (catch Throwable ex#
+                  (catch Exception ex#
                     (error this## result## initial-val## ex#))))))
        
         ~(if error-handler
