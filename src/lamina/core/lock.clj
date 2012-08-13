@@ -64,8 +64,6 @@
        (acquire lock#)
        (try
          ~@body
-         (catch Exception e#
-           (.printStackTrace e#))
          (finally
            (release lock#))))))
 
@@ -75,8 +73,6 @@
        (acquire-exclusive lock#)
        (try
          ~@body
-         (catch Exception e#
-           (.printStackTrace e#))
          (finally
            (release-exclusive lock#))))))
 

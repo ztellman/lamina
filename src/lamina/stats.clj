@@ -8,10 +8,11 @@
 
 (ns lamina.stats
   (:use
-    [lamina core api]
+    [lamina core api viz executor]
     [lamina.core.channel :only (mimic)]
     [lamina.stats.utils :only (update)])
   (:require
+    [clojure.tools.logging :as log]
     [lamina.time :as t]
     [lamina.stats.moving-average :as avg]
     [lamina.stats.variance :as var])

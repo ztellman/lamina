@@ -98,7 +98,7 @@
     (r/subscribe (result-fn node)
       (r/result-callback
         (fn [_] (callback))
-        (fn [_] )))))
+        (fn [_] (callback))))))
 
 (def on-closed (on-event closed-result))
 (def on-drained (on-event drained-result))

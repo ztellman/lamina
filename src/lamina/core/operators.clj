@@ -9,7 +9,7 @@
 (ns lamina.core.operators
   (:use
     [potemkin]
-    [lamina.core channel utils])
+    [lamina.core channel utils threads])
   (:require
     [lamina.core.graph :as g]
     [lamina.core.lock :as l]

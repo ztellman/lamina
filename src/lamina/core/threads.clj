@@ -51,7 +51,7 @@
           (fn []
             (try
               (f)
-              (catch Exception e
+              (catch Throwable e
                 (log/error e "Error in delayed invocation."))))]
       (.schedule scheduled-executor f (long (* 1e6 interval)) TimeUnit/NANOSECONDS)
       nil)))

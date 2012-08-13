@@ -760,7 +760,7 @@
       (or
         (case (.mode s)
           ::consumed (q/closed? (.queue s))
-          (::closed ::drained) true
+          (::closed ::drained ::error) true
           false)
         (and (.queue s) (q/closed? (.queue s)))))))
 
