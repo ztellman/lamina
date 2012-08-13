@@ -103,8 +103,8 @@ This often can and should be replaced by a pipeline.</pre></div><div class="publ
 
 (partition* 2 (channel 1 2 3)) =&gt; [[1 2]]</pre></div><div class="public" id="var-partition-all*"><h3>partition-all*</h3><div class="usage"><code>(partition-all* n ch)</code><code>(partition-all* n step ch)</code></div><pre class="doc">A dual to partition-all.
 
-(partition-all* 2 (closed-channel 1 2 3)) =&gt; [[1 2] [3]]</pre></div><div class="public" id="var-partition-every"><h3>partition-every</h3><div class="usage"><code>(partition-every interval ch)</code></div><pre class="doc">Takes a source channel, and returns a channel that repeatedly emits a collection
-of all messages from the source channel in the last 'interval' milliseconds.</pre></div><div class="public" id="var-periodically"><h3>periodically</h3><div class="usage"><code>(periodically interval f)</code></div><pre class="doc">Returns a channel.  Every 'interval' milliseconds, 'f' is invoked with no arguments
+(partition-all* 2 (closed-channel 1 2 3)) =&gt; [[1 2] [3]]</pre></div><div class="public" id="var-partition-every"><h3>partition-every</h3><div class="usage"><code>(partition-every period ch)</code></div><pre class="doc">Takes a source channel, and returns a channel that repeatedly emits a collection
+of all messages from the source channel in the last 'period' milliseconds.</pre></div><div class="public" id="var-periodically"><h3>periodically</h3><div class="usage"><code>(periodically period f)</code></div><pre class="doc">Returns a channel.  Every 'period' milliseconds, 'f' is invoked with no arguments
 and the value is emitted as a message.</pre></div><div class="public" id="var-permanent-channel"><h3>permanent-channel</h3><div class="usage"><code>(permanent-channel &amp; messages)</code></div><pre class="doc">Returns a channel which cannot be closed or put into an error state.
 </pre></div><div class="public" id="var-pipeline"><h3>pipeline</h3><div class="usage"><code>(pipeline &amp; opts+stages)</code></div><pre class="doc">something goes here
 </pre></div><div class="public" id="var-read-channel"><h3>read-channel</h3><div class="usage"><code>(read-channel channel)</code></div><pre class="doc">Returns a result-channel representing the next message from the channel.  Only one
@@ -137,8 +137,8 @@ when the source channel has been drained.
 
 (remove* even? (channel 2 3 4)) =&gt; [3]</pre></div><div class="public" id="var-result-channel"><h3>result-channel</h3><div class="usage"><code>(result-channel)</code></div><pre class="doc">Returns a result-channel, representing an unrealized value or error.
 </pre></div><div class="public" id="var-run-pipeline"><h3>run-pipeline</h3><div class="usage"><code>(run-pipeline value &amp; opts+stages)</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-sample-every"><h3>sample-every</h3><div class="usage"><code>(sample-every interval ch)</code></div><pre class="doc">Takes a source channel, and returns a channel that emits the most recent message
-from the source channel every 'interval' milliseconds.</pre></div><div class="public" id="var-sink"><h3>sink</h3><div class="usage"><code>(sink callback)</code></div><pre class="doc">Creates a channel which will forward all messages to 'callback'.
+</pre></div><div class="public" id="var-sample-every"><h3>sample-every</h3><div class="usage"><code>(sample-every period ch)</code></div><pre class="doc">Takes a source channel, and returns a channel that emits the most recent message
+from the source channel every 'period' milliseconds.</pre></div><div class="public" id="var-sink"><h3>sink</h3><div class="usage"><code>(sink callback)</code></div><pre class="doc">Creates a channel which will forward all messages to 'callback'.
 </pre></div><div class="public" id="var-sink-%3E%3E"><h3>sink-&gt;&gt;</h3><div class="usage"><code>(sink-&gt;&gt; &amp; transforms+callback)</code></div><pre class="doc">Creates a channel, pipes it through the -&gt;&gt; operator, and sends the
 resulting stream into the callback. This can be useful when defining
 :probes for an instrumented function, among other places.
