@@ -172,7 +172,7 @@
             executor
             implicit?
             retry?]
-     :or {retry? false}
+     :or {retry? true}
      :as options}]
 
      (let [connection (persistent-connection
@@ -192,8 +192,8 @@
              ;; the connect loop, then resend the request if :retry? is true
              {:error-handler (pipeline
                                (wait-stage 0.1)
-                               (fn [_]
-                                 (when retry?
+                               (fn [err]
+                                 (when (and retry? (= :lamina/drained! err))
                                    (restart))))
               :result (.result r)}
              ;; connect
