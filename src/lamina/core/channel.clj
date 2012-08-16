@@ -413,7 +413,8 @@
                      (channel-initializer facet)
                      (map* #(hash-map :facet facet, :value %)))
                    ch*)))]
-    (siphon ch dist)
+    (join ch dist)
+    (on-closed aggr #(close dist))
     (map*
       #(zipmap (keys %) (map :value (vals %)))
       aggr)))

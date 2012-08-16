@@ -8,7 +8,9 @@
 
 (ns lamina.cache
   (:use
-    [lamina.core.channel :only (on-closed close)])
+    [lamina.core.channel :only (on-closed on-error close)])
+  (:require
+    [clojure.tools.logging :as log])
   (:import
     [java.util.concurrent
      ConcurrentHashMap]))
@@ -39,6 +41,7 @@
             (or (.putIfAbsent m id ch)
               (do
                 (on-closed ch #(release this id))
+                (on-error ch #(log/error % "error in channel-cache"))
                 (when on-create (on-create ch))
                 ch)))))
       (ids [_]

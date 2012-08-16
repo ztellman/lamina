@@ -931,5 +931,7 @@
                        (edge "join" dst))]
        (siphon src dst
          pre
-         (fn [_]
-           (on-state-changed src nil (join-callback (.node dst))))))))
+         (fn [x]
+           (on-state-changed src nil (join-callback (.node dst)))
+           (when post
+             (post x)))))))

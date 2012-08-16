@@ -173,7 +173,7 @@
 (def node-frame (gen-frame "Lamina"))
 
 (def default-settings
-  {:options {:rankdir :LR, :pad 0.25, :dpi 400}
+  {:options {:rankdir :LR, :pad 0.25, :dpi 100}
    :default-node {:fontname :helvetica, :shape :box}
    :default-edge {:fontname :helvetica}})
 

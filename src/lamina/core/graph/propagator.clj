@@ -106,24 +106,36 @@
         (transactional n))))
   (downstream [_]
     (map #(edge nil %) (vals downstream)))
-  (propagate [_ msg _]
-    (if-let [n (l/with-lock lock
-                 (when-not (.get closed?)
-                   (let [id (facet msg)]
-                     (if-let [n (.get downstream id)]
-                       n
-                       (let [n (generator id)]
-                         (when (.get transactional?)
-                           (transactional n))
-                         (or (.putIfAbsent downstream id n)
-                           (do
-                             (r/subscribe (n/closed-result n)
-                               (r/result-callback
-                                 (fn [_] (.remove downstream id))
-                                 (fn [_] (.remove downstream id))))
-                             n)))))))]
-      (propagate n msg true)
-      :lamina/closed!)))
+  (propagate [this msg _]
+    (try
+      (let [id (facet msg)
+            id* (if (nil? id)
+                  ::nil
+                  id)]
+        (if-let [n (l/with-lock lock
+                     (when-not (.get closed?)
+                       (if-let [n (.get downstream id*)]
+                         n
+                         (let [n (generator id)]
+                           
+                           ;; make it transactional, if necessary
+                           (when (.get transactional?)
+                             (transactional n))
+                           
+                           ;; check if another channel's already slotted in
+                           (or (.putIfAbsent downstream id* n)
+                             (do
+                               ;; if not, hook into the callbacks
+                               (r/subscribe (n/closed-result n)
+                                 (r/result-callback
+                                   (fn [_] (.remove downstream id))
+                                   (fn [err] (error this err))))
+                               n))))))]
+          (propagate n msg true)
+          :lamina/closed!))
+      (catch Exception e
+        (log/error e "error in distributor")
+        (error this e)))))
 
 (defn distributing-propagator [facet generator]
   (DistributingPropagator.

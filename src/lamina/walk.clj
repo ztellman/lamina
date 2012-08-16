@@ -42,6 +42,7 @@
          :closed? (closed? n)
          :drained? (drained? n)
          :grounded? (grounded? n)
+         :permanent (permanent? n)
          :error (error-value n nil)}))))
 
 ;;;
