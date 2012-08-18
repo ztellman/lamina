@@ -77,9 +77,9 @@
 (defn close-and-clear [lock ^AtomicBoolean closed? ^ConcurrentHashMap downstream]
   (l/with-exclusive-lock lock
     (.set closed? true)
-    (let [downstream (vals downstream)]
+    (let [channels (vals downstream)]
       (.clear ^ConcurrentHashMap downstream)
-      downstream)))
+      channels)))
 
 (deftype DistributingPropagator
   [facet
@@ -162,9 +162,9 @@
         dsts (filter n/node? dsts)]
     (n/link src n upstream
       nil
-      (fn []
+      (fn [_]
         (doseq [dst dsts]
-          (n/on-state-changed dst nil (n/siphon-callback src n)))))))
+          (n/on-state-changed dst nil (n/upstream-callback src n false)))))))
 
 (defn bridge-join [src edge-description node-description callback dsts]
   (let [downstream (to-array (map #(edge nil %) dsts))
@@ -180,7 +180,7 @@
     (n/link src n upstream
       nil
       (fn [_]
-        (n/on-state-changed src nil (n/join-callback n))
+        (n/on-state-changed src nil (n/downstream-callback src n))
         (doseq [dst dsts]
-          (n/on-state-changed dst nil (n/siphon-callback src n)))))))
+          (n/on-state-changed dst nil (n/upstream-callback src n true)))))))
 

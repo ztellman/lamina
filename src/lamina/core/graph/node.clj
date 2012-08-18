@@ -894,16 +894,17 @@
 
 ;;;
 
-(defn siphon-callback [src dst]
-  (fn [state _ _]
-    (case state
-      (::closed ::drained ::error) (enqueue-cleanup #(cancel src dst))
-      nil)))
-
-(defn join-callback [dst]
+(defn upstream-callback [src dst join?]
   (fn [state _ err]
     (case state
-      (::closed ::drained) (enqueue-cleanup #(close dst))
+      (::closed ::drained) (enqueue-cleanup #(cancel src dst))
+      ::error (enqueue-cleanup (if join? #(error src err) #(cancel src dst)))
+      nil)))
+
+(defn downstream-callback [src dst]
+  (fn [state _ err]
+    (case state
+      ::drained (enqueue-cleanup #(close dst))
       ::error (enqueue-cleanup #(error dst err))
       nil)))
 
@@ -918,7 +919,7 @@
          pre
          (fn [success?]
            (when (and success? (node? (.node dst)))
-             (on-state-changed (.node dst) nil (siphon-callback src (.node dst))))
+             (on-state-changed (.node dst) nil (upstream-callback src (.node dst) false)))
            (when post
              (post success?)))))))
 
@@ -929,9 +930,11 @@
      (let [^Edge dst (if (edge? dst)
                        dst
                        (edge "join" dst))]
-       (siphon src dst
+       (link src (.node dst) dst
          pre
-         (fn [x]
-           (on-state-changed src nil (join-callback (.node dst)))
+         (fn [success?]
+           (when (node? (.node dst))
+             (on-state-changed (.node dst) nil (upstream-callback src (.node dst) true)))
+           (on-state-changed src nil (downstream-callback src (.node dst)))
            (when post
-             (post x)))))))
+             (post success?)))))))

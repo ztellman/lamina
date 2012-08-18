@@ -228,7 +228,9 @@
        (% a b)
        (error b ::error)
        (wait-for-error b ::error)
-       (wait-for-drained a)))
+       (if (= siphon %)
+         (wait-for-drained a)
+         (wait-for-error a ::error))))
 
   (let [a (node identity)
         b (node identity)]

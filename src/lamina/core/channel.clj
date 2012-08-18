@@ -16,7 +16,8 @@
     [lamina.core.lock :as l]
     [lamina.core.result :as r]
     [lamina.core.threads :as t]
-    [clojure.string :as str])
+    [clojure.string :as str]
+    [clojure.tools.logging :as log])
   (:import
     [lamina.core.lock
      AsymmetricLock]
@@ -389,7 +390,7 @@
     (bridge-join ch "aggregate"
       (fn [msg]
         (let [id (facet msg)
-              id* (if (nil? id)
+              id* (if false ;;(nil? id)
                     ::nil
                     id)]
           (when-let [msg (l/with-exclusive-lock lock
@@ -422,6 +423,7 @@
                      (map* #(hash-map :facet facet, :value %)))
                    ch*)))]
     (join ch dist)
+    (on-error aggr #(error dist %))
     (on-closed aggr #(close dist))
     (map*
       #(zipmap (keys %) (map :value (vals %)))
