@@ -388,15 +388,23 @@
         aggregator (atom (ConcurrentHashMap.))]
     (bridge-join ch "aggregate"
       (fn [msg]
-        (let [f (facet msg)]
+        (let [id (facet msg)
+              id* (if (nil? id)
+                    ::nil
+                    id)]
           (when-let [msg (l/with-exclusive-lock lock
                            (let [^ConcurrentHashMap m @aggregator]
-                             (when (.putIfAbsent m f msg)
+                             (when (.putIfAbsent m id* msg)
                                (reset! aggregator
                                  (doto (ConcurrentHashMap.)
-                                   (.put f msg)))
+                                   (.put id* msg)))
                                m)))]
-            (enqueue ch* (into {} msg)))))
+            (let [m (into {} msg)
+                  m (if (contains? m ::nil)
+                      (let [v (m ::nil)]
+                        (-> m (dissoc ::nil) (assoc nil v)))
+                      m)]
+              (enqueue ch* m)))))
       ch*)
     ch*))
 
