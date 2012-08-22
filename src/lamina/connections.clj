@@ -60,11 +60,17 @@
 
       ;; handle the new connection, and wait for it to close
       (fn [conn]
-        (when on-connected
-          (on-connected conn))
-        (success @connection conn)
-        (trace {:state :connected})
-        (closed-result conn))
+        (if-not (channel? conn)
+          (reset! done? true)
+          (do
+            (when on-connected
+              (try
+                (on-connected conn)
+                (catch Throwable e
+                  (log/error e "Error in on-connected callback"))))
+            (success @connection conn)
+            (trace {:state :connected})
+            (closed-result conn))))
 
       ;; handle the lost connection, and restart
       (fn [_]

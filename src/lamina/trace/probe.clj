@@ -22,15 +22,18 @@
     [java.io
      Writer]
     [java.util.concurrent
-     ConcurrentHashMap]
+     ConcurrentHashMap
+     CopyOnWriteArrayList]
     [java.util.concurrent.atomic
      AtomicBoolean]))
 
 (defprotocol-once IProbe
-  (probe-enabled? [_] "Returns true if the probe has downstream channels."))
+  (probe-enabled? [_] "Returns true if the probe has downstream channels.")
+  (trigger-callbacks [_ enabled?]))
 
 (deftype-once ProbeChannel
   [^AtomicBoolean enabled?
+   ^CopyOnWriteArrayList callbacks
    channel
    log-on-disabled?
    description]
@@ -43,10 +46,16 @@
   IProbe
   (probe-enabled? [_]
     (.get enabled?))
+  (trigger-callbacks [_ enabled?]
+    (doseq [c callbacks]
+      (try
+        (c enabled?)
+        (catch Exception e
+          (log/error e "Error in on-enabled-changed callback.")))))
   c/IChannel
   (receiver-node [_]
     (c/receiver-node channel))
-  (emitter-node [_]
+  (emitter-node [_] 
     (c/emitter-node channel)))
 
 (defn probe-channel- [description log-on-disabled?]
@@ -54,14 +63,25 @@
         ch (c/channel*
              :grounded? true
              :permanent? true
-             :description (str "probe: " (name description)))]
+             :description (str "probe: " (name description)))
+        p (ProbeChannel.
+            flag
+            (CopyOnWriteArrayList.)
+            ch
+            log-on-disabled?
+            description)]
 
     ;; set the flag whenever the downstream count changes
     (g/on-state-changed (c/emitter-node ch) nil
       (fn [_ downstream _]
-        (.set flag (pos? downstream))))
+        (let [enabled? (pos? downstream)]
+          (when-not (= enabled? (.getAndSet flag enabled?))
+            (trigger-callbacks p enabled?)))))    
 
-    (ProbeChannel. flag ch log-on-disabled? description)))
+    p))
+
+(defn on-enabled-changed [^ProbeChannel p callback]
+  (.add (.callbacks p) callback))
 
 (defn canonical-probe-name
   "something goes here"
@@ -74,6 +94,9 @@
 
 (def ^ConcurrentHashMap probes (ConcurrentHashMap.))
 (def new-probe-broadcaster (c/channel* :grounded? true, :permanent? true))
+
+(defn on-new-probe [callback]
+  (c/receive-all new-probe-broadcaster callback))
 
 (defn reset-probes
   "something goes here"

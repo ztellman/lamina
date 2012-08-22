@@ -27,6 +27,8 @@
 (import-macro u/time*)
 (import-macro u/with-instrumentation)
 
+(import-fn pr/on-enabled-changed)
+(import-fn pr/on-new-probe)
 (import-fn pr/canonical-probe-name)
 (import-fn pr/probe-channel)
 (import-fn pr/error-probe-channel)
