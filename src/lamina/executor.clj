@@ -51,11 +51,11 @@
 (defn executor-channel
   "Creates a channel that ensures all downstream channels will receive messages on the thread-pool
    specified by :executor.  This can be useful for both rate-limiting and parallelization."
-  [& {:keys [name executor probes] :as options}]
+  [{:keys [name executor probes] :as options}]
   (when-not (and name executor)
     (throw (IllegalArgumentException. "executor-channel must be given a :name and :executor")))
   (let [receiver (channel)
         emitter (channel)
-        callback (apply trace/instrument #(enqueue emitter %) (apply concat options))]
+        callback (trace/instrument #(enqueue emitter %) options)]
     (bridge-join receiver name callback emitter)
     (splice emitter receiver)))
