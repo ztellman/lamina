@@ -262,7 +262,7 @@
 
    "
   [fn-name & body]
-  (let [options (->> `(defn fn-name ~@body)
+  (let [options (->> `(defn ~fn-name ~@body)
                   macroexpand
                   second
                   meta)
