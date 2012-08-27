@@ -213,8 +213,8 @@
        (sink->> (filter* odd?) log-odd)))"
   [& downstream-channels]
   `(let [ch# (channel)]
-     (doseq [x# ~downstream-channels]
-       (siphon ch## x#))
+     (doseq [x# (list ~@downstream-channels)]
+       (siphon ch# x#))
      ch#))
 
 (defmacro siphon->>

@@ -55,7 +55,7 @@
   c/IChannel
   (receiver-node [_]
     (c/receiver-node channel))
-  (emitter-node [_] 
+  (emitter-node [_]
     (c/emitter-node channel)))
 
 (defn probe-channel- [description log-on-disabled?]
@@ -76,12 +76,12 @@
       (fn [_ downstream _]
         (let [enabled? (pos? downstream)]
           (when-not (= enabled? (.getAndSet flag enabled?))
-            (trigger-callbacks p enabled?)))))    
+            (trigger-callbacks p enabled?)))))
 
     p))
 
 (defn on-enabled-changed [^ProbeChannel p callback]
-  (.add (.callbacks p) callback))
+  (.add ^CopyOnWriteArrayList (.callbacks p) callback))
 
 (defn canonical-probe-name
   "something goes here"
