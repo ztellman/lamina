@@ -269,8 +269,35 @@
 
 ;;;
 
-(import-fn op/channel-seq)
-(import-fn op/lazy-channel-seq)
+(import-fn op/channel->seq)
+(import-fn op/channel->lazy-seq)
+
+(defmacro channel-seq [& args]
+  (println "channel-seq is deprecated, use channel->seq instead.")
+  `(channel->seq ~@args))
+
+(defmacro lazy-channel-seq [& args]
+  (println "lazy-channel-seq is deprecated, use channel->lazy-seq instead.")
+  `(channel->lazy-seq ~@args))
+
+(defn lazy-seq->channel
+  "Returns a channel representing the elements of the sequence."
+  [s]
+  (let [ch (channel)]
+
+    (future
+      (try
+        (loop [s s]
+          (when-not (empty? s)
+            (enqueue ch (first s))
+            (when-not (closed? ch)
+              (recur (rest s)))))
+        (catch Exception e
+          (log/error e "Error in lazy-seq-channel."))
+        (finally
+          (close ch))))
+
+    ch))
 
 (defn wait-for-message
   ([ch]

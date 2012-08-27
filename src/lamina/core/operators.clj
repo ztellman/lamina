@@ -303,16 +303,16 @@
 
 ;;;
 
-(defn lazy-channel-seq-
+(defn channel->lazy-seq-
   [read-fn cleanup-fn]
   (let [msg @(read-fn)]
     (if (= ::end msg)
       (do
         (cleanup-fn)
         nil)
-      (cons msg (lazy-seq (lazy-channel-seq- read-fn cleanup-fn))))))
+      (cons msg (lazy-seq (channel->lazy-seq- read-fn cleanup-fn))))))
 
-(defn lazy-channel-seq
+(defn channel->lazy-seq
   "Returns a sequence.  As elements of the sequence are realized, messages from the
    source channel are consumed.  If there are no messages are available to be
    consumed, execution will block until one is available.
@@ -321,23 +321,23 @@
    number.  Each time the seq must wait for a message to consume, it will only wait
    that many milliseconds before giving up and ending the sequence."
   ([ch]
-     (lazy-channel-seq ch nil))
+     (channel->lazy-seq ch nil))
   ([ch timeout]
      (let [timeout-fn (when timeout
                         (if (number? timeout)
                           (constantly timeout)
                           timeout))
-           e (g/edge "lazy-channel-seq" (g/terminal-propagator nil))]
+           e (g/edge "channel->lazy-seq" (g/terminal-propagator nil))]
        (if-let [unconsume (g/consume (emitter-node ch) e)]
-         (lazy-channel-seq-
+         (channel->lazy-seq-
            (if timeout-fn
              #(read-channel* ch :timeout (timeout-fn), :on-timeout ::end, :on-drained ::end)
              #(read-channel* ch :on-drained ::end))
            unconsume)
          (throw (IllegalStateException. "Can't consume, channel already in use."))))))
 
-(defn channel-seq
-  "An eager variant of lazy-channel-seq.  Blocks until the channel has been drained,
+(defn channel->seq
+  "An eager variant of channel->lazy-seq.  Blocks until the channel has been drained,
    or until 'timeout' milliseconds have elapsed."
   ([ch]
      (g/drain (emitter-node ch)))
@@ -346,7 +346,7 @@
            s (g/drain (emitter-node ch))]
        (doall
          (concat s
-           (lazy-channel-seq ch
+           (channel->lazy-seq ch
              #(max 0 (- timeout (- (System/currentTimeMillis) start)))))))))
 
 ;;;

@@ -11,7 +11,7 @@
     [clojure test]
     [lamina.test utils]
     [lamina.core channel utils]
-    [lamina.core.operators :only (channel-seq)])
+    [lamina.core.operators :only (channel->seq)])
   (:require
     [lamina.core.pipeline :as p]))
 
@@ -47,17 +47,17 @@
 (deftest test-distribute-aggregate
   (let [ch (channel 1 2 1 2 3 1 1)
         ch* (distribute-aggregate identity (fn [_ ch] ch) ch)]
-    (is (= [{1 1, 2 2} {1 1, 2 2, 3 3} {1 1}] (channel-seq ch*)))))
+    (is (= [{1 1, 2 2} {1 1, 2 2, 3 3} {1 1}] (channel->seq ch*)))))
 
 (deftest test-fork
   (let [a (channel 0 1 2)
         b (->> a fork (map* inc))
         c (->> a fork (filter* even?))
         d (->> b fork (filter* even?))]
-    (is (= [0 1 2] (channel-seq a)))
-    (is (= [1 2 3] (channel-seq b)))
-    (is (= [0 2] (channel-seq c)))
-    (is (= [2] (channel-seq d)))))
+    (is (= [0 1 2] (channel->seq a)))
+    (is (= [1 2 3] (channel->seq b)))
+    (is (= [0 2] (channel->seq c)))
+    (is (= [2] (channel->seq d)))))
 
 ;;;
 
@@ -97,8 +97,8 @@
     (bench "enqueue 1e3"
       (dotimes [_ 1e3]
         (enqueue ch 1))
-      (channel-seq ch))
+      (channel->seq ch))
     #_(bench "enqueue 1e6"
       (dotimes [_ 1e6]
         (enqueue ch 1))
-      (channel-seq ch))))
+      (channel->seq ch))))

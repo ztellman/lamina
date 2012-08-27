@@ -44,7 +44,7 @@
   (try
     (wait-for-result
       (->> ch
-        lazy-channel-seq
+        channel->lazy-seq
         doall
         seq
         ex/task)
@@ -208,7 +208,7 @@
     (let [s (seq (range 10))]
       (let [ch (channel)]
         (async-enqueue false ch s)
-        (is (= (partition 2 1 s) (lazy-channel-seq (partition* 2 1 ch))))))))
+        (is (= (partition 2 1 s) (channel->lazy-seq (partition* 2 1 ch))))))))
 
 (deftest ^:stress stress-test-partition-all
   (dotimes* [i 1e5]
@@ -216,27 +216,27 @@
       (let [ch (channel* :transactional? true)]
         (async-enqueue true ch s)
         (is (= (partition-all 5 5 s)
-              (lazy-channel-seq (partition-all* 5 5 ch))))))))
+              (channel->lazy-seq (partition-all* 5 5 ch))))))))
 
 (defn identity-chain [ch]
   (lazy-seq
     (let [ch* (map* identity ch)]
       (cons ch* (identity-chain ch*)))))
 
-(deftest ^:stress stress-test-lazy-channel-seq
+(deftest ^:stress stress-test-channel->lazy-seq
   (println "\n----\n test lazy-seq \n---\n")
   (dotimes* [i 1e5]
     (let [s (seq (range 10))]
       (let [ch (channel)]
         (async-enqueue false ch s)
-        (is (= s (lazy-channel-seq (nth (identity-chain ch) 10) 10000))))))
+        (is (= s (channel->lazy-seq (nth (identity-chain ch) 10) 10000))))))
   (println "\n----\n test transactional lazy-seq \n---\n")
   (dotimes* [i 1e4]
     (prn i)
     (let [s (seq (range 10))]
       (let [ch (channel* :transactional? true)]
         (async-enqueue true ch s)
-        (is (= s (lazy-channel-seq (nth (identity-chain ch) 2) 10000)))))))
+        (is (= s (channel->lazy-seq (nth (identity-chain ch) 2) 10000)))))))
 
 ;;;
 
