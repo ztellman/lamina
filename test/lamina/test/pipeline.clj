@@ -8,7 +8,8 @@
 
 (ns lamina.test.pipeline
   (:use
-    [lamina core executor]
+    [lamina core
+     [executor :exclude (defer)]]
     [clojure test]
     [lamina.test utils]))
 
