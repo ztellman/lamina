@@ -59,3 +59,12 @@
         callback (trace/instrument #(enqueue emitter %) options)]
     (bridge-join receiver name callback emitter)
     (splice emitter receiver)))
+
+(defn defer
+  "Defers propagation of messages onto another thread pool."
+  ([ch]
+     (defer default-executor ch))
+  ([executor ch]
+     (let [ex (executor-channel {:name "defer", :executor executor})]
+       (join ch ex)
+       ex)))
