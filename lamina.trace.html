@@ -85,7 +85,7 @@ and return an unrealized result representing its eventual value.
 
 In this case, :timeout will also interrupt the thread if it is still actively
 computing the value, and the 'return' probe will include an :enqueued-duration
-parameter that describes the time, in nanoseconds, spent waiting to be executed.</pre></div><div class="public" id="var-instrumented-fn"><h3>instrumented-fn</h3><div class="usage"><code>(instrumented-fn {:keys [name executor capture with-bindings? implicit? timeout probes], :or {capture :in-out, with-bindings? false, implicit? true}} &amp; fn-tail)</code></div><pre class="doc">A compile-time version of (instrument ...).
+parameter that describes the time, in nanoseconds, spent waiting to be executed.</pre></div><div class="public" id="var-instrumented-fn"><h3>instrumented-fn</h3><div class="usage"><code>(instrumented-fn {:keys [name fn-name executor capture with-bindings? implicit? timeout probes], :or {capture :in-out, with-bindings? false, implicit? true}} &amp; fn-tail)</code></div><pre class="doc">A compile-time version of (instrument ...).
 
 (instrumented-fn
   {:name &quot;foo&quot;, :implicit? false}
