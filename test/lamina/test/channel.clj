@@ -26,16 +26,6 @@
 
 ;;;
 
-(deftest test-on-drained
-  (dotimes [i 1000]
-    (prn i)
-    (let [ch (apply closed-channel (range 10))]
-      (future (receive-all ch identity))
-      (Thread/sleep 10)
-      (let [p (promise)]
-        (on-drained ch #(deliver p true))
-        @p))))
-
 (deftest test-map*
   (let [[v callback] (capture)
         a (channel 0 1 2)
