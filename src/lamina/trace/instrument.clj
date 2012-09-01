@@ -216,6 +216,7 @@
      (+ x y))"
   [{:keys
     [name
+     fn-name
      executor
      capture
      with-bindings?
@@ -244,7 +245,7 @@
                   (do ~@body) ~args))
               `((instrument-body ~name capture## enter-probe## return-probe## ~implicit?
                   (do ~@body) ~args))))
-          `(fn ~@fn-tail)))))
+          `(fn ~@(when fn-name [fn-name]) ~@fn-tail)))))
 
 (defmacro defn-instrumented
   "A def form of (instrumented-fn...). Options can be defined in the function metadata:
@@ -267,7 +268,8 @@
                   second
                   meta)
         options (merge
-                  {:name (str (-> (ns-name *ns*) str (.replace \. \:)) ":" (name fn-name))}
+                  {:name (str (-> (ns-name *ns*) str (.replace \. \:)) ":" (name fn-name))
+                   :fn-name fn-name}
                   options)]
     `(def ~fn-name
        (instrumented-fn ~options

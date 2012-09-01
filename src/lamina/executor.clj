@@ -56,8 +56,31 @@
     (throw (IllegalArgumentException. "executor-channel must be given a :name and :executor")))
   (let [receiver (channel)
         emitter (channel)
-        callback (trace/instrument #(enqueue emitter %) options)]
-    (bridge-join receiver name callback emitter)
+        pending (atom 0)
+        callback (trace/instrument
+                   (fn [msg]
+                     (let [result (enqueue emitter msg)]
+
+                       ;; check if no more messages are coming, and if so, close the emitter
+                       (when (and
+                               (zero? (swap! pending dec))
+                               (drained? receiver))
+                         (close emitter))
+
+                       result))
+                   options)]
+
+    ;; if the receiver is closed when there are no pending messages, close immediately
+    (on-drained receiver
+      #(when (zero? @pending)
+         (close emitter)))
+    
+    (bridge-siphon receiver name
+      (fn [msg]
+        (swap! pending inc)
+        (callback msg))
+      emitter)
+    
     (splice emitter receiver)))
 
 (defn defer
