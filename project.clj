@@ -1,15 +1,15 @@
 (defproject lamina "0.5.0-SNAPSHOT"
   :description "event-driven data structures for clojure"
   :dependencies [[org.clojure/clojure "1.4.0"]
-                 [org.clojure/tools.logging "0.2.3"]
+                 [org.clojure/tools.logging "0.2.4"]
                  [useful "0.8.2"]
                  [potemkin "0.1.5"]
                  [com.yammer.metrics/metrics-core "2.1.0"
                   :exclusions [org.slf4j/slf4j-api]]]
   :multi-deps {:all [[com.yammer.metrics/metrics-core "2.1.0"
                       :exclusions [org.slf4j/slf4j-api]]
-                     [org.clojure/tools.logging "0.2.3"]
-                     [useful "0.8.2"]
+                     [org.clojure/tools.logging "0.2.4"]
+                     [useful "0.8.4"]
                      [potemkin "0.1.5"]]
                "master" [[org.clojure/clojure "1.5.0-master-SNAPSHOT"]]
                "1.2" [[org.clojure/clojure "1.2.1"]]
@@ -20,7 +20,7 @@
   :codox {:include [lamina.core
                     lamina.trace
                     lamina.viz
-					lamina.walk
+                    lamina.walk
                     lamina.executor
                     lamina.stats
                     lamina.api

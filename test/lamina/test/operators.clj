@@ -48,7 +48,7 @@
         doall
         seq
         ex/task)
-      6e4)
+      12e4)
     (catch Exception e
       (print-all-threads)
       (throw e))))
