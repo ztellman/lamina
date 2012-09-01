@@ -8,7 +8,7 @@
 
 (ns lamina.stats
   (:use
-    [lamina core api viz executor]
+    [lamina core api executor]
     [lamina.core.channel :only (mimic)]
     [lamina.stats.utils :only (update)])
   (:require

@@ -457,9 +457,9 @@
                        (close-node! this edges s)))))]
         ;; signal state change
         (do
-          (doseq [l watchers]
-            (l (.mode s) (.downstream-count s) nil))
-          (.clear watchers)
+          (when-not (check-for-drained this s watchers cancellations)
+            (doseq [l watchers]
+              (l (.mode s) (.downstream-count s) nil)))
           true)
 
         ;; state has already been permanently changed or cannot be changed
@@ -724,9 +724,9 @@
                           (.put cancellations name
                             #(.remove ^CopyOnWriteArrayList (.watchers ^Node %) callback)))))
                     s)))]
-        (let [^NodeState s s]
-          (callback (.mode s) (.downstream-count s) (.error s))
-          (boolean s)))))
+        (when-let [^NodeState s s]
+          (callback (.mode s) (.downstream-count s) (.error s)))
+        (boolean s))))
 
   ;;
   (cancel [this name]
