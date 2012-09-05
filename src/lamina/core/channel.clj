@@ -378,7 +378,7 @@
                        (let [ch (channel* :description (pr-str id))]
                          (channel-initializer id ch)
                          (receiver-node ch))))]
-    (g/link receiver propagator (g/edge nil propagator) nil nil)
+    (g/join receiver propagator)
     (Channel. receiver receiver nil)))
 
 (defn aggregate
@@ -390,7 +390,7 @@
     (bridge-join ch "aggregate"
       (fn [msg]
         (let [id (facet msg)
-              id* (if false ;;(nil? id)
+              id* (if (nil? id)
                     ::nil
                     id)]
           (when-let [msg (l/with-exclusive-lock lock

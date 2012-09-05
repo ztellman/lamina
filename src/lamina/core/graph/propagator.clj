@@ -128,7 +128,7 @@
                                ;; if not, hook into the callbacks
                                (r/subscribe (n/closed-result n)
                                  (r/result-callback
-                                   (fn [_] (.remove downstream id))
+                                   (fn [_] (.remove downstream id*))
                                    (fn [err] (error this err))))
                                n))))))]
           (propagate n msg true)
