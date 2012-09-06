@@ -100,7 +100,7 @@
                  result#
                  (p/run-pipeline initial-val#
                    {:error-handler (fn [ex#]
-                                     (log/error ex# "error in consume")
+                                     (log/error ex# (str "error in" ~description))
                                      (if dst##
                                        (error dst## ex#)
                                        (p/redirect (p/pipeline (constantly (r/error-result ex#))) nil)))}
