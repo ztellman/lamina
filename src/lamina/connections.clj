@@ -29,12 +29,14 @@
   (let [connection (atom nil)
         delay (atom 0)
         probe (when name (probe-channel [name :connection]))
+        error-probe (when name (error-probe-channel [name :error]))
         trace #(when probe
                  (enqueue probe
                    (assoc %
                      :timestamp (System/currentTimeMillis))))]
     (run-pipeline nil
       {:error-handler (fn [err]
+                        (when error-probe (enqueue error-probe err))
                         (error @connection err)
                         (swap! delay incr-delay)
                         (restart))}

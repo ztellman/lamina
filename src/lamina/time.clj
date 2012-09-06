@@ -6,7 +6,11 @@
 ;;   the terms of this license.
 ;;   You must not remove this notice, or any other, from this software.
 
-(ns lamina.time)
+(ns lamina.time
+  (:require [clojure.string :as str]))
+
+(defn now []
+  (System/currentTimeMillis))
 
 (defn nanoseconds
   "Converts nanoseconds -> milliseconds"
@@ -31,14 +35,40 @@
 (defn minutes
   "Converts minutes -> milliseconds"
   [n]
-  (* n 60e3))
+  (* n 6e4))
 
 (defn hours
   "Converts hours -> milliseconds"
   [n]
-  (* n 36e4))
+  (* n 36e5))
+
+(defn days
+  "Converts days -> milliseconds"
+  [n]
+  (* n 864e5))
 
 (defn hz
   "Converts frequency -> period in milliseconds"
   [n]
   (/ 1e3 n))
+
+(let [intervals (partition 2
+                  ["d" (days 1)
+                   "h" (hours 1)
+                   "m" (minutes 1)
+                   "s" (seconds 1)])]
+  (defn format-duration
+    "Returns a formatted string describing an interval, i.e. '5d 3h 1m'"
+    [n]
+    (loop [s "", n n, intervals intervals]
+      (if (empty? intervals)
+        (if (empty? s)
+          "0s"
+          (str/trim s))
+        (let [[desc val] (first intervals)]
+          (if (>= n val)
+            (recur
+              (str s (int (/ n val)) desc " ")
+              (rem n val)
+              (rest intervals))
+            (recur s n (rest intervals))))))))
