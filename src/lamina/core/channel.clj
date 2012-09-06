@@ -384,7 +384,7 @@
 (defn aggregate
   "something goes here"
   [facet ch]
-  (let [ch* (mimic ch)
+  (let [ch* (channel)
         lock (l/lock)
         aggregator (atom (ConcurrentHashMap.))]
     (bridge-join ch "aggregate"
@@ -412,7 +412,7 @@
 (defn distribute-aggregate
   "something goes here"
   [facet channel-initializer ch]
-  (let [ch* (mimic ch)
+  (let [ch* (channel)
         aggr (->> ch*
                (aggregate :facet))
         dist (distributor facet

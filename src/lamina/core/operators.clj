@@ -401,11 +401,11 @@
    from the source channel every 'period' milliseconds."
   [period ch]
   (let [val (atom ::none)
-        ch* (mimic ch)]
+        ch* (channel)]
     (bridge-join ch (str "sample-every " period)
       #(reset! val %)
       ch*)
-    (siphon
+    (join
       (->> #(deref val) (periodically period) (remove* #(= ::none %)))
       ch*)
     ch*))
@@ -420,7 +420,7 @@
                   (if (.isEmpty q)
                     msgs
                     (recur (conj msgs (.remove q))))))
-        ch* (mimic ch)]
+        ch* (channel)]
     (bridge-join ch (str "partition-every " period)
       #(.add q %)
       ch*)
