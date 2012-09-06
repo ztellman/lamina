@@ -49,7 +49,7 @@
     ch]
      (->> ch
        (map* (constantly 1))
-       (sum period))))
+       (sum {:period period}))))
 
 (defn moving-average
   "Returns a channel that will periodically emit the moving average over all messages emitted by
