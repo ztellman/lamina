@@ -17,8 +17,6 @@
 
 (def named-channels (cache/channel-cache #(channel* :description (pr-str %) :permanent? true)))
 
-(def ^ConcurrentHashMap named-channels (ConcurrentHashMap.))
-
 (defn named-channel
   "something goes here"
   [id on-create]
