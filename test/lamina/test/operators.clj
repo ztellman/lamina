@@ -48,7 +48,7 @@
         doall
         seq
         ex/task)
-      12e4)
+      5000)
     (catch Exception e
       (print-all-threads)
       (throw e))))
@@ -57,7 +57,7 @@
   (let [ch* (f ch)
         result (if (channel? ch*)
                  (realize-and-print ch*)
-                 (wait-for-result ch* 10000))]
+                 (wait-for-result ch* 5000))]
     (when (channel? ch*)
       (is (drained? ch*)))
     result))
@@ -77,14 +77,14 @@
                     (Thread/sleep 100)
                     v)]
 
-    #_(testing "pre-populated non-transactional channel"
+    (testing "pre-populated non-transactional channel"
       (dotimes [_ n]
         (let [ch (channel* :messages input)]
           (close ch)
           (is (= expected (result f* ch))))
         (tick)))
 
-    #_(testing "async enqueue into non-transactional channel"
+    (testing "async enqueue into non-transactional channel"
       (dotimes [_ n]
         (let [ch (channel)]
           (async-enqueue false ch input)

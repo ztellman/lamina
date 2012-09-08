@@ -395,6 +395,14 @@
        PersistentQueue/EMPTY
        (apply conj PersistentQueue/EMPTY s))))
 
+(defmacro dosync-yielding [& body]
+  `(dosync
+     (try
+       ~@body
+       (catch Error e#
+         (Thread/sleep 1)
+         (throw e#)))))
+
 (deftype-once TransactionalEventQueue
   [messages
    consumers
@@ -506,11 +514,11 @@
 
   ;;
   (receive [_]
-    (dosync
+    (dosync-yielding
       (if-not (empty? (ensure messages))
 
         (r/success-result (poll-queue messages))
-              
+          
         (if (ensure closed?)
           (r/error-result :lamina/drained!)
           (let [result-channel (r/result-channel)]
@@ -519,7 +527,7 @@
   
   (receive [this predicate false-value result-channel]
     (let [^Consumption consumption
-          (dosync
+          (dosync-yielding
             (if (empty? (ensure messages))
             
               (if (ensure closed?)
@@ -531,7 +539,7 @@
                       false-value
                       rc))
                   (no-consumption rc)))
-              
+                
               (let [msg (first @messages)
                     c (consumption
                         (MessageConsumer.
