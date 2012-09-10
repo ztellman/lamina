@@ -149,6 +149,9 @@
     + nil (range 10)
     + 1   (range 10)
     conj [] [:a :b :c]
+    conj [] [:a]
+    conj nil [:a]
+    + nil [] 
     ))
 
 (deftest test-last*
@@ -172,6 +175,9 @@
     + nil (range 10)
     + 1   (range 10)
     conj [] [:a :b :c]
+    conj [] [:a]
+    conj nil [:a]
+    + nil [] 
     ))
 
 (deftest test-partition*

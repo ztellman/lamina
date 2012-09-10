@@ -230,9 +230,13 @@
        (consume ch
          :channel ch*
          :description "reductions*"
-         :initial-value (p/run-pipeline (read-channel ch)
+         :initial-value (p/run-pipeline (read-channel* ch :on-drained ::drained)
                           {:error-handler (fn [_])}
-                          #(do (enqueue ch* %) %))
+                          #(let [val (if (= ::drained %)
+                                       (f)
+                                       %)]
+                             (enqueue ch* val)
+                             val))
          :reduce f
          :map (fn [v _] v))))
   ([f val ch]
@@ -254,7 +258,11 @@
      (consume ch
        :channel nil
        :description "reduce*"
-       :initial-value (read-channel ch)
+       :initial-value (p/run-pipeline (read-channel* ch :on-drained ::drained)
+                        {:error-handler (fn [_])}
+                        #(if (= ::drained %)
+                           (f)
+                           %))
        :reduce f
        :map (fn [v _] v)))
   ([f val ch]

@@ -293,7 +293,7 @@
             (when-not (closed? ch)
               (recur (rest s)))))
         (catch Exception e
-          (log/error e "Error in lazy-seq-channel."))
+          (log/error e "Error in lazy-seq->channel."))
         (finally
           (close ch))))
 
