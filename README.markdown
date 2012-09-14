@@ -26,6 +26,8 @@ nil
 <== [...]
 > (enqueue ch 1 2 3)
 :lamina/enqueued
+> (render-graph ch)
+#<BufferedImage BufferedImage@7f946a32: type = 5 ColorModel: #pixelBits = 24 numComponents = 3 color space = java.awt.color.ICC_ColorSpace@68c83a0d transparency = 1 has alpha = false isAlphaPre = false ByteInterleavedRaster: width = 350 height = 176 #numDataElements 3 dataOff[0] = 2>
 > (view-graph ch)
 ```
 
