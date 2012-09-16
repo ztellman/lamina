@@ -29,7 +29,7 @@
                     lamina.time]
           :output-dir "autodoc"}
   ;;:jvm-opts ["-server" "-XX:+UseConcMarkSweepGC" "-Xmx16m"]
-  ;;:jvm-opts ["-server" "-XX:+UseConcMarkSweepGC" "-Xmx2g" "-XX:NewSize=1g"]
+  :jvm-opts ["-server" "-XX:+UseConcMarkSweepGC" "-Xmx2g" "-XX:NewSize=1g"]
   :repositories {"sonatype-oss-public" "https://oss.sonatype.org/content/groups/public/"}
   :exclusions [org.clojure/contrib
                org.clojure/clojure-contrib]

@@ -32,13 +32,31 @@
         (.setName (name-generator))
         (.setDaemon true)))))
 
+;;;
+
 (let [cnt (atom 0)
       tf (thread-factory #(str "lamina-cleanup-" (swap! cnt inc)))]
   (def ^ScheduledThreadPoolExecutor cleanup-executor
     (ScheduledThreadPoolExecutor. (int (num-cores)) ^ThreadFactory tf)))
 
+(def ^ThreadLocal cleanup-count (ThreadLocal.))
+
+(def max-successive-cleanups 250)
+
 (defn enqueue-cleanup [f]
-  (.execute cleanup-executor f))
+  (let [cleanups (or (.get cleanup-count) 0)]
+    (if (> cleanups max-successive-cleanups)
+      (do
+        (.execute cleanup-executor f)
+        :lamina/deferred)
+      (try
+        (.set cleanup-count (inc cleanups))
+        (f)
+        (finally
+          (when (zero? cleanups)
+            (.set cleanup-count 0)))))))
+
+;;;
 
 (let [cnt (atom 0)
       tf (thread-factory #(str "lamina-scheduler-" (swap! cnt inc)))]
