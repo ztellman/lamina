@@ -39,6 +39,7 @@
 (import-fn r/async-result?)
 (import-fn r/with-timeout)
 (import-fn r/expiring-result)
+(import-fn r/timed-result)
 (import-fn r/success)
 (import-fn r/success-result)
 (import-fn r/error-result)
