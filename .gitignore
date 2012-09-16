@@ -8,3 +8,4 @@ local-push
 *DS_Store
 autodoc
 .lein*
+target/**

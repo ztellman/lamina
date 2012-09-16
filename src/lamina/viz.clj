@@ -28,7 +28,7 @@
       (apply g/render-graph options))))
 
 (defn view-graph
-  "Displays the results of render-graph in a window."
+  "Given one or more channels, displays them and all downstream nodes."
   [& options+channels]
   (core/view-image g/node-frame (apply render-graph options+channels)))
 
@@ -42,6 +42,9 @@
      (g/render-propagation options (c/receiver-node channel) message)))
 
 (defn view-propagation
+  "Given a channel and a message, displays a graph displaying the value of the message as
+   it is propagated downstream.  This is safe to do while other threads are using the
+   channel."
   ([channel message]
      (view-propagation nil channel message))
   ([options channel message]

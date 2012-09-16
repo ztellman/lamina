@@ -17,8 +17,6 @@
     [lamina.core.result :as r]
     [clojure.tools.logging :as log])
   (:import
-    [java.util.regex
-     Pattern]
     [java.io
      Writer]
     [java.util.concurrent
@@ -141,7 +139,7 @@
   (let [ch (c/channel)
         regexes (map
                   #(if (string? %)
-                     (-> % (str/replace "*" ".*") Pattern/compile)
+                     (-> % (str/replace "*" ".*") re-pattern)
                      %)
                   wildcard-strings-or-regexes)
         callback (fn [id]
