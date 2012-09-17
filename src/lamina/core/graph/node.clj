@@ -908,6 +908,12 @@
       ::error (enqueue-cleanup #(error dst err))
       nil)))
 
+(defn siphon-cleanup-callback [callback dst]
+  (fn [state _ _]
+    (case state
+      (::drained ::closed ::error) (cancel dst callback)
+      nil)))
+
 (defn siphon
   ([src dst]
      (siphon src dst nil nil))
@@ -919,7 +925,15 @@
          pre
          (fn [success?]
            (when (and success? (node? (.node dst)))
-             (on-state-changed (.node dst) nil (upstream-callback src (.node dst) false)))
+
+             (let [callback-name (Object.)]
+
+               ;; when the destination closes, make sure that backpropagates
+               (on-state-changed (.node dst) callback-name (upstream-callback src (.node dst) false))
+
+               ;; if the source closes, make sure there's no traces left on the destination
+               (on-state-changed src nil (siphon-cleanup-callback callback-name (.node dst)))))
+           
            (when post
              (post success?)))))))
 
