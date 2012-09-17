@@ -119,7 +119,7 @@
 
 (defn-instrumented unbound-add
   {:executor exc}
-  [x]
+  [& [x]]
   (+ x n))
 
 (defn-instrumented bound-add

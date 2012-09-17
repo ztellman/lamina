@@ -13,7 +13,7 @@
     [lamina.viz.graph :as g]
     [lamina.trace :as trace]))
 
-(defn render-graph
+(trace/defn-instrumented render-graph
   "Given one or more channels, renders them and all downstream nodes."
   [& options+channels]
   (let [options (when (map? (first options+channels))

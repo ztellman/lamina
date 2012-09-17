@@ -240,11 +240,12 @@
          (siphon (probe-channel [~name k#]) v#))
        ~(transform-fn-bodies
           (fn [args body]
-            (if executor
-              `((instrument-task-body ~name capture## executor## enter-probe## return-probe## ~implicit? ~with-bindings? ~timeout
-                  (do ~@body) ~args))
-              `((instrument-body ~name capture## enter-probe## return-probe## ~implicit?
-                  (do ~@body) ~args))))
+            (let [args (vec (remove #{'&} args))]
+              (if executor
+                `((instrument-task-body ~name capture## executor## enter-probe## return-probe## ~implicit? ~with-bindings? ~timeout
+                    (do ~@body) ~args))
+                `((instrument-body ~name capture## enter-probe## return-probe## ~implicit?
+                    (do ~@body) ~args)))))
           `(fn ~@(when fn-name [fn-name]) ~@fn-tail)))))
 
 (defmacro defn-instrumented
