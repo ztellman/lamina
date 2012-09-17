@@ -818,48 +818,57 @@
 
 ;;;
 
-(defn closed-result [node]
-  (let [result (r/result-channel)]
-    (on-state-changed node nil
-      (fn [state _ err]
-        (case state
-          ::consumed
-          (when (closed? node)
-            (r/success result true))
+(defn closed-result
+  ([node]
+     (closed-result node nil))
+  ([node callback-name]
+     (let [result (r/result-channel)]
+       (on-state-changed node callback-name
+         (fn [state _ err]
+           (case state
+             ::consumed
+             (when (closed? node)
+               (r/success result true))
           
-          (::closed ::drained)
-          (r/success result true)
+             (::closed ::drained)
+             (r/success result true)
 
-          ::error
-          (r/error result err)
+             ::error
+             (r/error result err)
           
-          nil)))
-    result))
+             nil)))
+       result)))
 
-(defn drained-result [node]
-  (let [result (r/result-channel)]
-    (on-state-changed node nil
-      (fn [state _ err]
-        (case state
-          ::drained
-          (r/success result true)
+(defn drained-result
+  ([node]
+     (drained-result node nil))
+  ([node callback-name]
+     (let [result (r/result-channel)]
+       (on-state-changed node callback-name
+         (fn [state _ err]
+           (case state
+             ::drained
+             (r/success result true)
 
-          ::error
-          (r/error result err)
+             ::error
+             (r/error result err)
           
-          nil)))
-    result))
+             nil)))
+       result)))
 
-(defn error-result [node]
-  (let [result (r/result-channel)]
-    (on-state-changed node nil
-      (fn [state _ err]
-        (case state
-          ::error
-          (r/error result err)
+(defn error-result
+  ([node]
+     (error-result node nil))
+  ([node callback-name]
+     (let [result (r/result-channel)]
+       (on-state-changed node callback-name
+         (fn [state _ err]
+           (case state
+             ::error
+             (r/error result err)
           
-          nil)))
-    result))
+             nil)))
+       result)))
 
 (defn error-value [node default-value]
   (let [s (state node)]

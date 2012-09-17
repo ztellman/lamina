@@ -94,7 +94,7 @@
 
 (defn on-event [result-fn]
   (fn [node callback]
-    (r/subscribe (result-fn node)
+    (r/subscribe (result-fn node callback)
       (r/result-callback
         (fn [_] (callback))
         (fn [_] (callback))))))
@@ -103,7 +103,7 @@
 (def on-drained (on-event drained-result))
 
 (defn on-error [node callback]
-  (r/subscribe (error-result node)
+  (r/subscribe (error-result node callback)
     (r/result-callback
       (fn [_])
       (fn [err] (callback err)))))
