@@ -41,7 +41,7 @@
 
 (def ^ThreadLocal cleanup-count (ThreadLocal.))
 
-(def max-successive-cleanups 250)
+(def max-successive-cleanups 50)
 
 (defn enqueue-cleanup [f]
   (let [cleanups (or (.get cleanup-count) 0)]
