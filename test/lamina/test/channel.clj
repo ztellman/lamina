@@ -49,17 +49,23 @@
         ch* (distribute-aggregate identity (fn [_ ch] ch) ch)]
     (is (= [{1 1, 2 2} {1 1, 2 2, 3 3} {1 1}] (channel->seq ch*)))))
 
-(deftest test-fork
-  (let [a (channel 0 1 2)
-        b (->> a fork (map* inc))
-        c (->> a fork (filter* even?))
-        d (->> b fork (filter* even?))]
+(defn run-split-test [operator channel-fn]
+  (let [a (channel-fn 0 1 2)
+        b (->> a operator (map* inc))
+        c (->> a operator (filter* even?))
+        d (->> b operator (filter* even?))]
     (is (= [0 1 2] (channel->seq a)))
     (is (= [1 2 3] (channel->seq b)))
     (is (= [0 2] (channel->seq c)))
     (is (= [2] (channel->seq d)))))
 
+(deftest test-fork
+  (run-split-test fork channel)
+  (run-split-test fork closed-channel))
+
 (deftest test-tap
+  (run-split-test tap channel)
+  (run-split-test tap closed-channel)
   (let [a (channel)
         b (map* identity a)
         c (tap a)]

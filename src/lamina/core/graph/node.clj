@@ -305,17 +305,18 @@
                                     (enqueue-and-release (.lock node) state msg true)
 
                                     (::split ::open)
-                                    (if (= 1 (.size (.edges node)))
-                                      (let [edge (.get ^CopyOnWriteArrayList (.edges node) 0)]
-                                        (enqueue-and-release (.lock node) state msg false)
-                                        (recur edge msg))
-                                      (do
-                                        (l/release (.lock node))
-                                        (try
-                                          (propagate node msg false)
-                                          (catch Exception e
-                                            (error this e)
-                                            :lamina/error!)))))))))))))
+                                    (let [^CopyOnWriteArrayList edges (.edges node)]
+                                      (if (= 1 (.size edges))
+                                        (let [edge (.get edges 0)]
+                                          (enqueue-and-release (.lock node) state msg false)
+                                          (recur edge msg))
+                                        (do
+                                          (l/release (.lock node))
+                                          (try
+                                            (propagate node msg false)
+                                            (catch Exception e
+                                              (error this e)
+                                              :lamina/error!))))))))))))))
 
                   ;; more than one node
                   (do
@@ -567,33 +568,30 @@
 
   ;;
   (split [this]
-    (let [n (l/with-exclusive-lock lock
-              (let [s state]
+    (l/with-exclusive-lock lock
+      (let [s state]
 
-                (case (.mode s)
+        (case (.mode s)
 
-                  ::split
-                  nil
+          ::split
+          (.split s)
 
-                  (::closed ::drained ::error)
-                  this
+          (::closed ::drained ::error)
+          nil
 
-                  (::open ::consumed)
-                  (let [n (split-node this)]
-                    (.clear cancellations)
-                    (.clear watchers)
-                    (set-state! this s
-                      :mode ::split
-                      :read? false
-                      :downstream-count 0
-                      :queue nil
-                      :split n)
-                    (.clear edges)
-                    (join this (edge "split" n))
-                    n))))]
-      (if (nil? n)
-        (.split state)
-        n)))
+          (::open ::consumed)
+          (let [n (split-node this)]
+            (.clear cancellations)
+            (.clear watchers)
+            (set-state! this s
+              :mode ::split
+              :read? false
+              :downstream-count 0
+              :queue nil
+              :split n)
+            (.clear edges)
+            (join this (edge "split" n))
+            n)))))
 
   ;;
   (link [this name edge pre post]

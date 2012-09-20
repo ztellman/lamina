@@ -64,8 +64,8 @@
     (if-let [n (g/split receiver)]
       (do
         (set! emitter n)
-        n)
-      emitter))
+        true)
+      false))
 
   clojure.lang.IMeta
   clojure.lang.IObj
@@ -228,44 +228,6 @@
     (receive-all ch callback)
     ch))
 
-(defn fork
-  "Returns a channel which is an exact duplicate of the source channel, containing all messages
-   in the source channel's queue, and emitting all messages emitted by the source channel.
-
-   If the forked channel is closed, the source channel is unaffected.  However, if the source
-   channel is closed all forked channels are closed.  Similar propagation rules apply to error
-   states."
-  [channel]
-  (let [n (g/node identity)
-        emitter (split-receiver channel)]
-    (g/join
-      (receiver-node channel)
-      (g/edge "fork" n)
-      #(when %
-         (when-let [q (g/queue emitter)]
-           (-> n g/queue (q/append (q/messages q)))))
-      nil)
-    (Channel. n n nil)))
-
-(defn tap
-  "Behaves like 'fork', except that the source channel will not remain open if only the tap
-   exists downstream.
-
-   If the tap channel is closed, the source channel is unaffected.  However, if the source
-   channel is closed all tap channels are closed.  Similar propagation rules apply to error
-   states."
-  [channel]
-  (let [n (g/node identity)
-        emitter (split-receiver channel)]
-    (g/join
-      (receiver-node channel)
-      (g/edge "tap" n true)
-      #(when %
-         (when-let [q (g/queue emitter)]
-           (-> n g/queue (q/append (q/messages q)))))
-      nil)
-    (Channel. n n nil)))
-
 (defn close
   "Closes the channel. Returns if successful, false if the channel is already closed or in an
    error state."
@@ -324,6 +286,46 @@
   (g/drained-result (emitter-node channel)))
 
 ;;;
+
+(defn- split [ch description sneaky?]
+  (let [n (g/node identity)
+        populate #(when-let [q (-> ch emitter-node g/queue)]
+                    (q/append (g/queue n) (q/messages q)))]
+    (if (split-receiver ch)
+      (let [emitter (split-receiver ch)]
+        (g/join
+          (receiver-node ch)
+          (g/edge description n sneaky?)
+          #(when % (populate))
+          nil))
+      (do
+        (populate)
+        (when (closed? ch)
+          (g/close n))
+        (let [error (g/error-value (receiver-node ch) ::none)]
+          (when-not (= ::none error)
+            (g/error n error)))))
+    (Channel. n n nil)))
+
+(defn fork
+  "Returns a channel which is an exact duplicate of the source channel, containing all messages
+   in the source channel's queue, and emitting all messages emitted by the source channel.
+
+   If the forked channel is closed, the source channel is unaffected.  However, if the source
+   channel is closed all forked channels are closed.  Similar propagation rules apply to error
+   states."
+  [channel]
+  (split channel "fork" false))
+
+(defn tap
+  "Behaves like 'fork', except that the source channel will not remain open if only the tap
+   exists downstream.
+
+   If the tap channel is closed, the source channel is unaffected.  However, if the source
+   channel is closed all tap channels are closed.  Similar propagation rules apply to error
+   states."
+  [channel]
+  (split channel "tap" true))
 
 (defn siphon [src dst]
   (g/siphon (emitter-node src) (receiver-node dst)))
