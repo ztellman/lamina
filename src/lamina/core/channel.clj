@@ -247,6 +247,25 @@
       nil)
     (Channel. n n nil)))
 
+(defn tap
+  "Behaves like 'fork', except that the source channel will not remain open if only the tap
+   exists downstream.
+
+   If the tap channel is closed, the source channel is unaffected.  However, if the source
+   channel is closed all tap channels are closed.  Similar propagation rules apply to error
+   states."
+  [channel]
+  (let [n (g/node identity)
+        emitter (split-receiver channel)]
+    (g/join
+      (receiver-node channel)
+      (g/edge "tap" n true)
+      #(when %
+         (when-let [q (g/queue emitter)]
+           (-> n g/queue (q/append (q/messages q)))))
+      nil)
+    (Channel. n n nil)))
+
 (defn close
   "Closes the channel. Returns if successful, false if the channel is already closed or in an
    error state."

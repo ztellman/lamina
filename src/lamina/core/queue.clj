@@ -109,7 +109,7 @@
 
 ;;;
 
-;; This queue is specially designed to interact with the node in lamina.core.node, and
+;; This queue is specially designed to interact with the node in lamina.core.graph.node, and
 ;; is not intended as a general-purpose data structure.
 (defprotocol-once IEventQueue
   (error [_ error]

@@ -113,6 +113,7 @@
 (import-macro ch/read-channel*)
 
 (import-fn ch/fork)
+(import-fn ch/tap)
 
 (import-fn ch/idle-result)
 (import-fn ch/close-on-idle)

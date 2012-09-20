@@ -59,6 +59,14 @@
     (is (= [0 2] (channel->seq c)))
     (is (= [2] (channel->seq d)))))
 
+(deftest test-tap
+  (let [a (channel)
+        b (map* identity a)
+        c (tap a)]
+    (close b)
+    (is (closed? a))
+    (is (closed? c))))
+
 ;;;
 
 (deftest ^:benchmark benchmark-channels

@@ -13,15 +13,21 @@
 
 ;;;
 
-(deftype-once Edge [^String description node]
+(deftype-once Edge [^String description next ^boolean sneaky?]
   IDescribed
   (description [_] description))
 
-(defn edge [description node]
-  (Edge. description node))
+(defn edge
+  ([description next]
+     (edge description next false))
+  ([description next sneaky?]
+     (Edge. description next sneaky?)))
 
 (defn edge? [x]
   (instance? Edge x))
+
+(defn sneaky-edge? [^Edge e]
+  (.sneaky? e))
 
 ;;;
 
@@ -36,7 +42,7 @@
   (close [_])
   (error [_ err]))
 
-(defn downstream-nodes [n]
-  (map #(.node ^Edge %) (downstream n)))
+(defn downstream-propagators [n]
+  (map #(.next ^Edge %) (downstream n)))
 
 ;;;

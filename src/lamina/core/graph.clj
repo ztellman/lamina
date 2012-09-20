@@ -36,7 +36,7 @@
 (import-fn c/close)
 (import-fn c/transactional)
 (import-fn c/downstream)
-(import-fn c/downstream-nodes)
+(import-fn c/downstream-propagators)
 
 (import-fn n/state)
 (import-fn n/link)

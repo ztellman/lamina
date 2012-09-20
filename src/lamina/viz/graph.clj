@@ -88,8 +88,8 @@
      :peripheries (when predicate? 2)}))
 
 (defn edge-descriptor [{:keys [src dst description]}]
-  (let [hide-desc? (#{"join" "split" "fork"} description)
-        dotted? (= "fork" description)]
+  (let [hide-desc? (#{"join" "split" "fork" "tap"} description)
+        dotted? (= "tap" description)]
     {:src (if (and (g/node? src) (-> src node-data :consumed?))
             [:queue src]
             src)

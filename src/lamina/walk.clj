@@ -34,6 +34,7 @@
        :downstream-count (count (downstream n))}
       (when (node? n)
         {:node? true
+         :downstream-count (-> n .state .downstream-count)
          :queue-size (count n)
          :operator (or (operator-predicate f) f)
          :messages (when (queue n) (-> n queue q/messages))
@@ -63,15 +64,15 @@
   "Returns a list of downstream nodes."
   [n]
   (cyclic-tree-seq
-    (comp seq downstream-nodes)
-    downstream-nodes
+    (comp seq downstream-propagators)
+    downstream-propagators
     n))
 
 (defn edge-seq
   "Returns a list of downstream edges."
   [n]
   (cyclic-tree-seq
-    #(-> % :dst downstream-nodes seq)
+    #(-> % :dst downstream-propagators seq)
     (fn [e]
       (let [n (:dst e)
             data (node-data n)]
@@ -79,7 +80,7 @@
           (fn [^Edge e]
             {:src n
              :description (description e)
-             :dst (.node e)})
+             :dst (.next e)})
           (downstream n))))
     {:dst n}))
 

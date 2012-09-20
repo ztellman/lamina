@@ -49,14 +49,14 @@
   IPropagator
   (close [_]
     (doseq [^Edge e downstream]
-      (close (.node e))))
+      (close (.next e))))
   (error [_ err]
     (doseq [^Edge e downstream]
-      (error (.node e) err)))
+      (error (.next e) err)))
   (downstream [_] downstream)
   (propagate [_ msg _] (callback msg))
   (transactional [this]
-    (doseq [n (downstream-nodes this)]
+    (doseq [n (downstream-propagators this)]
       (transactional n))))
 
 (deftype TerminalPropagator [description]

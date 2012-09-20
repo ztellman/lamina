@@ -255,27 +255,27 @@
                 (enqueue-and-release lock state msg true)
 
                 (::split ::open)
-                (case (int (.downstream-count state))
+                (case (.size edges)
                   0
                   (enqueue-and-release lock state msg (not grounded?))
 
                   1
-                  (let [next (.get edges 0)]
+                  (let [edge (.get edges 0)]
                     (enqueue-and-release lock state msg false)
                     
                     ;; walk the chain of nodes until there's a split
-                    (loop [^Edge edge next, msg msg]
-                      (let [node (.node edge)]
-                        (if-not (node? node)
+                    (loop [^Edge edge edge, msg msg]
+                      (let [nxt (.next edge)]
+                        (if-not (node? nxt)
                           
                           ;; if it's not a normal node, forward the message
                           (try
-                            (propagate node msg true)
+                            (propagate nxt msg true)
                             (catch Exception e
                               (error this e)
                               :lamina/error!))
                           
-                          (let [^Node node node
+                          (let [^Node node nxt
                                 msg (transform-message node msg true)]
                             
                             (case msg
@@ -305,10 +305,10 @@
                                     (enqueue-and-release (.lock node) state msg true)
 
                                     (::split ::open)
-                                    (if (= 1 (.downstream-count state))
-                                      (let [next (.get ^CopyOnWriteArrayList (.edges node) 0)]
+                                    (if (= 1 (.size (.edges node)))
+                                      (let [edge (.get ^CopyOnWriteArrayList (.edges node) 0)]
                                         (enqueue-and-release (.lock node) state msg false)
-                                        (recur next msg))
+                                        (recur edge msg))
                                       (do
                                         (l/release (.lock node))
                                         (try
@@ -324,9 +324,9 @@
                     ;; send message to all nodes
                     (try
                       (let [s (downstream this)
-                            result (propagate (.node ^Edge (first s)) msg true)]
+                            result (propagate (.next ^Edge (first s)) msg true)]
                         (doseq [^Edge e (rest s)]
-                          (propagate (.node e) msg true))
+                          (propagate (.next e) msg true))
                         result)
                       (catch Exception e
                         (error this e)
@@ -349,7 +349,7 @@
           (set-state! this s
             :transactional? true
             :queue (q/transactional-copy (.queue s)))
-          (let [downstream (downstream-nodes this)]
+          (let [downstream (downstream-propagators this)]
 
             ;; acquire children before releasing our own lock (hand-over-hand locking)
             ;; if we are interrupted while acquiring the children, make sure we release
@@ -523,7 +523,7 @@
                             :mode ::consumed
                             :downstream-count 1)
                           (when (.transactional? s)
-                            (transactional (.node ^Edge edge)))
+                            (transactional (.next ^Edge edge)))
                           true))))))]
           (if (identical? ::split result)
             (consume (.split state) edge)
@@ -585,6 +585,7 @@
                     (set-state! this s
                       :mode ::split
                       :read? false
+                      :downstream-count 0
                       :queue nil
                       :split n)
                     (.clear edges)
@@ -605,7 +606,9 @@
                          (case (.mode s)
 
                            (::open ::split)
-                           (let [cnt (unchecked-inc (.downstream-count s))]
+                           (let [cnt (if-not (sneaky-edge? edge)
+                                       (unchecked-inc (.downstream-count s))
+                                       (.downstream-count s))]
                              (.add edges edge)
                              (set-state! this s
                                :queue (when (.read? s)
@@ -614,7 +617,7 @@
                                           (q/queue)))
                                :downstream-count cnt)
                              (when (.transactional? s)
-                               (transactional (.node ^Edge edge)))
+                               (transactional (.next ^Edge edge)))
                              (assoc-record s
                                :downstream-count cnt))
 
@@ -637,9 +640,9 @@
                      ;; if we've gone from ::zero -> ::one or ::closed -> ::drained,
                      ;; send all queued messages
                      (when-let [msgs (drain-queue new-state)]
-                       (let [node (.node ^Edge edge)]
+                       (let [nxt (.next ^Edge edge)]
                          (doseq [msg msgs]
-                           (propagate node msg true))))
+                           (propagate nxt msg true))))
 
                      (when post
                        (post (boolean new-state)))
@@ -668,7 +671,9 @@
 
                        (::open ::split)
                        (when (.remove edges edge)
-                         (let [cnt (unchecked-dec (.downstream-count s))]
+                         (let [cnt (if-not (sneaky-edge? edge)
+                                     (unchecked-dec (.downstream-count s))
+                                     (.downstream-count s))]
                            (if (zero? cnt)
 
                              ;; no more downstream nodes
@@ -930,18 +935,19 @@
      (let [^Edge dst (if (edge? dst)
                        dst
                        (edge "siphon" dst))]
-       (link src (.node dst) dst
+       (link src (.next dst) dst
          pre
          (fn [success?]
-           (when (and success? (node? (.node dst)))
+           (when (and success? (node? (.next dst)))
 
              (let [callback-name (Object.)]
 
                ;; when the destination closes, make sure that backpropagates
-               (on-state-changed (.node dst) callback-name (upstream-callback src (.node dst) false))
+               (when-not (sneaky-edge? dst)
+                 (on-state-changed (.next dst) callback-name (upstream-callback src (.next dst) false)))
 
                ;; if the source closes, make sure there's no traces left on the destination
-               (on-state-changed src nil (siphon-cleanup-callback callback-name (.node dst)))))
+               (on-state-changed src nil (siphon-cleanup-callback callback-name (.next dst)))))
            
            (when post
              (post success?)))))))
@@ -953,11 +959,14 @@
      (let [^Edge dst (if (edge? dst)
                        dst
                        (edge "join" dst))]
-       (link src (.node dst) dst
+       (link src (.next dst) dst
          pre
          (fn [success?]
-           (when (node? (.node dst))
-             (on-state-changed (.node dst) nil (upstream-callback src (.node dst) true)))
-           (on-state-changed src nil (downstream-callback src (.node dst)))
+
+           (when (and (not (sneaky-edge? dst)) (node? (.next dst)))
+             (on-state-changed (.next dst) nil (upstream-callback src (.next dst) true)))
+
+           (on-state-changed src nil (downstream-callback src (.next dst)))
+
            (when post
              (post success?)))))))

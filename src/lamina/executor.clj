@@ -88,6 +88,6 @@
   ([ch]
      (defer default-executor ch))
   ([executor ch]
-     (let [ex (executor-channel {:name "defer", :executor executor})]
+     (let [ex (executor-channel {:name "defer", :executor executor, :capture :none})]
        (join ch ex)
        ex)))
