@@ -35,20 +35,28 @@
   (let [m (ConcurrentHashMap.)]
     (reify ChannelCache
       (get-or-create [this id on-create]
-        (if-let [ch (.get m id)]
-          ch
-          (let [ch (generator id)]
-            (or (.putIfAbsent m id ch)
-              (do
-                (on-closed ch #(release this id))
-                (on-error ch #(log/error % "error in channel-cache"))
-                (when on-create (on-create ch))
-                ch)))))
+        (let [id* (if (nil? id) ::nil id)]
+          (if-let [thunk (.get m id*)]
+            @thunk
+            (let [thunk (delay (generator id))]
+              (or
+
+                ;; someone beat us to the punch
+                (when-let [pre-existing (.putIfAbsent m id* thunk)]
+                  @pre-existing)
+
+                ;; we got in, now initialize
+                (let [ch @thunk]
+                  (on-closed ch #(release this id))
+                  (on-error ch #(log/error % "error in channel-cache"))
+                  (when on-create (on-create ch))
+                  ch))))))
       (ids [_]
-        (keys m))
+        (map #(if (= ::nil %) nil %) (keys m)))
       (release [_ id]
-        (when-let [ch (.remove m id)]
-          (close ch)))
+        (let [id (if (nil? id) ::nil id)]
+          (when-let [thunk (.remove m id)]
+            (close @thunk))))
       (clear [this]
         (doseq [k (ids this)]
-          (close (release this k)))))))
+          (release this k))))))
