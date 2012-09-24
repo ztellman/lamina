@@ -80,18 +80,19 @@
                     :args ~args
                     :return-probe ~return-probe
                     :implicit? ~implicit?)]
-       (context/with-context (context/assoc-context :timer timer#)
-         (try
-           (let [result# ~invoke]
-             (when (async-result? result#)
-               (t/mark-waiting timer#))
-             (run-pipeline result#
-               {:error-handler (fn [err#] (t/mark-error timer# err#))}
-               (fn [x#] (t/mark-return timer# x#)))
-             result#)
-           (catch Exception e#
-             (t/mark-error timer# e#)
-             (throw e#)))))))
+       
+       (try
+         (let [result# (context/with-context (context/assoc-context :timer timer#)
+                         ~invoke)]
+           (when (async-result? result#)
+             (t/mark-waiting timer#))
+           (run-pipeline result#
+             {:error-handler (fn [err#] (t/mark-error timer# err#))}
+             (fn [x#] (t/mark-return timer# x#)))
+           result#)
+         (catch Exception e#
+           (t/mark-error timer# e#)
+           (throw e#))))))
 
 (defn instrument
   "A general purpose transform for functions, allowing for tracing their execution,
@@ -211,13 +212,15 @@
   "A compile-time version of (instrument ...).
 
    (instrumented-fn
-     {:name \"foo\", :implicit? false}
+     foo
+     {:implicit? false}
      [x y]
-     (+ x y))"
-  [{:keys
-    [name
-     fn-name
-     executor
+     (+ x y))
+
+   The "
+  [fn-name
+   {:keys
+    [executor
      capture
      with-bindings?
      implicit?
@@ -225,28 +228,34 @@
      probes]
     :or {capture :in-out
          with-bindings? false
-         implicit? true}}
+         implicit? true}
+    :as options}
    & fn-tail]
-  (when-not name
-    (throw (IllegalArgumentException. "instrumented functions must have :name defined")))
-  (unify-gensyms
-    `(let [enter-probe## (probe-channel [~name :enter])
-           return-probe## (probe-channel [~name :return])
-           error-probe## (probe-channel [~name :error])
-           executor## ~executor
-           implicit?## ~implicit?
-           capture## ~capture]
-       (doseq [[k# v#] ~probes]
-         (siphon (probe-channel [~name k#]) v#))
-       ~(transform-fn-bodies
-          (fn [args body]
-            (let [args (vec (remove #{'&} args))]
-              (if executor
-                `((instrument-task-body ~name capture## executor## enter-probe## return-probe## ~implicit? ~with-bindings? ~timeout
-                    (do ~@body) ~args))
-                `((instrument-body ~name capture## enter-probe## return-probe## ~implicit?
-                    (do ~@body) ~args)))))
-          `(fn ~@(when fn-name [fn-name]) ~@fn-tail)))))
+  (let [name (or (:name options)
+               (str (-> (ns-name *ns*) str (.replace \. \:)) ":" (name fn-name)))]
+
+    (when-not name
+      (throw (IllegalArgumentException.
+               "instrumented functions must either have a name, or have :name defined in the options")))
+
+    (unify-gensyms
+      `(let [enter-probe## (probe-channel [~name :enter])
+             return-probe## (probe-channel [~name :return])
+             error-probe## (probe-channel [~name :error])
+             executor## ~executor
+             implicit?## ~implicit?
+             capture## ~capture]
+         (doseq [[k# v#] ~probes]
+           (siphon (probe-channel [~name k#]) v#))
+         ~(transform-fn-bodies
+            (fn [args body]
+              (let [args (vec (remove #{'&} args))]
+                (if executor
+                  `((instrument-task-body ~name capture## executor## enter-probe## return-probe## ~implicit? ~with-bindings? ~timeout
+                      (do ~@body) ~args))
+                  `((instrument-body ~name capture## enter-probe## return-probe## ~implicit?
+                      (do ~@body) ~args)))))
+            `(fn ~@(when fn-name [fn-name]) ~@fn-tail))))))
 
 (defmacro defn-instrumented
   "A def form of (instrumented-fn...). Options can be defined in the function metadata:
@@ -267,11 +276,7 @@
   (let [options (->> `(defn ~fn-name ~@body)
                   macroexpand
                   second
-                  meta)
-        options (merge
-                  {:name (str (-> (ns-name *ns*) str (.replace \. \:)) ":" (name fn-name))
-                   :fn-name fn-name}
-                  options)]
+                  meta)]
     `(def ~fn-name
-       (instrumented-fn ~options
+       (instrumented-fn ~fn-name ~options
          ~@(drop-while (complement sequential?) body)))))

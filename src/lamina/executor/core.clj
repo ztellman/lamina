@@ -118,18 +118,18 @@
                   (when timer (t/mark-enter timer))
 
                   ;; run the task
-                  (context/with-context (context/assoc-context :timer timer)
-                    (p/run-pipeline nil
-                      {:error-handler #(when timer (t/mark-error timer %))
-                       :result result}
-                      (fn [_]
-                        (let [result (f)]
-                          (when (r/async-result? result)
-                            (t/mark-waiting timer))
-                          result))
-                      (fn [x]
-                        (when timer (t/mark-return timer x)) 
-                        x)))
+                  (p/run-pipeline nil
+                    {:error-handler #(when timer (t/mark-error timer %))
+                     :result result}
+                    (fn [_]
+                      (let [result (context/with-context (context/assoc-context :timer timer)
+                                     (f))]
+                        (when (r/async-result? result)
+                          (t/mark-waiting timer))
+                        result))
+                    (fn [x]
+                      (when timer (t/mark-return timer x)) 
+                      x))
 
                   ;; mark completion so we don't try to interrupt another task,
                   ;; and reset interrupt status

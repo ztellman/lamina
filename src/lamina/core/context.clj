@@ -50,7 +50,6 @@
 
 ;;;
 
-
 (defn timer []
   (when-let [^Context ctx (context)]
     (.timer ctx)))

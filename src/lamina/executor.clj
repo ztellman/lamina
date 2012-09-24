@@ -29,8 +29,8 @@
         name (if explicit-name? (first body) "task")
         body (if explicit-name? (rest body) body)]
     `((trace/instrumented-fn
-        {:name "task"
-         :executor default-executor}
+        task
+        {:executor default-executor}
         []
         ~@body))))
 
@@ -42,8 +42,8 @@
         name (if explicit-name? (first body) "bound-task")
         body (if explicit-name? (rest body) body)]
     `((trace/instrumented-fn
-        {:name ~name
-         :with-bindings? true
+        ~name
+        {:with-bindings? true
          :executor default-executor}
         []
         ~@body))))

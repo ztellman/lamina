@@ -39,6 +39,11 @@
 (import-fn pr/reset-probes)
 (import-fn pr/probe-names)
 
+(defn tracing?
+  "Returns true when called inside an active trace scope, false otherwise."
+  []
+  (boolean (lamina.core.context/timer)))
+
 (defmacro trace*
   "A variant of trace that allows the probe name to be resolved at runtime."
   [probe & body]
