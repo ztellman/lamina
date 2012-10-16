@@ -21,6 +21,7 @@
 (defn capture-timings
   [description probe-channel f]
   (let [timer (t/timer
+                :capture :in-out
                 :name description
                 :return-probe probe-channel
                 :error-probe probe-channel)
