@@ -140,7 +140,7 @@
   (channel* :messages (seq messages)))
 
 (defn mimic [channel]
-  (let [n (g/mimic (receiver-node channel))]
+  (let [n (g/mimic (emitter-node channel))]
     (Channel. n n nil)))
 
 (defn closed-channel

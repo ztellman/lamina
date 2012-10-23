@@ -87,8 +87,7 @@
 
 (defn mimic [node]
   (node*
-    :transactional? (transactional? node)
-    :grounded? (grounded? node)))
+    :transactional? (transactional? node)))
 
 ;;;
 
