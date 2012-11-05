@@ -29,7 +29,7 @@
 (defn contract-pool-size [^ThreadPoolExecutor pool min-thread-count]
   (let [active (.getActiveCount pool)
         pool-size (.getPoolSize pool)]
-    (if (< active pool-size)
+    (if (< active (dec pool-size))
       (.setCorePoolSize pool (max min-thread-count (dec pool-size))))))
 
 (defn expand-pool-size [^ThreadPoolExecutor pool max-thread-count]
@@ -65,8 +65,8 @@
         return-probe (pr/probe-channel [nm :return])
         error-probe (pr/probe-channel [nm :error])
         pool (ThreadPoolExecutor.
-                min-thread-count
-                min-thread-count
+                (long min-thread-count)
+                (long min-thread-count)
                 (long idle-timeout)
                 TimeUnit/MILLISECONDS
                 (LinkedBlockingQueue.)
@@ -76,7 +76,7 @@
                       (Thread. f)
                       (.setName (str nm "-" (swap! cnt inc)))))))]
 
-    (periodically-contract-pool-size pool min-thread-count (* idle-timeout 1000))
+    (periodically-contract-pool-size pool min-thread-count idle-timeout)
 
     (reify
 
