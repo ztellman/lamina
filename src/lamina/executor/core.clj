@@ -30,7 +30,7 @@
   (let [active (.getActiveCount pool)
         pool-size (.getPoolSize pool)]
     (if (< active pool-size)
-      (.setCorePoolSize pool (dec pool-size)))))
+      (.setCorePoolSize pool (max min-thread-count (dec pool-size))))))
 
 (defn expand-pool-size [^ThreadPoolExecutor pool max-thread-count]
   (let [active (.getActiveCount pool)
@@ -65,8 +65,8 @@
         return-probe (pr/probe-channel [nm :return])
         error-probe (pr/probe-channel [nm :error])
         pool (ThreadPoolExecutor.
-                1
-                1
+                min-thread-count
+                min-thread-count
                 (long idle-timeout)
                 TimeUnit/MILLISECONDS
                 (LinkedBlockingQueue.)

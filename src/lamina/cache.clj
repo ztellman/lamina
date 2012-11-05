@@ -39,13 +39,8 @@
           (if-let [thunk (.get m id*)]
             @thunk
             (let [thunk (delay (generator id))]
-              (or
-
-                ;; someone beat us to the punch
-                (when-let [pre-existing (.putIfAbsent m id* thunk)]
-                  @pre-existing)
-
-                ;; we got in, now initialize
+              (if-let [pre-existing (.putIfAbsent m id* thunk)]
+                @pre-existing
                 (let [ch @thunk]
                   (on-closed ch #(release this id))
                   (on-error ch #(log/error % "error in channel-cache"))
