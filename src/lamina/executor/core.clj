@@ -65,8 +65,8 @@
         return-probe (pr/probe-channel [nm :return])
         error-probe (pr/probe-channel [nm :error])
         pool (ThreadPoolExecutor.
-                (long min-thread-count)
-                (long min-thread-count)
+                (int min-thread-count)
+                (int min-thread-count)
                 (long idle-timeout)
                 TimeUnit/MILLISECONDS
                 (LinkedBlockingQueue.)
