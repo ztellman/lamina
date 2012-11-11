@@ -178,9 +178,9 @@
     :channel nil
     :initial-value nil
     :reduce (fn [_ x]
-              (p/run-pipeline
+              (p/run-pipeline x
                 {:error-handler #(error ch %)}
-                (f x)))
+                f))
     :description "receive-in-order"))
 
 (defn emit-in-order

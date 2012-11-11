@@ -9,6 +9,7 @@
   (:use
     [lamina core]
     [lamina.core threads]
+    [lamina.core.channel :only (mimic)]
     [clojure test]
     [lamina.test utils])
   (:require
@@ -108,6 +109,20 @@
     true))
 
 ;;;
+
+(deftest test-receive-in-order
+  (are [total-elements]
+    (assert-equivalence 
+      #(map identity %)
+      #(let [ch (mimic %)]
+         (run-pipeline (receive-in-order % (fn [x] (enqueue ch x)))
+           (fn [_] (close ch)))
+         ch)
+      (range total-elements))
+
+    10
+    100
+    ))
 
 (deftest test-take*
   (are [to-take total-elements]
