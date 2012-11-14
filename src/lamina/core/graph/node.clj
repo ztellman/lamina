@@ -235,9 +235,8 @@
           :lamina/false
           :lamina/filtered
           
-          (do
-            ;; acquire the lock before we look at the state
-            (l/acquire lock)
+          ;; acquire the lock before we look at the state
+          (l/with-lock* lock
             (let [state state]
               (case (.mode state)
 
@@ -276,47 +275,49 @@
                               :lamina/error!))
                           
                           (let [^Node node nxt
-                                msg (transform-message node msg true)]
-                            
-                            (case msg
+                                msg (transform-message node msg true)
+                                result (case msg
                               
-                              ::error
-                              :lamina/error!
+                                         ::error
+                                         :lamina/error!
                               
-                              :lamina/false
-                              :lamina/filtered
+                                         :lamina/false
+                                         :lamina/filtered
 
-                              (do
-                                (l/acquire (.lock node))
-                                (let [^NodeState state (.state node)]
-                                  (case (.mode state)
+                                         (l/with-lock* (.lock node)
+                                           (let [^NodeState state (.state node)]
+                                             (case (.mode state)
 
-                                    (::drained ::closed)
-                                    (do
-                                      (l/release (.lock node))
-                                      :lamina/closed!)
+                                               (::drained ::closed)
+                                               (do
+                                                 (l/release (.lock node))
+                                                 :lamina/closed!)
                               
-                                    ::error
-                                    (do
-                                      (l/release (.lock node))
-                                      :lamina/error!)
+                                               ::error
+                                               (do
+                                                 (l/release (.lock node))
+                                                 :lamina/error!)
 
-                                    ::consumed
-                                    (enqueue-and-release (.lock node) state msg true)
+                                               ::consumed
+                                               (enqueue-and-release (.lock node) state msg true)
 
-                                    (::split ::open)
-                                    (let [^CopyOnWriteArrayList edges (.edges node)]
-                                      (if (= 1 (.size edges))
-                                        (let [edge (.get edges 0)]
-                                          (enqueue-and-release (.lock node) state msg false)
-                                          (recur edge msg))
-                                        (do
-                                          (l/release (.lock node))
-                                          (try
-                                            (propagate node msg false)
-                                            (catch Exception e
-                                              (error this e)
-                                              :lamina/error!))))))))))))))
+                                               (::split ::open)
+                                               (let [^CopyOnWriteArrayList edges (.edges node)]
+                                                 (if (= 1 (.size edges))
+                                                   (let [edge (.get edges 0)]
+                                                     (enqueue-and-release (.lock node) state msg false)
+                                                     [edge msg])
+                                                   (do
+                                                     (l/release (.lock node))
+                                                     (try
+                                                       (propagate node msg false)
+                                                       (catch Exception e
+                                                         (error this e)
+                                                         :lamina/error!)))))))))]
+                            (if (sequential? result)
+                              (let [[edge msg] result]
+                                (recur edge msg))
+                              result))))))
 
                   ;; more than one node
                   (do

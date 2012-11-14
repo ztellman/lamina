@@ -25,7 +25,8 @@
   (release [_])
   (release-exclusive [_])
   (try-acquire [_])
-  (try-acquire-exclusive [_]))
+  (try-acquire-exclusive [_])
+  (locked? [_]))
 
 ;;;
 
@@ -42,7 +43,9 @@
   (try-acquire [_]
     (-> lock .readLock .tryLock))
   (try-acquire-exclusive [_]
-    (-> lock .writeLock .tryLock)))
+    (-> lock .writeLock .tryLock))
+  (locked? [this]
+    (> (.getReadHoldCount lock) 0)))
 
 (defn asymmetric-lock []
   (AsymmetricLock. (ReentrantReadWriteLock. false)))
@@ -60,21 +63,28 @@
 
 (defmacro with-lock [lock & body]
   `(let [lock# ~lock]
-     (do
-       (acquire lock#)
-       (try
-         ~@body
-         (finally
+     (acquire lock#)
+     (try
+       ~@body
+       (finally
+         (release lock#)))))
+
+(defmacro with-lock* [lock & body]
+  `(let [lock# ~lock]
+     (acquire lock#)
+     (try
+       ~@body
+       (finally
+         (when (locked? lock#)
            (release lock#))))))
 
 (defmacro with-exclusive-lock [lock & body]
   `(let [lock# ~lock]
-     (do
-       (acquire-exclusive lock#)
-       (try
-         ~@body
-         (finally
-           (release-exclusive lock#))))))
+     (acquire-exclusive lock#)
+     (try
+       ~@body
+       (finally
+         (release-exclusive lock#)))))
 
 ;;;
 
