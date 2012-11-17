@@ -9,11 +9,10 @@
                   :exclusions [org.slf4j/slf4j-api]]]
   :exclusions [org.clojure/contrib
                org.clojure/clojure-contrib]
-  :profiles {:dev {:dependencies [[org.clojure/clojure "1.4.0"]
-                                  [codox "0.6.1"]]}
+  :profiles {:dev {:dependencies [[org.clojure/clojure "1.4.0"]]}
              :1.2 {:dependencies [[org.clojure/clojure "1.2.1"]]}
              :1.5 {:dependencies [[org.clojure/clojure "1.5.0-master-SNAPSHOT"]]}}
-  :aliases {"all" ["with-profile" "dev,1.2:dev:1.5,dev"]}
+  :aliases {"all" ["with-profile" "1.2:dev:1.5"]}
   :plugins [[codox "0.6.2"]]
   :codox {:include [lamina.core
                     lamina.trace
