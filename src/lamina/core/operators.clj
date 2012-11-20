@@ -179,7 +179,9 @@
     :initial-value nil
     :reduce (fn [_ x]
               (p/run-pipeline x
-                {:error-handler #(error ch %)}
+                {:error-handler (fn [ex]
+                                  (log/error ex "error in receive-in-order")
+                                  (p/complete nil))}
                 f))
     :description "receive-in-order"))
 
