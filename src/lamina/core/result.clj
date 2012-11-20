@@ -435,7 +435,7 @@
   [& results]
   (let [cnt (count results)
         counter (AtomicInteger. (inc cnt))
-        ary (object-array cnt)
+        ^objects ary (object-array cnt)
         combined-result (result-channel)]
     (loop [idx 0, results results]
 

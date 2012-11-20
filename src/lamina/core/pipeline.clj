@@ -151,7 +151,7 @@
 ;;  the longer the pipeline, the fewer stages per clause, since the JVM doesn't
 ;;  like big functions.  Currently at eight or more stages, each clause only handles
 ;;  a single stage. 
-(defn- unwind-stages [idx stages remaining subscribe-expr]
+(defn- unwind-stages [idx stages remaining subscribe-expr unwrap?]
   `(cond
        
      (r/async-result? val##)
@@ -167,7 +167,9 @@
      :else
      ~(if (empty? stages)
         `(if (identical? nil result##)
-           (r/success-result val##)
+           ~(if unwrap?
+              `val##
+              `(r/success-result val##))
            (do
              (r/success result## val##)
              result##))
@@ -178,7 +180,8 @@
                 (inc idx)
                 (rest stages)
                 (dec remaining)
-                subscribe-expr))))))
+                subscribe-expr
+                unwrap?))))))
 
 ;; totally ad hoc
 (defn- max-depth [num-stages]
@@ -227,9 +230,11 @@
                 executor
                 with-bindings?
                 description
-                implicit?]
+                implicit?
+                unwrap?]
          :or {description "pipeline"
-              implicit? false}}
+              implicit? false
+              unwrap? false}}
         options
         len (count stages)
         depth (max-depth len)
@@ -283,7 +288,7 @@
                       ~@(interleave
                           (iterate inc 0)
                           (map
-                            #(unwind-stages % (drop % stages) depth expand-subscribe)
+                            #(unwind-stages % (drop % stages) depth expand-subscribe unwrap?)
                             (range (inc len))))))
                   (catch Exception ex#
                     (error this## result## initial-val## ex#))))))

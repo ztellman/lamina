@@ -62,6 +62,10 @@
 
 (def ^:dynamic a 1)
 
+(deftest test-unwrap
+  (is (= 1 (run-pipeline 0 {:unwrap? true} inc)))
+  (is (= 1 @(run-pipeline 0 {:unwrap? true} (defer inc)))))
+
 (deftest test-with-bindings
   (is (= 2 @(run-pipeline a
               inc)))
