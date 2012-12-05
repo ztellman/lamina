@@ -7,7 +7,12 @@
 ;;   You must not remove this notice, or any other, from this software.
 
 (ns lamina.time
-  (:require [clojure.string :as str]))
+  (:require
+    [clojure.string :as str])
+  (:import
+    [java.util
+     Calendar
+     TimeZone]))
 
 (defn now []
   (System/currentTimeMillis))
@@ -57,6 +62,7 @@
                    "h" (hours 1)
                    "m" (minutes 1)
                    "s" (seconds 1)])]
+
   (defn format-duration
     "Returns a formatted string describing an interval, i.e. '5d 3h 1m'"
     [n]
@@ -72,3 +78,28 @@
               (rem n val)
               (rest intervals))
             (recur s n (rest intervals))))))))
+
+(let [sorted-intervals [:millisecond Calendar/MILLISECOND
+                        :second Calendar/SECOND
+                        :minute Calendar/MINUTE
+                        :hour Calendar/HOUR
+                        :day Calendar/DAY_OF_YEAR
+                        :week Calendar/WEEK_OF_MONTH
+                        :month Calendar/MONTH]
+      interval->calendar-intervals (apply hash-map sorted-intervals)
+      intervals (->> sorted-intervals (partition 2) (map first))
+      interval->cleared-fields (zipmap
+                                 intervals
+                                 (map
+                                   #(->> (take % intervals) (map interval->calendar-intervals))
+                                   (range (count intervals))))]
+
+  (defn floor [timestamp interval]
+    (assert (contains? interval->calendar-intervals interval))
+    (let [^Calendar cal (doto (Calendar/getInstance (TimeZone/getTimeZone "UTC"))
+                          (.setTimeInMillis timestamp))]
+      (doseq [field (interval->cleared-fields interval)]
+        (.set cal field 0))
+      (.getTimeInMillis cal))))
+
+
