@@ -166,3 +166,11 @@ h2 {
    display: block;
    color: #008;
 }
+
+.doc {
+    margin-bottom: .5em;
+}
+
+.src-link a {
+    font-size: 9pt;
+}
