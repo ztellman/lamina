@@ -3,17 +3,17 @@
   :min-lein-version "2.0.0"
   :dependencies [[org.clojure/tools.logging "0.2.4"]
                  [useful "0.8.2"]
-                 [potemkin "0.1.5"]
-                 [criterium "0.3.0"]
+                 [potemkin "0.1.5"]                 
                  [com.yammer.metrics/metrics-core "2.1.0"
                   :exclusions [org.slf4j/slf4j-api]]]
   :exclusions [org.clojure/contrib
                org.clojure/clojure-contrib]
-  :profiles {:dev {:dependencies [[org.clojure/clojure "1.4.0"]]}
+  :profiles {:dev {:dependencies [[org.clojure/clojure "1.4.0"]
+                                  [criterium "0.3.1"]]}
              :1.2 {:dependencies [[org.clojure/clojure "1.2.1"]]}
              :1.3 {:dependencies [[org.clojure/clojure "1.3.0"]]}
              :1.5 {:dependencies [[org.clojure/clojure "1.5.0-master-SNAPSHOT"]]}}
-  :aliases {"all" ["with-profile" "1.2:1.3:dev:1.5"]}
+  :aliases {"all" ["with-profile" "1.2,dev:1.3,dev:dev:1.5,dev"]}
   :plugins [[codox "0.6.2"]]
   :codox {:include [lamina.core
                     lamina.trace
