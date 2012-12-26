@@ -14,14 +14,14 @@
     [java.util.concurrent.atomic
      AtomicReference]))
 
-(set! *warn-on-reflection* true)
 
-(deftype-once Counter [^double sum ^long cnt])
+
+(deftype+ Counter [^double sum ^long cnt])
 
 (defn update-count [^Counter counter val]
   (Counter. (double (+ (.sum counter) (double val))) (inc (.cnt counter))))
 
-(deftype MovingAverage
+(deftype+ MovingAverage
   [^{:volatile-mutable true} initialized?
    ^{:volatile-mutable true :tag double} rate
    ^AtomicReference counter

@@ -22,13 +22,13 @@
      SuccessResult
      ErrorResult]))
 
-(set! *warn-on-reflection* true)
+
 
 ;;;
 
-(deftype-once Redirect [pipeline value])
+(deftype+ Redirect [pipeline value])
 
-(defprotocol-once IPipeline
+(defprotocol+ IPipeline
   (implicit? [_])
   (gen-timer [_ stage])
   (run [_ result initial-value value stage])

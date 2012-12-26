@@ -26,7 +26,7 @@
     [java.util.concurrent
      ConcurrentHashMap]))
 
-(deftype CallbackPropagator [callback]
+(deftype+ CallbackPropagator [callback]
   IDescribed
   (description [_] (describe-fn callback))
   IPropagator
@@ -43,7 +43,7 @@
 (defn callback-propagator [callback]
   (CallbackPropagator. callback))
 
-(deftype BridgePropagator [description callback downstream]
+(deftype+ BridgePropagator [description callback downstream]
   IDescribed
   (description [_] description)
   IPropagator
@@ -59,7 +59,7 @@
     (doseq [n (downstream-propagators this)]
       (transactional n))))
 
-(deftype TerminalPropagator [description]
+(deftype+ TerminalPropagator [description]
   IDescribed
   (description [_] description)
   IPropagator
@@ -81,7 +81,7 @@
       (.clear ^ConcurrentHashMap downstream)
       channels)))
 
-(deftype DistributingPropagator
+(deftype+ DistributingPropagator
   [facet
    generator
    ^AsymmetricLock lock

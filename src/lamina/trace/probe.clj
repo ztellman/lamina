@@ -25,11 +25,11 @@
     [java.util.concurrent.atomic
      AtomicBoolean]))
 
-(defprotocol-once IProbe
+(defprotocol+ IProbe
   (probe-enabled? [_] "Returns true if the probe has downstream channels.")
   (trigger-callbacks [_ enabled?]))
 
-(deftype-once ProbeChannel
+(deftype+ ProbeChannel
   [^AtomicBoolean enabled?
    ^CopyOnWriteArrayList callbacks
    channel
@@ -167,7 +167,7 @@
 
 ;;;
 
-(deftype-once SympatheticProbeChannel
+(deftype+ SympatheticProbeChannel
   [^AtomicBoolean enabled?
    receiver
    emitter]

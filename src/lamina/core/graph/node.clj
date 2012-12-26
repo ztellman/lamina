@@ -9,7 +9,7 @@
 (ns lamina.core.graph.node
   (:use
     [potemkin]
-    [useful.datatypes :only (make-record assoc-record)]
+    [flatland.useful.datatypes :only (make-record assoc-record)]
     [lamina.core.threads :only (enqueue-cleanup)]
     [lamina.core.graph.core]
     [lamina.core utils])
@@ -38,7 +38,7 @@
      CopyOnWriteArrayList]))
 
 
-(defprotocol-once INode
+(defprotocol+ INode
   
   ;;
   (read-node [_] [_ predicate false-value result-channel]
@@ -82,7 +82,7 @@
 ;; closed       no further messages can propagate through the node, messages still in queue
 ;; drained      no further messages can propagate through the node, queue is empty
 ;; error        an error prevents any further messages from being propagated
-(deftype-once NodeState
+(deftype+ NodeState
   [mode
    ^long downstream-count
    split
@@ -99,7 +99,7 @@
                             transactional? false
                             permanent? false}
                        :as key-vals}]
-  `(let [val# (assoc-record ~state-val ~@key-vals)]
+  `(let [val# (assoc-record ~(with-meta state-val {:tag NodeState}) ~@key-vals)]
      (set-state ~this val#)
      val#))
 
@@ -188,7 +188,7 @@
 
 (declare split-node join node?)
 
-(deftype-once Node
+(deftype Node
   [^AsymmetricLock lock
    operator
    description
@@ -616,7 +616,7 @@
                                :downstream-count cnt)
                              (when (.transactional? s)
                                (transactional (.next ^Edge edge)))
-                             (assoc-record s
+                             (assoc-record ^NodeState s
                                :downstream-count cnt))
 
                            ::closed
@@ -625,7 +625,7 @@
                                :mode ::drained
                                :queue (q/drained-queue))
                              ;; make sure we return the original queue
-                             (assoc-record s
+                             (assoc-record ^NodeState s
                                :downstream-count 1
                                :mode ::drained))
                          
@@ -775,7 +775,7 @@
       identity
       nil
       (.grounded? node)
-      (assoc-record s :permanent? false)
+      (assoc-record ^NodeState s :permanent? false)
       (Collections/synchronizedMap (HashMap. ^Map (.cancellations node)))
       (CopyOnWriteArrayList. ^CopyOnWriteArrayList (.edges node))
       (CopyOnWriteArrayList. ^CopyOnWriteArrayList (.watchers node)))))

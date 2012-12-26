@@ -9,7 +9,7 @@
 (ns lamina.core.result
   (:use
     [potemkin]
-    [useful.datatypes :only (assoc-record)]
+    [flatland.useful.datatypes :only (assoc-record)]
     [lamina.core.utils])
   (:require
     [lamina.core.return-codes :as codes]
@@ -30,11 +30,11 @@
     [java.io
      Writer]))
 
-(set! *warn-on-reflection* true)
 
-(deftype-once ResultCallback [on-success on-error])
 
-(defprotocol-once IResult
+(deftype+ ResultCallback [on-success on-error])
+
+(defprotocol+ IResult
   (success [_ val])
   (error [_ err])
   (success! [_ val])
@@ -49,7 +49,7 @@
 
 ;;;
 
-(deftype-once SuccessResult [value]
+(deftype+ SuccessResult [value]
   IEnqueue
   (enqueue [_ _]
     :lamina/already-realized!)
@@ -79,7 +79,7 @@
   (toString [_]
     (str "<< " (pr-str value) " >>")))
 
-(deftype-once ErrorResult [error]
+(deftype+ ErrorResult [error]
   IEnqueue
   (enqueue [_ _]
     :lamina/already-realized!)
@@ -117,7 +117,7 @@
 
 ;;;
 
-(deftype-once ResultState [^long subscribers mode value claim-ref])
+(deftype+ ResultState [^long subscribers mode value claim-ref])
 
 (defmacro update-state [^ResultState state signal value]
   `(let [signal# ~signal
@@ -133,32 +133,32 @@
              (ref-set ref# true)
              state#)
            (let [ref# (ref false)
-                 state# (assoc-record state# :claim-ref ref#)]
+                 state# (assoc-record ^ResultState state# :claim-ref ref#)]
              (ref-set ref# true)
              state#)))
        (case mode#
          ::none
          (case signal#
-           ::add (assoc-record state# :subscribers (inc (.subscribers state#)))
-           ::remove (assoc-record state# :subscribers (dec (.subscribers state#)))
-           ::success (assoc-record state# :mode ::success, :value value#)
-           ::error (assoc-record state# :mode ::error, :value value#)
+           ::add (assoc-record ^ResultState state# :subscribers (inc (.subscribers state#)))
+           ::remove (assoc-record ^ResultState state# :subscribers (dec (.subscribers state#)))
+           ::success (assoc-record ^ResultState state# :mode ::success, :value value#)
+           ::error (assoc-record ^ResultState state# :mode ::error, :value value#)
            (::success! ::error!) :lamina/not-claimed!
            ::claim
            (if-let [ref# (.claim-ref state#)]
              (if (dosync
                    (when-not (ensure ref#)
                      (ref-set ref# true)))
-               (assoc-record state# :mode ::claimed)
+               (assoc-record ^ResultState state# :mode ::claimed)
                :lamina/:already-claimed!)
-             (assoc-record state# :mode ::claimed)))
+             (assoc-record ^ResultState state# :mode ::claimed)))
          
          ::claimed
          (case signal#
-           ::add (assoc-record state# :subscribers (inc (.subscribers state#)))
-           ::remove (assoc-record state# :subscribers (dec (.subscribers state#)))
-           ::success! (assoc-record state# :mode ::success, :value value#)
-           ::error! (assoc-record state# :mode ::error, :value value#)
+           ::add (assoc-record ^ResultState state# :subscribers (inc (.subscribers state#)))
+           ::remove (assoc-record ^ResultState state# :subscribers (dec (.subscribers state#)))
+           ::success! (assoc-record ^ResultState state# :mode ::success, :value value#)
+           ::error! (assoc-record ^ResultState state# :mode ::error, :value value#)
            (::success ::error ::claim) :lamina/already-claimed!)
          
          (::success ::error)
@@ -207,7 +207,7 @@
 
 (defmacro def-result-channel [params & body]
   (let [{:keys [major minor]} *clojure-version*]
-    `(deftype-once ~'ResultChannel
+    `(deftype+ ~'ResultChannel
        ~params
        ~@(when-not (and (= 1 major) (= 2 minor))
            `(

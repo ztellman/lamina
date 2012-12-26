@@ -9,14 +9,14 @@
 (ns lamina.connections
   (:use
     [potemkin]
-    [useful.datatypes :only (assoc-record)]
+    [flatland.useful.datatypes :only (assoc-record)]
     [lamina core trace])
   (:require
     [lamina.core.lock :as lock]
     [clojure.tools.logging :as log]
     [lamina.core.result :as r]))
 
-(set! *warn-on-reflection* true)
+
 
 ;;;
 
@@ -166,7 +166,7 @@
        :else
        (do ~@body))))
 
-(deftype-once RequestTuple [request result channel])
+(deftype+ RequestTuple [request result channel])
 
 (defn client
   "something goes here"

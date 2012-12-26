@@ -9,16 +9,16 @@
 (ns lamina.core.context
   (:use
     [potemkin]
-    [useful.datatypes :only (assoc-record make-record)])
+    [flatland.useful.datatypes :only (assoc-record make-record)])
   (:import
     [java.util
      LinkedList]))
 
-(set! *warn-on-reflection* true)
+
 
 ;;;
 
-(deftype-once Context
+(deftype+ Context
   [timer])
 
 ;;;

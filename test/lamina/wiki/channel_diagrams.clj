@@ -9,6 +9,7 @@
   (:require
     [clojure.java.io :as io])
   (:import
+    [java.awt.image RenderedImage]
     [javax.imageio ImageIO]))
 
 (def image-path "/Users/zach/clj/wikis/lamina/images/")
@@ -25,9 +26,9 @@
              chs# (if (and (sequential? result#) (every? channel? result#))
                     result#
                     [~ch])
-             ^java.io.File file# (io/file (str image-path ~(str name) ".png"))
+             file# (io/file (str image-path ~(str name) ".png"))
              image# (apply render-graph {:pad padding} chs#)]
-         (when exists? (ImageIO/write image# "png" file#)))
+         (when exists? (ImageIO/write ^RenderedImage image# "png" ^java.io.File file#)))
        (catch Exception e#
          ))))
 
@@ -39,7 +40,7 @@
              ch# ~ch
              file# (io/file (str image-path ~(str name) ".png"))
              image# (render-propagation {:pad padding} ch# ~msg)]
-         (when exists? (ImageIO/write image# "png" file#)))
+         (when exists? (ImageIO/write ^RenderedImage image# "png" ^java.io.File file#)))
        (catch Exception e#
          ))))
 

@@ -26,14 +26,14 @@
     [java.math
      BigInteger])) 
 
-(set! *warn-on-reflection* true)
+
 
 ;;;
 
 ;; TODO: think about race conditions with closing the destination channel while a message is en-route
 ;; hand-over-hand locking in the node when ::consumed?
 
-(deftype-once FinalValue [val])
+(deftype+ FinalValue [val])
 
 (defmacro consume
   "something goes here"

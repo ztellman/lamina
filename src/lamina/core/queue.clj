@@ -19,14 +19,14 @@
     [lamina.core.result ResultChannel]
     [java.util.concurrent ConcurrentLinkedQueue]))
 
-(set! *warn-on-reflection* true)
 
-(deftype-once MessageConsumer
+
+(deftype+ MessageConsumer
   [predicate
    false-value
    ^ResultChannel result-channel])
 
-(deftype-once SimpleConsumer
+(deftype+ SimpleConsumer
   [^ResultChannel result-channel]
   Object
   (equals [_ x]
@@ -40,14 +40,14 @@
   (hashCode [_]
     (hash result-channel)))
 
-(defrecord-once Consumption
+(defrecord Consumption
   [type ;; ::consumed, ::not-consumed, ::error, ::no-dispatch
    result
    ^ResultChannel result-channel])
 
-(deftype-once Consumptions [s])
+(deftype+ Consumptions [s])
 
-(deftype-once FailedConsumptions [s])
+(deftype+ FailedConsumptions [s])
 
 (defn no-consumption [result-channel]
   (Consumption. ::no-dispatch nil result-channel))
@@ -111,7 +111,7 @@
 
 ;; This queue is specially designed to interact with the node in lamina.core.graph.node, and
 ;; is not intended as a general-purpose data structure.
-(defprotocol-once IEventQueue
+(defprotocol+ IEventQueue
   (error [_ error]
     "All pending receives are resolved as errors. It's expected that the queue will
      be swapped out for an error-emitting queue at this point.")
@@ -140,7 +140,7 @@
 
 ;;;
 
-(deftype-once ErrorQueue [error]
+(deftype+ ErrorQueue [error]
   clojure.lang.Counted
   (count [_] 0)
   IEventQueue
@@ -163,7 +163,7 @@
   (cancel-receive [_ _]
     false))
 
-(deftype-once DrainedQueue []
+(deftype+ DrainedQueue []
   clojure.lang.Counted
   (count [_] 0)
   IEventQueue
@@ -187,7 +187,7 @@
 
 ;;;
 
-(deftype-once EventQueue
+(deftype+ EventQueue
   [^AsymmetricLock lock
    ^ConcurrentLinkedQueue messages
    ^ConcurrentLinkedQueue consumers
@@ -403,7 +403,7 @@
          (Thread/sleep 1)
          (throw e#)))))
 
-(deftype-once TransactionalEventQueue
+(deftype+ TransactionalEventQueue
   [messages
    consumers
    closed?]

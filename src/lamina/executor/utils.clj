@@ -9,7 +9,7 @@
 (ns lamina.executor.utils
   (:use [potemkin]))
 
-(defprotocol-once IExecutor
+(defprotocol+ IExecutor
   (trace-return [_ val])
   (trace-error [_ val])
   (execute [_ timer f timeout])

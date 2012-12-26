@@ -8,6 +8,7 @@
 
 (ns lamina.cache
   (:use
+    [potemkin :only (defprotocol+)]
     [lamina.core.channel :only (on-closed on-error close)])
   (:require
     [clojure.tools.logging :as log])
@@ -15,7 +16,7 @@
     [java.util.concurrent
      ConcurrentHashMap]))
 
-(defprotocol ChannelCache
+(defprotocol+ ChannelCache
   (get-or-create [cache id on-create]
     "something goes here")
   (ids [cache]

@@ -13,10 +13,10 @@
     [clojure.tools.logging :as log]
     [clojure.string :as str]))
 
-(defprotocol-once IEnqueue
+(defprotocol+ IEnqueue
   (enqueue [_ msg]))
 
-(defprotocol-once IDescribed
+(defprotocol+ IDescribed
   (description [_]))
 
 (defn in-transaction? []

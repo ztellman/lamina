@@ -208,6 +208,20 @@
 
 ;;;
 
+(defn transform-fn-bodies
+  "Takes a (fn ...) form, and transform the bodies. The transform function is
+   passed the arglist and the function body."
+  [f form]
+  (let [fn-form (macroexpand form)
+        arity-forms (->> fn-form (drop-while symbol?))
+        arity-forms (map
+                      (fn [arity-form]
+                        (let [args (first arity-form)]
+                          `(~args ~@(f args (rest arity-form)))))
+                      arity-forms)]
+    `(~@(take-while symbol? fn-form)
+      ~@arity-forms)))
+
 (defmacro instrumented-fn
   "A compile-time version of (instrument ...).
 

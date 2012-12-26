@@ -13,7 +13,7 @@
 
 ;;;
 
-(deftype-once Edge [^String description next ^boolean sneaky?]
+(deftype+ Edge [^String description next ^boolean sneaky?]
   IDescribed
   (description [_] description))
 
@@ -31,7 +31,7 @@
 
 ;;;
 
-(defprotocol-once IPropagator
+(defprotocol+ IPropagator
   (downstream [_]
     "Returns a list of nodes which are downstream of this node.")
   (transactional [_]

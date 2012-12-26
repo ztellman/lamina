@@ -9,7 +9,7 @@
 (ns lamina.trace.timer
   (:use
     [potemkin]
-    [useful.datatypes :only (make-record)]
+    [flatland.useful.datatypes :only (make-record)]
     [lamina.core.utils :only (enqueue)])
   (:require
     [clojure.string :as str]
@@ -24,11 +24,11 @@
     [java.util.concurrent
      ConcurrentLinkedQueue]))
 
-(set! *warn-on-reflection* true)
+
 
 ;;;
 
-(defprotocol-once ITimed
+(defprotocol+ ITimed
   (timing [_ start])
   (mark-enter [_])
   (mark-error [_ err])
@@ -89,7 +89,7 @@
        (assoc timing# :start-stage ~'start-stage)
        timing#)))
 
-(deftype-once EnqueuedTimer
+(deftype+ EnqueuedTimer
   [executor
    capture
    name
@@ -209,7 +209,7 @@
    args
    result])
 
-(deftype-once Timer
+(deftype+ Timer
   [capture
    name
    return-probe

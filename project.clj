@@ -2,8 +2,8 @@
   :description "event-driven data structures for clojure"
   :min-lein-version "2.0.0"
   :dependencies [[org.clojure/tools.logging "0.2.4"]
-                 [useful "0.8.2"]
-                 [potemkin "0.1.5"]                 
+                 [org.flatland/useful "0.9.0"]
+                 [potemkin "0.2.0-SNAPSHOT"]
                  [com.yammer.metrics/metrics-core "2.1.0"
                   :exclusions [org.slf4j/slf4j-api]]]
   :exclusions [org.clojure/contrib
@@ -35,4 +35,5 @@
                    :all (constantly true)}
   :license {:name "Eclipse Public License - v 1.0"
             :url "http://www.eclipse.org/legal/epl-v10.html"
-            :distribution :repo})
+            :distribution :repo}
+  :warn-on-reflection true)

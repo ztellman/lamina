@@ -15,11 +15,11 @@
     [java.util.concurrent Semaphore]
     [java.util.concurrent.locks ReentrantLock ReentrantReadWriteLock]))
 
-(set! *warn-on-reflection* true)
+
 
 ;;;
 
-(defprotocol-once ILock
+(defprotocol+ ILock
   (acquire [_])
   (acquire-exclusive [_])
   (release [_])
@@ -29,7 +29,7 @@
 
 ;;;
 
-(deftype-once AsymmetricLock [^ReentrantReadWriteLock lock]
+(deftype+ AsymmetricLock [^ReentrantReadWriteLock lock]
   ILock
   (acquire [this]
     (-> lock .readLock .lock))
@@ -47,7 +47,7 @@
 (defn asymmetric-lock []
   (AsymmetricLock. (ReentrantReadWriteLock. false)))
 
-(deftype-once Lock [^ReentrantLock lock]
+(deftype+ Lock [^ReentrantLock lock]
   ILock
   (acquire-exclusive [_] (.lock lock))
   (release-exclusive [_] (.unlock lock))

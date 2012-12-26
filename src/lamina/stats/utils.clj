@@ -9,5 +9,5 @@
 (ns lamina.stats.utils
   (:use [potemkin]))
 
-(defprotocol-once IUpdatable
+(defprotocol+ IUpdatable
   (update [_ value]))

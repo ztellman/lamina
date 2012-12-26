@@ -17,7 +17,7 @@
      ScheduledThreadPoolExecutor
      TimeUnit]))
 
-(set! *warn-on-reflection* true)
+
 
 ;;;
 

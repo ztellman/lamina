@@ -9,7 +9,7 @@
 (ns lamina.core.graph
   (:use
     [potemkin]
-    [useful.datatypes :only (make-record assoc-record)]
+    [flatland.useful.datatypes :only (make-record assoc-record)]
     [lamina.core.threads :only (enqueue-cleanup)]
     [lamina.core utils])
   (:require
@@ -26,7 +26,7 @@
      NodeState
      Node]))
 
-(set! *warn-on-reflection* true)
+
 
 ;;;
 

@@ -24,7 +24,7 @@
      ThreadFactory
      TimeUnit]))
 
-(set! *warn-on-reflection* true)
+
 
 (defn contract-pool-size [^ThreadPoolExecutor pool min-thread-count]
   (let [active (.getActiveCount pool)

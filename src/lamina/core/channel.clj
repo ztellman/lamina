@@ -30,11 +30,11 @@
     [java.io
      Writer]))
 
-(set! *warn-on-reflection* true)
+
 
 ;;;
 
-(defprotocol-once IChannel
+(defprotocol+ IChannel
   (receiver-node [_]
     "Returns the receiver node for the channel.")
   (emitter-node [_]
@@ -42,7 +42,7 @@
   (split-receiver [_]
     "Ensures the receiver and emitter are split, and returns the emitter."))
 
-(deftype-once Channel
+(deftype+ Channel
   [^Node receiver
    ^{:volatile-mutable true :tag Node} emitter
    metadata]
@@ -93,7 +93,7 @@
             "[ \u2026 ]"
             "[ ]"))))))
 
-(deftype-once SplicedChannel [^Channel receiver ^Channel emitter metadata]
+(deftype+ SplicedChannel [^Channel receiver ^Channel emitter metadata]
   clojure.lang.Counted
   (count [_]
     (count emitter))

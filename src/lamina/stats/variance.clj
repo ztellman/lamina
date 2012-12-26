@@ -14,14 +14,14 @@
     [java.util.concurrent.atomic
      AtomicLong]))
 
-(defprotocol-once IVariance
+(defprotocol+ IVariance
   (std-dev [_])
   (variance [_])
   (mean [_]))
 
 ;; http://en.wikipedia.org/wiki/Algorithms_for_calculating_variance
 
-(deftype-once Variance
+(deftype+ Variance
   [^double mean
    ^double m2
    ^long count]
