@@ -296,8 +296,6 @@
         ~(if error-handler
            (complex-error-handler error-handler (meta &form))
            `(error [_# result# _# ex#]
-              (when-not ~(contains? options :error-handler)
-                (log/error ex# (str "Unhandled exception in pipeline at " ~location)))
               (if result#
                 (r/error result# ex#)
                 (r/error-result ex#))))
