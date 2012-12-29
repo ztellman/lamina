@@ -31,7 +31,10 @@
 
 (defn close* [& nodes]
   (doseq [n nodes]
-    (close n)))
+    (close n false)))
+
+(defn error* [node err]
+  (error node err false))
 
 (defn pred [f]
   (predicate-operator f))
@@ -143,7 +146,7 @@
         [v f] (sink)]
     (is (= :lamina/enqueued (enqueue n nil)))
     (is (= :lamina/enqueued (enqueue n 1)))
-    (close n)
+    (close* n)
     (is (closed? n))
     (is (not (drained? n)))
     (link* n (callback-propagator f))
@@ -154,7 +157,7 @@
   (let [cnt 1e4
         n (node-chain (dec cnt) inc inc)]
     (is (= (int cnt) (enqueue n 0)))
-    (-> n node-seq butlast last close)
+    (-> n node-seq butlast last close*)
     (wait-for-drained n)))
 
 (defn closed-then-drained? [n f]
@@ -203,7 +206,7 @@
         (receive a nil callback)
         (is (= [4] @v)))
 
-      (close b)
+      (close* b)
       (wait-for-drained b)
       (wait-for-drained a))))
 
@@ -218,7 +221,7 @@
        (% a b)
        (enqueue a 1 2 3)
        (is (= [1 2 3] (drain b)))
-       (close b)
+       (close* b)
        (wait-for-drained b)
        (wait-for-drained a)))
 
@@ -226,7 +229,7 @@
     #(let [a (node identity)
            b (node identity)]
        (% a b)
-       (error b ::error)
+       (error* b ::error)
        (wait-for-error b ::error)
        (if (= siphon %)
          (wait-for-drained a)
@@ -235,14 +238,14 @@
   (let [a (node identity)
         b (node identity)]
     (join a b)
-    (close a)
+    (close* a)
     (wait-for-drained a)
     (wait-for-drained b))
 
   (let [a (node identity)
         b (node identity)]
     (join a b)
-    (error a ::error)
+    (error* a ::error)
     (wait-for-error a ::error)
     (wait-for-error b ::error)))
 

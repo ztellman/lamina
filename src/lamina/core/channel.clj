@@ -147,7 +147,7 @@
   "Returns a closed channel containing the given messages."
   [& messages]
   (let [ch (channel* :messages (seq messages))]
-    (g/close (receiver-node ch))
+    (g/close (receiver-node ch) false)
     ch))
 
 (defn grounded-channel
@@ -229,13 +229,22 @@
     ch))
 
 (defn close
-  "Closes the channel. Returns if successful, false if the channel is already closed or in an
-   error state."
+  "Closes the channel. Returns if successful, false if the channel is permanent, already closed,
+   or in an error state."
   [channel]
-  (g/close (receiver-node channel)))
+  (g/close (receiver-node channel) false))
+
+(defn force-close
+  "Closes the channel, even if it is permanent. Returns if successful, false if the channel is
+   already closed or in an error state."
+  [channel]
+  (g/close (receiver-node channel) true))
 
 (defn error [channel err]
-  (g/error (receiver-node channel) err))
+  (g/error (receiver-node channel) err false))
+
+(defn force-error [channel err]
+  (g/error (receiver-node channel) err true))
 
 (defn closed?
   "Returns true if the channel is closed, false otherwise. "
@@ -301,10 +310,10 @@
       (do
         (populate)
         (when (closed? ch)
-          (g/close n))
+          (g/close n false))
         (let [error (g/error-value (receiver-node ch) ::none)]
           (when-not (= ::none error)
-            (g/error n error)))))
+            (g/error n error false)))))
     (Channel. n n nil)))
 
 (defn fork

@@ -231,7 +231,8 @@
                 with-bindings?
                 description
                 implicit?
-                unwrap?]
+                unwrap?
+                flow-exceptions]
          :or {description "pipeline"
               implicit? false
               unwrap? false}}
@@ -290,7 +291,14 @@
                           (map
                             #(unwind-stages % (drop % stages) depth expand-subscribe unwrap?)
                             (range (inc len))))))
-                  (catch Exception ex#
+                  ~@(map
+                      (fn [ex] `(catch ~ex ex# (throw ex#)))
+                      (distinct flow-exceptions))
+                  (catch Error ex#
+                    (if-not (= "clojure.lang.LockingTransaction$RetryEx" (.getName ^Class (class ex#)))
+                      (error this## result## initial-val## ex#)
+                      (throw ex#)))
+                  (catch Throwable ex#
                     (error this## result## initial-val## ex#))))))
        
         ~(if error-handler

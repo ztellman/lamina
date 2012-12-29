@@ -39,8 +39,8 @@
   (propagate [_ msg transform?]
     "Sends a message downstream through the node. If 'transform?' is false, the node
      should treat the message as pre-transformed.")
-  (close [_])
-  (error [_ err]))
+  (close [_ force?])
+  (error [_ err force?]))
 
 (defn downstream-propagators [n]
   (map #(.next ^Edge %) (downstream n)))

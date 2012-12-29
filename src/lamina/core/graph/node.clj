@@ -121,7 +121,7 @@
          (operator# msg#)
          (catch Exception e#
            (log/warn e# "Error in map*/filter* function.")
-           (error node# e#)
+           (error node# e# false)
            ::error)))))
 
 (defmacro check-for-drained [this state watchers cancellations]
@@ -272,7 +272,7 @@
                           (try
                             (propagate nxt msg true)
                             (catch Exception e
-                              (error this e)
+                              (error this e false)
                               :lamina/error!))
                           
                           (let [^Node node nxt
@@ -315,7 +315,7 @@
                                           (try
                                             (propagate node msg false)
                                             (catch Exception e
-                                              (error this e)
+                                              (error this e false)
                                               :lamina/error!))))))))))))))
 
                   ;; more than one node
@@ -330,7 +330,7 @@
                           (propagate (.next e) msg true))
                         result)
                       (catch Exception e
-                        (error this e)
+                        (error this e false)
                         :lamina/error!)))))))))))
 
   ;;
@@ -444,8 +444,8 @@
           (r/subscribe result (r/result-callback callback (fn [_])))))))
 
   ;;
-  (close [this]
-    (defer-within-transaction [(close this) :lamina/deferred]
+  (close [this force?] 
+    (defer-within-transaction [(close this force?) :lamina/deferred]
       (if-let [^NodeState s
                (l/with-exclusive-lock lock
                  (let [s state]
@@ -454,7 +454,7 @@
                      (::closed ::drained ::error)
                      nil
                      
-                     (when-not (.permanent? s)
+                     (when-not (and (not force?) (.permanent? s))
                        (close-node! this edges s)))))]
         ;; signal state change
         (do
@@ -467,8 +467,8 @@
         false)))
 
   ;;
-  (error [this err]
-    (defer-within-transaction [(error this err) :lamina/deferred]
+  (error [this err force?]
+    (defer-within-transaction [(error this err force?) :lamina/deferred]
       (if-let [old-queue (l/with-exclusive-lock lock
                            (let [s state]
                              (case (.mode s)
@@ -476,7 +476,7 @@
                                (::drained ::error)
                                nil
                                
-                               (when-not (.permanent? s)
+                               (when-not (and (not force?) (.permanent? s))
                                  (let [q (.queue s)]
                                    (set-state! this s
                                      :mode ::error
@@ -910,14 +910,14 @@
   (fn [state _ err]
     (case state
       (::closed ::drained) (enqueue-cleanup #(cancel src dst))
-      ::error (enqueue-cleanup (if join? #(error src err) #(cancel src dst)))
+      ::error (enqueue-cleanup (if join? #(error src err false) #(cancel src dst)))
       nil)))
 
 (defn downstream-callback [src dst]
   (fn [state _ err]
     (case state
-      ::drained (enqueue-cleanup #(close dst))
-      ::error (enqueue-cleanup #(error dst err))
+      ::drained (enqueue-cleanup #(close dst false))
+      ::error (enqueue-cleanup #(error dst err false))
       nil)))
 
 (defn siphon-cleanup-callback [callback dst]

@@ -30,8 +30,8 @@
   IDescribed
   (description [_] (describe-fn callback))
   IPropagator
-  (close [_])
-  (error [_ _])
+  (close [_ force?])
+  (error [_ _ force?])
   (transactional [_] false)
   (downstream [_] nil)
   (propagate [_ msg _]
@@ -47,12 +47,12 @@
   IDescribed
   (description [_] description)
   IPropagator
-  (close [_]
+  (close [_ force?]
     (doseq [^Edge e downstream]
-      (close (.next e))))
-  (error [_ err]
+      (close (.next e) force?)))
+  (error [_ err force?]
     (doseq [^Edge e downstream]
-      (error (.next e) err)))
+      (error (.next e) err force?)))
   (downstream [_] downstream)
   (propagate [_ msg _] (callback msg))
   (transactional [this]
@@ -63,8 +63,8 @@
   IDescribed
   (description [_] description)
   IPropagator
-  (close [_])
-  (error [_ err])
+  (close [_ force?])
+  (error [_ err force?])
   (downstream [_] nil)
   (propagate [_ _ _] nil)
   (transactional [_] nil))
@@ -91,12 +91,12 @@
   IDescribed
   (description [_] "distributor")
   IPropagator
-  (close [_]
+  (close [_ force?]
     (doseq [n (close-and-clear lock closed? downstream)]
-      (close n)))
-  (error [_ err]
+      (close n force?)))
+  (error [_ err force?]
     (doseq [n (close-and-clear lock closed? downstream)]
-      (error n err)))
+      (error n err force?)))
   (transactional [_]
     (let [downstream
           (l/with-exclusive-lock
@@ -129,13 +129,13 @@
                                (r/subscribe (n/closed-result n)
                                  (r/result-callback
                                    (fn [_] (.remove downstream id*))
-                                   (fn [err] (error this err))))
+                                   (fn [err] (error this err false))))
                                n))))))]
           (propagate n msg true)
           :lamina/closed!))
       (catch Exception e
         (log/error e "error in distributor")
-        (error this e)))))
+        (error this e false)))))
 
 (defn distributing-propagator [facet generator]
   (DistributingPropagator.
@@ -156,7 +156,7 @@
                 (callback x)
                 (catch Exception e
                   (log/error e (str "error in " (or node-description edge-description)))
-                  (error src e))))
+                  (error src e false))))
             downstream)
         upstream (edge edge-description n)
         dsts (filter n/node? dsts)]
@@ -174,7 +174,7 @@
                 (callback x)
                 (catch Exception e
                   (log/error e (str "error in " (or node-description edge-description)))
-                  (error src e))))
+                  (error src e false))))
             downstream)
         upstream (edge edge-description n)]
     (n/link src n upstream

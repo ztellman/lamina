@@ -261,12 +261,14 @@
         (when release-fn
           (release-fn))
         false)
-      (io! "Cannot modify non-transactional queues inside a transaction."
-        (let [x (l/with-exclusive-lock lock
-                  (when release-fn
-                    (release-fn))
+      (let [x (l/with-exclusive-lock lock
 
-                  ;; check if there are any consumers
+                ;; first, invoke the release-fn before any exceptions can be thrown
+                (when release-fn
+                  (release-fn))
+
+                ;; check if there are any consumers
+                (io! "Cannot modify non-transactional queues inside a transaction"
                   (if (.isEmpty consumers)
                       
                     ;; no consumers, just hold onto the message
@@ -292,31 +294,31 @@
                             (let [^Consumption c (consumption (.poll consumers) msg)]
                               (if (consumed? c)
                                 (Consumptions. (cons c cs))
-                                (recur (cons c cs))))))))))]
+                                (recur (cons c cs)))))))))))]
 
-          (cond
-            (identical? :lamina/enqueued x)
-            x
+        (cond
+          (identical? :lamina/enqueued x)
+          x
 
-            (identical? :lamina/discarded x)
-            x
+          (identical? :lamina/discarded x)
+          x
 
-            (instance? Consumption x)
-            (dispatch-consumption x)
+          (instance? Consumption x)
+          (dispatch-consumption x)
 
-            (instance? Consumptions x)
-            (do
-              (doseq [c (.s ^Consumptions x)]
-                (dispatch-consumption c))
-              :lamina/queue-split)
+          (instance? Consumptions x)
+          (do
+            (doseq [c (.s ^Consumptions x)]
+              (dispatch-consumption c))
+            :lamina/queue-split)
 
-            :else
-            (do
-              (doseq [c (.s ^FailedConsumptions x)]
-                (dispatch-consumption c))
-              (if persist?
-                :lamina/enqueued
-                :lamina/discarded)))))))
+          :else
+          (do
+            (doseq [c (.s ^FailedConsumptions x)]
+              (dispatch-consumption c))
+            (if persist?
+              :lamina/enqueued
+              :lamina/discarded))))))
 
   ;;
   (receive [_]

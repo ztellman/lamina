@@ -78,6 +78,13 @@
     (r/error channel err)
     (ch/error channel err)))
 
+(defn force-error
+  "Puts the channel or result-channel into an error state, even if it's permanent."
+  [channel err]
+  (if (async-result? channel)
+    (r/error channel err)
+    (ch/force-error channel err)))
+
 (defn siphon
   "something goes here"
   ([src dst]
@@ -119,6 +126,7 @@
 (import-fn ch/close-on-idle)
 
 (import-fn ch/close)
+(import-fn ch/force-close)
 (import-fn ch/drained?)
 (import-fn ch/closed?)
 (import-fn ch/transactional?)
