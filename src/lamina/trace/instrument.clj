@@ -168,11 +168,11 @@
   computing the value, and the 'return' probe will include an :enqueued-duration
   parameter that describes the time, in nanoseconds, spent waiting to be executed."
   
-  [f {:keys [executor capture timeout probes implicit? with-bindings?]
-      :as options
-      :or {implicit? true
-           capture :in-out
-           with-bindings? false}}]
+  [f & {:keys [executor capture timeout probes implicit? with-bindings?]
+        :as options
+        :or {implicit? true
+             capture :in-out
+             with-bindings? false}}]
   (when-not (contains? options :name)
     (throw (IllegalArgumentException. "Instrumented functions must have a :name defined.")))
   (if executor
