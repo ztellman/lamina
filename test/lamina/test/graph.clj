@@ -10,7 +10,7 @@
   (:use
     [clojure test]
     [lamina.test utils]
-    [lamina.core.utils :only (predicate-operator)]
+    [lamina.core.utils :only (predicate-operator error)]
     [lamina.core graph]
     [lamina.walk])
   (:require

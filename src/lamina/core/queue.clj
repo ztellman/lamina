@@ -10,6 +10,7 @@
   (:use
     [potemkin])
   (:require
+    [lamina.core.utils :as u]
     [lamina.core.result :as r]
     [lamina.core.lock :as l]
     [clojure.tools.logging :as log])
@@ -209,7 +210,7 @@
                 (.clear consumers)
                 (.clear messages)))]
         (doseq [^MessageConsumer c consumers]
-          (r/error (.result-channel c) error)))))
+          (u/error (.result-channel c) error false)))))
 
   ;; this isn't super atomic (multiple calls can receive 'true', though), but we
   ;; don't much care 
@@ -225,8 +226,8 @@
           (set! closed? true)
           (doseq [c consumers]
             (if (instance? MessageConsumer c)
-              (r/error (.result-channel ^MessageConsumer c) :lamina/drained!)
-              (r/error (.result-channel ^SimpleConsumer c) :lamina/drained!)))
+              (u/error (.result-channel ^MessageConsumer c) :lamina/drained! false)
+              (u/error (.result-channel ^SimpleConsumer c) :lamina/drained! false)))
           true))))
 
   ;;
@@ -425,7 +426,7 @@
                         (ref-set messages nil)
                         cs))]
       (doseq [^MessageConsumer c consumers]
-        (r/error (.result-channel c) error))))
+        (u/error (.result-channel c) error false))))
 
   ;;
   (close [this]
@@ -438,8 +439,8 @@
                    cs))]
         (doseq [c cs]
           (if (instance? MessageConsumer c)
-            (r/error (.result-channel ^MessageConsumer c) :lamina/drained!)
-            (r/error (.result-channel ^SimpleConsumer c) :lamina/drained!)))
+            (u/error (.result-channel ^MessageConsumer c) :lamina/drained! false)
+            (u/error (.result-channel ^SimpleConsumer c) :lamina/drained! false)))
         true)))
 
   ;;
@@ -560,7 +561,7 @@
   ;; TODO: make this a bit more efficient
   (cancel-receive [_ result-channel]
     (let [removed?
-          (dosync
+          (dosync 
             (let [c (SimpleConsumer. result-channel)
                   cs (remove #(.equals c %) (ensure consumers))]
               (if (not= (count cs) (count @consumers))

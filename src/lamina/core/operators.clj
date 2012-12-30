@@ -9,7 +9,7 @@
 (ns lamina.core.operators
   (:use
     [potemkin]
-    [lamina.core channel utils threads])
+    [lamina.core utils channel threads])
   (:require
     [lamina.core.graph :as g]
     [lamina.core.lock :as l]
@@ -102,7 +102,7 @@
                    {:error-handler (fn [ex#]
                                      (log/error ex# (str "error in " ~description))
                                      (if dst##
-                                       (error dst## ex#)
+                                       (error dst## ex# false)
                                        (p/redirect (p/pipeline (constantly (r/error-result ex#))) nil)))}
                    (fn [val##]
                      ;; if we shouldn't even try to read a message, clean up
@@ -160,7 +160,7 @@
            ;; something's already attached to the source
            (if dst##
              (do
-               (error dst## :lamina/already-consumed!)
+               (error dst## :lamina/already-consumed! false)
                dst##)
              (r/error-result :lamina/already-consumed!)))))))
 
@@ -481,7 +481,7 @@
               (try
                 (enqueue ch* (apply f ary))
                 (catch Exception e
-                  (error ch* e))))))
+                  (error ch* e false))))))
         ch*))
 
     ch*))

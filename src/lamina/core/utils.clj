@@ -14,7 +14,9 @@
     [clojure.string :as str]))
 
 (defprotocol+ IEnqueue
-  (enqueue [_ msg])
+  (enqueue [_ msg]))
+
+(defprotocol+ IError
   (error [_ err force?]))
 
 (defprotocol+ IDescribed

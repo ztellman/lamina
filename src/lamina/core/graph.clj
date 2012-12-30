@@ -10,9 +10,9 @@
   (:use
     [potemkin]
     [flatland.useful.datatypes :only (make-record assoc-record)]
-    [lamina.core.threads :only (enqueue-cleanup)]
-    [lamina.core utils])
+    [lamina.core.threads :only (enqueue-cleanup)])
   (:require
+    [lamina.core.utils :as u]
     [lamina.core.result :as r]
     [lamina.core.threads :as t]
     [lamina.core.graph.core :as c]
@@ -32,7 +32,6 @@
 
 (import-fn c/edge)
 (import-fn c/propagate)
-(import-fn c/error)
 (import-fn c/close)
 (import-fn c/transactional)
 (import-fn c/downstream)
@@ -130,7 +129,7 @@
                    (fn []
                      ~(if on-timeout
                         `(r/success ~result-sym ~on-timeout)
-                        `(r/error ~result-sym :lamina/timeout!))))))))
+                        `(u/error ~result-sym :lamina/timeout! false))))))))
        ~(if-not (contains? options :on-drained)
           result-sym
           `(if (instance? SuccessResult ~result-sym)
@@ -142,5 +141,5 @@
                    (fn [err#]
                      (if (identical? :lamina/drained! err#)
                        (r/success result# ~on-drained)
-                       (r/error result# err#)))))
+                       (u/error result# err# false)))))
                result#))))))

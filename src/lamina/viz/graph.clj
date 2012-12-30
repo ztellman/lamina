@@ -141,7 +141,7 @@
 
       ;; error out any results that didn't receive a message
       (doseq [r (vals results)]
-        (r/error r ::nothing-received))
+        (error r ::nothing-received false))
 
       ;; release the nodes so other messages can pass through
       (l/release-all true readable-nodes)

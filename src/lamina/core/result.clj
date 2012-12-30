@@ -73,6 +73,8 @@
   IEnqueue
   (enqueue [_ _]
     :lamina/already-realized!)
+
+  IError
   (error [_ _ _]
     :lamina/already-realized!)
 
@@ -120,6 +122,8 @@
   IEnqueue
   (enqueue [_ _]
     :lamina/already-realized!)
+
+  IError
   (error [_ _ _]
     :lamina/already-realized!)
 
@@ -307,6 +311,8 @@
   (enqueue [this msg]
     (success this msg))
 
+  IError
+  
   (error [this err _]
     (compare-and-trigger
       [this error lock state subscribers listener]

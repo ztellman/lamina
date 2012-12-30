@@ -74,16 +74,12 @@
 (defn error
   "Puts the channel or result-channel into an error state."
   [channel err]
-  (if (async-result? channel)
-    (r/error channel err)
-    (ch/error channel err)))
+  (u/error channel err false))
 
 (defn force-error
   "Puts the channel or result-channel into an error state, even if it's permanent."
   [channel err]
-  (if (async-result? channel)
-    (r/error channel err)
-    (ch/force-error channel err)))
+  (u/error channel err true))
 
 (defn siphon
   "something goes here"
@@ -101,7 +97,7 @@
      (if (async-result? src)
        (do
          (r/siphon-result src dst)
-         (r/subscribe dst (r/result-callback (fn [_]) #(r/error src %))))
+         (r/subscribe dst (r/result-callback (fn [_]) #(u/error src % false))))
        (ch/join src dst)))
   ([src dst & rest]
      (join src dst)

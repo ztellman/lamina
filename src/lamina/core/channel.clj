@@ -47,6 +47,10 @@
    ^{:volatile-mutable true :tag Node} emitter
    metadata]
 
+  IError
+  (error [_ err force?]
+    (error receiver err force?))
+
   clojure.lang.Counted
   (count [_]
     (count emitter))
@@ -240,12 +244,6 @@
   [channel]
   (g/close (receiver-node channel) true))
 
-(defn error [channel err]
-  (g/error (receiver-node channel) err false))
-
-(defn force-error [channel err]
-  (g/error (receiver-node channel) err true))
-
 (defn closed?
   "Returns true if the channel is closed, false otherwise. "
   [channel]
@@ -313,7 +311,7 @@
           (g/close n false))
         (let [error (g/error-value (receiver-node ch) ::none)]
           (when-not (= ::none error)
-            (g/error n error false)))))
+            (error n error false)))))
     (Channel. n n nil)))
 
 (defn fork
@@ -453,7 +451,7 @@
                      (map* #(hash-map :facet facet, :value %)))
                    ch*)))]
     (join ch dist)
-    (on-error aggr #(error dist %))
+    (on-error aggr #(error dist % false))
     (on-closed aggr #(close dist))
     (map*
       #(zipmap (keys %) (map :value (vals %)))
