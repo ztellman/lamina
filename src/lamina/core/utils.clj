@@ -14,7 +14,8 @@
     [clojure.string :as str]))
 
 (defprotocol+ IEnqueue
-  (enqueue [_ msg]))
+  (enqueue [_ msg])
+  (error [_ err force?]))
 
 (defprotocol+ IDescribed
   (description [_]))
@@ -22,18 +23,8 @@
 (defn in-transaction? []
   (clojure.lang.LockingTransaction/isRunning))
 
-(defmacro defer-within-transaction [[defer-fn default-response override?] & body]
-  `(if ~(if override?
-          `(and (not ~override?) (in-transaction?))
-          `(in-transaction?))
-     (do
-       (send (agent nil) (fn [_#]
-                           (try
-                             ~defer-fn
-                             (catch Exception e#
-                               (log/error e# "Error in deferred action.")))))
-       ~default-response)
-     (do ~@body)))
+(defn result-seq [s]
+  (with-meta (seq s) {:lamina/result-seq true}))
 
 ;;;
 

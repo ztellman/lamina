@@ -8,7 +8,7 @@
 
 (ns lamina.test.result
   (:use
-    [lamina.core result threads]
+    [lamina.core result threads utils]
     [clojure test]
     [lamina.test utils]))
 
@@ -51,9 +51,14 @@
     (is (= ::none (error-value r ::none)))
     (is (= :success (result r)))
     (is (= :lamina/already-realized! (success r nil)))
-    (is (= :lamina/already-realized! (error r nil)))
+    (is (= :lamina/already-realized! (error r nil false)))
     (is (= 1 @(capture-success r :foo)))
-    (is (= false (cancel-callback r nil)))))
+    (is (= false (cancel-callback r nil))))
+
+  (let [listener (result-channel)
+        r (success-result 1 listener)]
+    (is (= 1 @(capture-success r :foo)))
+    (is (= :foo @listener))))
 
 (deftest test-error-result
   (let [ex (IllegalStateException. "boom")
@@ -63,9 +68,15 @@
     (is (= ex (error-value r nil)))
     (is (= :error (result r)))
     (is (= :lamina/already-realized! (success r nil)))
-    (is (= :lamina/already-realized! (error r nil)))
+    (is (= :lamina/already-realized! (error r nil false)))
     (is (= ex @(capture-error r :foo)))
-    (is (= false (cancel-callback r nil)))))
+    (is (= false (cancel-callback r nil))))
+
+  (let [ex (IllegalStateException. "boom")
+        listener (result-channel)
+        r (error-result ex listener)]
+    (is (= ex @(capture-error r :foo)))
+    (is (= :foo @listener))))
 
 (defn test-result-channel [r-fn]
   (let [r (r-fn)]
@@ -80,6 +91,17 @@
     (is (= ::none (error-value r ::none)))
     (is (= :success (result r)))
     (is (= 1 @(capture-success r ::return)))
+    (is (= 1 @r)))
+
+  ;; success result with listener
+  (let [listener (r-fn)
+        r (r-fn listener)]
+    (is (= :lamina/realized (success r 1)))
+    (is (= ::none (success-value r ::none)))
+    (is (= ::none (error-value r ::none)))
+    (is (= :success (result r)))
+    (is (= 1 @(capture-success r ::return)))
+    (is (= ::return @listener))
     (is (= 1 @r)))
 
   ;; claim and success!
@@ -107,18 +129,30 @@
   ;; error result
   (let [r (r-fn)
         ex (IllegalStateException. "boom")]
-    (is (= :lamina/realized (error r ex)))
+    (is (= :lamina/realized (error r ex false)))
     (is (= ::none (success-value r ::none)))
     (is (= ex (error-value r nil)))
     (is (= :error (result r)))
     (is (= ex @(capture-error r ::return)))
     (is (thrown? IllegalStateException @r)))
 
+  ;; error result with listener
+  (let [listener (r-fn)
+        r (r-fn listener)
+        ex (IllegalStateException. "boom")]
+    (is (= :lamina/realized (error r ex false)))
+    (is (= ::none (success-value r ::none)))
+    (is (= ::none (error-value r ::none)))
+    (is (= :error (result r)))
+    (is (= ex @(capture-error r ::return)))
+    (is (= ::return @listener))
+    (is (thrown? IllegalStateException @r)))
+  
   ;; claim and error!
   (let [r (r-fn)
         ex (IllegalStateException. "boom")]
     (is (= true (claim r)))
-    (is (= :lamina/already-claimed! (error r ex)))
+    (is (= :lamina/already-claimed! (error r ex false)))
     (is (= :lamina/realized (error! r ex)))
     (is (= ::none (success-value r ::none)))
     (is (= ex (error-value r nil)))
@@ -130,7 +164,7 @@
   (let [r (r-fn)
         ex (IllegalStateException. "boom")]
     (is (= true (dosync (claim r))))
-    (is (= :lamina/already-claimed! (error r ex)))
+    (is (= :lamina/already-claimed! (error r ex false)))
     (is (= :lamina/realized (error! r ex)))
     (is (= ::none (success-value r ::none)))
     (is (= ex (error-value r nil)))
@@ -145,29 +179,31 @@
 
   ;; test deref with error result
   (let [r (r-fn)]
-    (defer (error r (IllegalStateException. "boom")))
+    (defer (error r (IllegalStateException. "boom") false))
     (is (thrown? IllegalStateException @r)))
 
   ;; multiple callbacks w/ success
-  (let [r (r-fn)
-        callback-values (->> (range 5)
+  (let [n 50
+        r (r-fn)
+        callback-values (->> (range n)
                           (map (fn [_] (future (capture-success r))))
                           (map deref)
                           doall)]
-    (is (= :lamina/subscribed (success r 1)))
+    (is (= (repeat n :lamina/subscribed) (success r 1)))
     (is (= 1 @r))
-    (is (= (repeat 5 1) (map deref callback-values))))
+    (is (= (repeat n 1) (map deref callback-values))))
 
   ;; multiple callbacks w/ error
-  (let [r (r-fn)
-        callback-values (->> (range 5)
+  (let [n 50
+        r (r-fn)
+        callback-values (->> (range n)
                           (map (fn [_] (future (capture-error r))))
                           (map deref)
                           doall)
         ex (Exception.)]
-    (is (= :lamina/subscribed (error r ex)))
+    (is (= (repeat n :lamina/subscribed) (error r ex false)))
     (is (thrown? Exception @r))
-    (is (= (repeat 5 ex) (map deref callback-values))))
+    (is (= (repeat n ex) (map deref callback-values))))
 
   ;; callback return result propagation in ::one
   (let [callback (result-callback (constantly :foo) nil)
@@ -180,7 +216,7 @@
         r (r-fn)]
     (is (= :lamina/subscribed (subscribe r callback)))
     (is (= :lamina/subscribed (subscribe r callback)))
-    (is (= :foo (success r nil))))
+    (is (= [:foo :foo] (success r nil))))
 
   ;; cancel-callback ::one to ::zero
   (let [callback (result-callback (constantly :foo) nil)
@@ -213,7 +249,7 @@
     (is (= :lamina/subscribed (subscribe r b)))
     (is (= :lamina/subscribed (subscribe r c)))
     (is (= true (cancel-callback r a)))
-    (is (= 1 (success r nil)))
+    (is (= [1 2] (success r nil)))
     (is (= 2 @cnt))))
 
 (deftest test-basic-result-channel
@@ -228,7 +264,7 @@
       (Thread/sleep 1)
       (is (= i @r)))
     (let [r (r-fn)]
-      (delay-invoke 0.1 (fn [] (error r i)))
+      (delay-invoke 0.1 (fn [] (error r i false)))
       (Thread/sleep 1)
       (is (thrown? Exception @r)))))
 
