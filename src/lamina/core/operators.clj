@@ -429,10 +429,11 @@
                 (loop [msgs []]
                   (if (.isEmpty q)
                     msgs
-                    (recur (conj msgs (.remove q))))))
+                    (let [msg (.remove q)]
+                      (recur (conj msgs (if (identical? ::nil msg) nil msg)))))))
         ch* (mimic ch)]
     (bridge-join ch (str "partition-every " period)
-      #(.add q %)
+      #(.add q (if (nil? %) ::nil %))
       ch*)
     (siphon (periodically period drain) ch*)
     ch*))
