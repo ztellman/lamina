@@ -35,6 +35,30 @@
        ~default-response)
      (do ~@body)))
 
+(defn retry-exception? [x]
+  (= "clojure.lang.LockingTransaction$RetryEx" (.getName ^Class (class x))))
+
+(defmacro try*
+  "A variant of try that is fully transparent to transaction retry exceptions"
+  [& body+catch]
+  (let [body (take-while
+               #(or (not (sequential? %)) (not (= 'catch (first %))))
+               body+catch)
+        catch (drop (count body) body+catch)
+        ignore-retry (fn [x]
+                       (when x
+                         (let [ex (nth x 2)]
+                           `(~@(take 3 x)
+                             (if (lamina.core.utils/retry-exception? ~ex)
+                               (throw ~ex)
+                               (do ~@(drop 3 x)))))))
+        class->clause (-> (zipmap (map second catch) catch)
+                        (update-in [Throwable] ignore-retry)
+                        (update-in [Error] ignore-retry))]
+    `(try
+       ~@body
+       ~@(->> class->clause vals (remove nil?)))))
+
 ;;;
 
 (defn predicate-operator [predicate]

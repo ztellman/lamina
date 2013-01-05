@@ -148,39 +148,33 @@
 
 ;;;
 
-(defn bridge-siphon [src edge-description node-description callback dsts]
+(defn bridge [src dsts callback
+              {:keys [edge-description
+                      node-description
+                      upstream?
+                      downstream?]
+               :or {upstream? true
+                    downstream? true}}]
+  
+  (assert (or node-description edge-description))
+  
   (let [downstream (to-array (map #(edge nil %) dsts))
         n (BridgePropagator. node-description
             (fn [x]
-              (try
+              (try*
                 (callback x)
-                (catch Exception e
-                  (log/error e (str "error in " (or node-description edge-description)))
-                  (error src e false))))
-            downstream)
-        upstream (edge edge-description n)
-        dsts (filter n/node? dsts)]
-    (n/link src n upstream
-      nil
-      (fn [_]
-        (doseq [dst dsts]
-          (n/on-state-changed dst nil (n/upstream-callback src n false)))))))
-
-(defn bridge-join [src edge-description node-description callback dsts]
-  (let [downstream (to-array (map #(edge nil %) dsts))
-        n (BridgePropagator. node-description
-            (fn [x]
-              (try
-                (callback x)
-                (catch Exception e
+                (catch Throwable e
                   (log/error e (str "error in " (or node-description edge-description)))
                   (error src e false))))
             downstream)
         upstream (edge edge-description n)]
+    
     (n/link src n upstream
       nil
       (fn [_]
-        (n/on-state-changed src nil (n/downstream-callback src n))
-        (doseq [dst dsts]
-          (n/on-state-changed dst nil (n/upstream-callback src n true)))))))
+        (when downstream?
+          (n/on-state-changed src nil (n/downstream-callback src n)))
+        (when upstream?
+          (doseq [dst dsts]
+            (n/on-state-changed dst nil (n/upstream-callback src n true))))))))
 

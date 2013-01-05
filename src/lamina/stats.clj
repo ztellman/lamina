@@ -35,7 +35,7 @@
     ch]
      (let [ch* (channel)
            cnt (AtomicLong. 0)]
-       (bridge-join ch "sum" #(.addAndGet cnt (long %)) ch*)
+       (bridge-join ch ch* "sum" #(.addAndGet cnt (long %)))
        (siphon (periodically period #(.getAndSet cnt 0)) ch*)
        ch*)))
 
@@ -65,7 +65,7 @@
     ch]
      (let [avg (avg/moving-average period window)
            ch* (channel)]
-       (bridge-join ch "moving-average" #(update avg (long %)) ch*)
+       (bridge-join ch ch* "moving-average" #(update avg (long %)))
        (siphon
          (periodically period #(deref avg))
          ch*)
@@ -95,7 +95,7 @@
      (let [sample (ExponentiallyDecayingSample. 1024 0.015)
            ch* (channel)
            scaled-quantiles (map #(/ % 100) quantiles)]
-       (bridge-join ch "moving-quantiles" #(.update sample (long %)) ch*)
+       (bridge-join ch ch* "moving-quantiles" #(.update sample (long %)))
        (siphon
          (periodically period
            (fn []
@@ -116,7 +116,7 @@
     ch]
      (let [vr (atom (var/create-variance))
            ch* (channel)]
-       (bridge-join ch "variance" #(swap! vr update (long %)) ch*)
+       (bridge-join ch ch* "variance" #(swap! vr update (long %)))
        (siphon
          (periodically period #(var/variance @vr))
          ch*)
@@ -168,13 +168,12 @@
        
        (on-drained ch #(close predicates))
 
-       (bridge-join ch "outliers"
+       (bridge-join ch ch* "outliers"
          (fn [msg]
            (when-let [val (facet msg)]
              (update avg val)
              (swap! vr update val)
              (when-let [f @f]
                (when (f val)
-                 (enqueue ch* msg)))))
-         ch*)
+                 (enqueue ch* msg))))))
        ch*)))

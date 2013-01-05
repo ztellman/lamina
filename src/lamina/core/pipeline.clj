@@ -295,7 +295,7 @@
                       (fn [ex] `(catch ~ex ex# (throw ex#)))
                       (distinct flow-exceptions))
                   (catch Error ex#
-                    (if-not (= "clojure.lang.LockingTransaction$RetryEx" (.getName ^Class (class ex#)))
+                    (if-not (lamina.core.utils/retry-exception? ex#)
                       (error this## result## initial-val## ex#)
                       (throw ex#)))
                   (catch Throwable ex#

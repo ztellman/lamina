@@ -10,5 +10,7 @@
   (:use [potemkin])
   (:require [lamina.core.channel :as ch])) 
 
+(import-fn ch/connect)
+(import-fn ch/bridge)
 (import-fn ch/bridge-join)
 (import-fn ch/bridge-siphon)

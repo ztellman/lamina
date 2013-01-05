@@ -926,45 +926,48 @@
       (::drained ::closed ::error) (cancel dst callback)
       nil)))
 
+(defn connect
+  ([src dst upstream? downstream?]
+     (connect src dst upstream? downstream? nil nil))
+  ([src dst upstream? downstream? pre post]
+     (let [^Edge dst (if (edge? dst)
+                       dst
+                       (edge "connect" dst))]
+       (link src (.next dst) dst
+         pre
+         (fn [success?]
+           
+           (when (and
+                   upstream?
+                   (not (sneaky-edge? dst))
+                   (node? (.next dst)))
+
+             (on-state-changed (.next dst) nil
+               (upstream-callback src (.next dst) true)))
+           
+           (when downstream?
+             (on-state-changed src nil
+               (downstream-callback src (.next dst))))
+           
+           (when post
+             (post success?)))))))
+
 (defn siphon
   ([src dst]
      (siphon src dst nil nil))
   ([src dst pre post]
-     (let [^Edge dst (if (edge? dst)
-                       dst
-                       (edge "siphon" dst))]
-       (link src (.next dst) dst
-         pre
-         (fn [success?]
-           (when (and success? (node? (.next dst)))
-
-             (let [callback-name (Object.)]
-
-               ;; when the destination closes, make sure that backpropagates
-               (when-not (sneaky-edge? dst)
-                 (on-state-changed (.next dst) callback-name (upstream-callback src (.next dst) false)))
-
-               ;; if the source closes, make sure there's no traces left on the destination
-               (on-state-changed src nil (siphon-cleanup-callback callback-name (.next dst)))))
-           
-           (when post
-             (post success?)))))))
+     (connect src
+       (if (edge? dst)
+         dst
+         (edge "siphon" dst))
+       true false pre post)))
 
 (defn join
   ([src dst]
      (join src dst nil nil))
   ([src dst pre post]
-     (let [^Edge dst (if (edge? dst)
-                       dst
-                       (edge "join" dst))]
-       (link src (.next dst) dst
-         pre
-         (fn [success?]
-
-           (when (and (not (sneaky-edge? dst)) (node? (.next dst)))
-             (on-state-changed (.next dst) nil (upstream-callback src (.next dst) true)))
-
-           (on-state-changed src nil (downstream-callback src (.next dst)))
-
-           (when post
-             (post success?)))))))
+     (connect src
+       (if (edge? dst)
+         dst
+         (edge "join" dst))
+       true true pre post)))

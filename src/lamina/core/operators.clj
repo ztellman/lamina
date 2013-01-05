@@ -367,14 +367,13 @@
    (concat* (channel [1 2] [2 3])) => [1 2 3 4]"
   [ch]
   (let [ch* (mimic ch)]
-    (bridge-join ch "concat*"
+    (bridge-join ch ch* "concat*"
       (fn [s]
         (when-not (empty? s)
           (let [val (enqueue ch* (first s))]
             (doseq [msg (rest s)]
               (enqueue ch* msg))
-            val)))
-      ch*)
+            val))))
     ch*))
 
 (defn mapcat*
@@ -412,9 +411,8 @@
   [period ch]
   (let [val (atom ::none)
         ch* (mimic ch)]
-    (bridge-join ch (str "sample-every " period)
-      #(reset! val %)
-      ch*)
+    (bridge-join ch ch* (str "sample-every " period)
+      #(reset! val %))
     (siphon
       (->> #(deref val) (periodically period) (remove* #(= ::none %)))
       ch*)
@@ -432,9 +430,8 @@
                     (let [msg (.remove q)]
                       (recur (conj msgs (if (identical? ::nil msg) nil msg)))))))
         ch* (mimic ch)]
-    (bridge-join ch (str "partition-every " period)
-      #(.add q (if (nil? %) ::nil %))
-      ch*)
+    (bridge-join ch ch* (str "partition-every " period)
+      #(.add q (if (nil? %) ::nil %)))
     (siphon (periodically period drain) ch*)
     ch*))
 
@@ -461,10 +458,10 @@
         ch* (channel* :description "combine-latest")]
 
     (doseq [[idx ch] (map vector (range cnt) channels)]
-      (bridge-join ch ""
+      (bridge-join ch ch* ""
         (fn [msg]
           (.set vals idx msg)
-
+          
           (if-not (and @bitset (swap! bitset unset-bit idx))
 
             :lamina/incomplete
@@ -477,12 +474,11 @@
               (dotimes [j (- cnt idx)]
                 (let [i (+ j idx)]
                   (aset ary i (.get vals i))))
-
+              
               ;; pass along updated evaluation
               (try
                 (enqueue ch* (apply f ary))
                 (catch Exception e
-                  (error ch* e))))))
-        ch*))
+                  (error ch* e))))))))
 
     ch*))

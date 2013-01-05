@@ -75,11 +75,10 @@
       #(when (zero? @pending)
          (close emitter)))
     
-    (bridge-siphon receiver name
+    (bridge-siphon receiver emitter name
       (fn [msg]
         (swap! pending inc)
-        (callback msg))
-      emitter)
+        (callback msg)))
     
     (splice emitter receiver)))
 

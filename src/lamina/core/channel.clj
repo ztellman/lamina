@@ -336,27 +336,40 @@
   [channel]
   (split channel "tap" true))
 
+(defn connect
+  "something goes here"
+  [src dst upstream? downstream?]
+  (g/connect (emitter-node src) (receiver-node dst) upstream? downstream?))
+
 (defn siphon [src dst]
   (g/siphon (emitter-node src) (receiver-node dst)))
 
 (defn join [src dst]
   (g/join (emitter-node src) (receiver-node dst)))
 
-(defn bridge-join
+(defn bridge
   "something goes here"
-  [src description callback & dsts]
-  (g/bridge-join (emitter-node src) nil description callback
+  [src dsts callback
+   {:keys [description upstream? downstream?]
+    :or {upstream? true, downstream? true}
+    :as options}]
+  (g/bridge
+    (emitter-node src)
     (if (empty? dsts)
       [(g/terminal-propagator nil)]
-      (map receiver-node dsts))))
+      (map receiver-node dsts))
+    callback
+    (assoc options :node-description description)))
+
+(defn bridge-join
+  "something goes here"
+  [src dst description callback]
+  (bridge src [dst] callback {:description description}))
 
 (defn bridge-siphon
   "something goes here"
-  [src description callback & dsts]
-  (g/bridge-siphon (emitter-node src) nil description callback
-    (if (empty? dsts)
-      [(g/terminal-propagator nil)]
-      (map receiver-node dsts))))
+  [src dst description callback]
+  (bridge src [dst] callback {:description description, :downstream? false}))
 
 (defn map*
   "A dual to map.
@@ -417,7 +430,7 @@
   (let [ch* (mimic ch)
         lock (l/lock)
         aggregator (atom (ConcurrentHashMap.))]
-    (bridge-join ch "aggregate"
+    (bridge-join ch ch* "aggregate"
       (fn [msg]
         (let [id (facet msg)
               id* (if (nil? id)
@@ -435,8 +448,7 @@
                       (let [v (m ::nil)]
                         (-> m (dissoc ::nil) (assoc nil v)))
                       m)]
-              (enqueue ch* m)))))
-      ch*)
+              (enqueue ch* m))))))
     ch*))
 
 (defn distribute-aggregate

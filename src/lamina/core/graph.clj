@@ -65,11 +65,11 @@
 (import-macro n/node*)
 (import-fn n/node?)
 
+(import-fn n/connect)
 (import-fn n/siphon)
 (import-fn n/join)
 
-(import-fn p/bridge-siphon)
-(import-fn p/bridge-join)
+(import-fn p/bridge)
 (import-fn p/terminal-propagator)
 (import-fn p/callback-propagator)
 (import-fn p/distributing-propagator)
