@@ -9,7 +9,7 @@
 (ns lamina.cache
   (:use
     [potemkin :only (defprotocol+)]
-    [lamina.core.channel :only (on-closed on-error close)])
+    [lamina.core.channel :only (on-closed on-error close siphon)])
   (:require
     [clojure.tools.logging :as log])
   (:import
@@ -56,3 +56,103 @@
       (clear [this]
         (doseq [k (ids this)]
           (release this k))))))
+
+;;;
+
+(defprotocol+ TopicChannelCache
+  (id->topic [_ id]))
+
+(defn topic-channel-cache
+  "something goes here"
+  [{:keys [generator
+           topic->id
+           on-subscribe
+           on-unsubscribe]
+    :or {topic->id identity}}]
+  (let [active-subscriptions (atom {})
+        cache (channel-cache generator)]
+
+    (reify
+
+      TopicChannelCache
+
+      ChannelCache
+
+      (get-or-create [_ topic callback]
+        (get-or-create cache topic
+          (fn [ch]
+            (let [id (topic->id topic)]
+              
+              (swap! active-subscriptions
+                assoc id topic)
+              
+              (when on-subscribe
+                (on-subscribe topic id))
+
+              ;; hook up unsubscription
+              (on-closed ch 
+                (fn []
+                  (when on-unsubscribe
+                    (on-unsubscribe id))
+                  (swap! active-subscriptions
+                    dissoc id)))
+
+              (when callback
+                (callback))))))
+
+      (release [_ topic]
+        (release cache topic))
+
+      (clear [_]
+        (clear cache))
+
+      (ids [_]
+        (keys @active-subscriptions))
+
+      (id->topic [_ id]
+        (@active-subscriptions id)))))
+
+(defn dependent-topic-channel-cache
+  "Like a topic-channel-cache, but allows topics to be decomposed into
+   a descriptor containing {:topic, :transform, :cache}, which means topics
+   can be defined in terms of another topic."
+  [{:keys [generator
+           topic->id
+           on-subscribe
+           on-unsubscribe
+           cache+topic->topic-descriptor]
+    :or {topic->id identity}
+    :as options}]
+
+  (let [cache (topic-channel-cache options)]
+
+    (reify
+
+      TopicChannelCache
+      ChannelCache
+      
+      (get-or-create [this topic callback]
+        (let [created? (atom false)
+              topic-channel (get-or-create cache topic #(reset! created? true))]
+
+          (when @created?
+
+            (when-let [{:keys [topic transform cache]} (cache+topic->topic-descriptor this topic)]
+              (let [dependent-channel (get-or-create cache topic nil)]
+                (siphon (transform dependent-channel) topic-channel)))
+
+            (when callback (callback)))
+
+          topic-channel))
+
+      (release [_ topic]
+        (release cache topic))
+
+      (clear [_]
+        (clear cache))
+
+      (ids [_]
+        (ids cache))
+
+      (id->topic [_ id]
+        (id->topic cache id)))))
