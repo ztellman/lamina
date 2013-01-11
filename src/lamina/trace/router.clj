@@ -8,8 +8,11 @@
 
 (ns lamina.trace.router
   (:use
-    [clojure.walk :only (postwalk)])
+    [lamina.core]
+    [clojure.walk :only (postwalk)]
+    [lamina.trace.probe :only (select-probes)])
   (:require
+    [lamina.cache :as cache]
     [lamina.trace.router
      [core :as c]
      [parse :as p]
@@ -25,8 +28,64 @@
         x))
     x))
 
+(defn parse-descriptor [x]
+  (if (string? x)
+    (stringify-keys (p/parse-stream x))
+    x))
+
 (defn ? [transform-descriptor ch]
-  (let [transform-descriptor (if (string? transform-descriptor)
-                               (p/parse-stream (str "." transform-descriptor))
-                               transform-descriptor)]
-    (c/transform-trace-stream (stringify-keys transform-descriptor) ch)))
+  (c/transform-trace-stream (parse-descriptor (str "." transform-descriptor)) ch))
+
+(defn trace-router
+  [{:keys [generator
+           topic->id
+           on-subscribe
+           on-unsubscribe]
+    :or {topic->id identity}
+    :as options}]
+
+  (let [bridges (cache/channel-cache (fn [_] (channel* :description "bridge")))]
+
+    (cache/dependent-topic-channel-cache
+      (assoc options
+        :generator
+        #(channel* :description %)
+        
+        :on-subscribe
+        (fn [this topic id]
+
+          (let [{:strs [name operators]} topic]
+
+            ;; can it escape the router?
+            (when (and (not name) (empty? operators))
+              (siphon
+                (generator topic)
+                (cache/get-or-create bridges topic nil)
+                (cache/get-or-create this topic nil))))
+
+          (when on-subscribe
+            (on-subscribe this topic id)))
+
+        :on-unsubscribe
+        (fn [this topic id]
+
+          ;; todo: this will create and immediately close a lot of channels, potentially
+          (close (cache/get-or-create bridges topic nil))
+
+          (when on-unsubscribe
+            (on-unsubscribe this topic id)))
+        
+        :cache+topic->topic-descriptor
+        (fn [this {:strs [operators name] :as topic}]
+
+          ;; is it a chain of operators?
+          (when (and (not name) (not (empty? operators)))
+            {:cache this
+             :topic (update-in topic ["operators"] butlast)
+             :transform #(c/transform-trace-stream (update-in topic ["operators"] (partial take-last 1)) %)}))))))
+
+(def local-router
+  (trace-router
+    {:generator (fn [{:strs [pattern]}]
+                  (select-probes pattern))}))
+

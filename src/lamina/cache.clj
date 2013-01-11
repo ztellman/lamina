@@ -78,7 +78,7 @@
 
       ChannelCache
 
-      (get-or-create [_ topic callback]
+      (get-or-create [this topic callback]
         (get-or-create cache topic
           (fn [ch]
             (let [id (topic->id topic)]
@@ -87,18 +87,18 @@
                 assoc id topic)
               
               (when on-subscribe
-                (on-subscribe topic id))
+                (on-subscribe this topic id))
 
               ;; hook up unsubscription
               (on-closed ch 
                 (fn []
                   (when on-unsubscribe
-                    (on-unsubscribe id))
+                    (on-unsubscribe this topic id))
                   (swap! active-subscriptions
                     dissoc id)))
 
               (when callback
-                (callback))))))
+                (callback ch))))))
 
       (release [_ topic]
         (release cache topic))
@@ -133,7 +133,7 @@
       
       (get-or-create [this topic callback]
         (let [created? (atom false)
-              topic-channel (get-or-create cache topic #(reset! created? true))]
+              topic-channel (get-or-create cache topic (fn [_] (reset! created? true)))]
 
           (when @created?
 
@@ -141,7 +141,7 @@
               (let [dependent-channel (get-or-create cache topic nil)]
                 (siphon (transform dependent-channel) topic-channel)))
 
-            (when callback (callback)))
+            (when callback (callback topic-channel)))
 
           topic-channel))
 
