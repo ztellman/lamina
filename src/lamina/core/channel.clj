@@ -339,13 +339,16 @@
 (defn connect
   "something goes here"
   [src dst upstream? downstream?]
-  (g/connect (emitter-node src) (receiver-node dst) upstream? downstream?))
+  (g/connect (emitter-node src) (receiver-node dst) upstream? downstream?)
+  dst)
 
 (defn siphon [src dst]
-  (g/siphon (emitter-node src) (receiver-node dst)))
+  (g/siphon (emitter-node src) (receiver-node dst))
+  dst)
 
 (defn join [src dst]
-  (g/join (emitter-node src) (receiver-node dst)))
+  (g/join (emitter-node src) (receiver-node dst))
+  dst)
 
 (defn bridge
   "something goes here"

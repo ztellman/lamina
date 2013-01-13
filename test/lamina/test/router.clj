@@ -69,7 +69,7 @@
         (close-all sum sum* filtered-sum* filtered-sum** filtered-sum*** avg rate sum-avg lookup)))))
 
 (defn run-group-by-test [subscribe-fn enqueue-fn sleep-period]
-  (let [foo-grouping   (subscribe-fn "group-by(foo).partition-every(1000)")
+  (let [foo-grouping   (subscribe-fn "group-by(foo)")
         foo-rate       (subscribe-fn "group-by(foo).rate()")
         bar-rate       (subscribe-fn "group-by(facet: bar).rate()")
         bar-rate*      (subscribe-fn "select(foo, bar).group-by(bar).rate()")
@@ -110,10 +110,7 @@
     (println)))
 
 (deftest test-local-router
-  (let [sub #(let [ch (get-or-create local-router (parse-descriptor (str "abc." %)) nil)
-                   ch* (channel)]
-               (siphon ch ch*)
-               ch*)
+  (let [sub #(subscribe local-router (str "abc." %))
         enq #(trace :abc %)]
     (run-basic-operator-test sub enq 0)
     (run-group-by-test sub enq 0)

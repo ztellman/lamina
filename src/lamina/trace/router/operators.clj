@@ -118,14 +118,18 @@
   (let [expiration (get options "expiration" (* 1000 60))
         facet (or
                 (get options "facet")
-                (get options "0"))]
+                (get options "0"))
+        periodic? (r/periodic-chain? operators)]
     (assert facet)
     (distribute-aggregate
       (getter facet)
       (fn [k ch]
-        (->> ch
-          (close-on-idle expiration)
-          (r/transform-trace-stream {"operators" operators})))
+        (let [ch (->> ch
+                   (close-on-idle expiration)
+                   (r/transform-trace-stream {"operators" operators}))]
+          (if-not periodic?
+            (partition-every 1000 ch)
+            ch)))
       ch)))
 
 (defn merge-group-by [{:strs [options operators]} ch]
