@@ -102,15 +102,10 @@
 
 (defn operator-seq [ops]
   (mapcat
-    (fn [{:strs [operators aggregate pre-aggregate] :as op}]
-      (concat
-        (when aggregate
-          [aggregate])
-        (if (group-by? op)
-          (cons op (operator-seq operators))
-          [op])
-        (when pre-aggregate
-          [pre-aggregate])))
+    (fn [{:strs [operators] :as op}]
+      (if (group-by? op)
+        (cons op (operator-seq operators))
+        [op]))
     ops))
 
 (defn last-operation [ops]
@@ -153,7 +148,7 @@
               (concat
                 acc
                 (when (pre-aggregate? (operator name))
-                  [{"pre-aggregate" op}])))))))))
+                  [(assoc op "stage" "pre-aggregate")])))))))))
 
 (defn non-distributable-chain
   "Operators which must be performed at the root of the topology."
@@ -169,7 +164,9 @@
               (if (= operators operators*)
                 (recur (rest ops))
                 (list*
-                  {"aggregate" (assoc op "operators" operators*)}
+                  (assoc op
+                    "stage" "aggregate"
+                    "operators" operators*)
                   (rest ops))))
               
             (if (or
@@ -178,7 +175,7 @@
               (recur (rest ops))
               (concat
                 (when (operator name)
-                  [{"aggregate" op}])
+                  [(assoc op "stage" "aggregate")])
                 (rest ops)))))))))
 
 (defn periodic-chain?
@@ -193,22 +190,20 @@
     boolean))
 
 (defn transform-trace-stream
-  ([desc ch]
-     (transform-trace-stream transform desc ch))
-  ([f {:strs [name operators] :as desc} ch]
-     (let [ch (if-let [agg-desc (desc "aggregate")]
-                (transform-trace-stream aggregate agg-desc ch)
-                ch)
-           ch (cond
-                name
-                (f (operator name) desc ch)
+  ([{:strs [name operators stage]
+     :or {stage "transform"}
+     :as desc}
+    ch]
+     (let [f (case (keyword stage)
+               :pre-aggregate pre-aggregate
+               :aggregate aggregate
+               :transform transform)]
+       (cond
+         name
+         (f (operator name) desc ch)
+         
+         (not (empty? operators))
+         (reduce #(transform-trace-stream %2 %1) ch operators)
 
-                (not (empty? operators))
-                (reduce #(transform-trace-stream %2 %1) ch operators)
-
-                :else
-                ch)
-           ch (if-let [pre-agg-desc (desc "pre-aggregate")]
-                (transform-trace-stream pre-aggregate pre-agg-desc ch)
-                ch)]
-       ch)))
+         :else
+         ch))))

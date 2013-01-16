@@ -38,7 +38,7 @@
         filtered-sum*    (subscribe-fn "where(x.y > 1).x.y.sum()")
         filtered-sum**   (subscribe-fn "x.where(y = 4).y.sum()")
         filtered-sum***  (subscribe-fn "x.y.where(_ < 4).sum()")
-        avg              (subscribe-fn "x.y.moving-average(period: 750)")
+        avg              (subscribe-fn "x.y.moving-average(period: 750)") ;; todo: randomly offset periodic operators
         rate             (subscribe-fn "rate(period: 1000)")
         sum-avg          (subscribe-fn "x.y.sum().moving-average(period: 750)")
         lookup           (subscribe-fn "x.y")]
