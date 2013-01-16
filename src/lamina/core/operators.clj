@@ -22,13 +22,113 @@
     [java.util.concurrent
      ConcurrentLinkedQueue]
     [java.util.concurrent.atomic
-     AtomicReferenceArray]
+     AtomicReferenceArray
+     AtomicLong]
     [java.math
      BigInteger])) 
 
-
-
 ;;;
+
+(defn bridge-in-order
+  "something goes here"
+  [src dst description &
+   {:keys [predicate
+           callback]
+    :or {predicate (constantly true)}}]
+  (if-let [unconsume (g/consume
+                       (emitter-node src)
+                       (g/edge
+                         (when dst description)
+                         (if dst
+                           (receiver-node dst)
+                           (g/terminal-propagator description))))]
+    (p/run-pipeline nil
+
+      {:error-handler (fn [ex] (when dst (error dst ex)))
+       :finally unconsume}
+
+      (fn [_]
+        (read-channel* src
+          :on-drained ::stop
+          :predicate predicate
+          :on-false ::stop))
+
+      (fn [msg]
+        (if (identical? ::stop msg)
+          (do
+            (when dst (close dst))
+            (p/complete nil))
+          (when callback
+            (defer-within-transaction [(callback msg)]
+              (callback msg)))))
+
+      (fn [_]
+        (if dst
+          (when-not (closed? dst)
+            (p/restart))
+          (p/restart))))
+
+    ;; something's already consuming the channel
+    (do
+      (when dst
+        (error dst :lamina/already-consumed!))
+      (r/error-result :lamina/already-consumed!))))
+
+(defn last*
+  "A dual to last."
+  [ch]
+  (let [r (r/result-channel)
+        msg (atom nil)]
+    (p/run-pipeline
+      (bridge-in-order ch nil "last*" #(reset! msg %))
+      :callback (fn [_] @msg))))
+
+(defn receive-in-order
+  "Consumes messages from the source channel, passing them to 'f' one at a time.  If
+   'f' returns a result-channel, consumption of the next message is deferred until
+   it's realized.
+
+   If an exception is thrown or the return result is realized as an error, the source
+   channel is put into an error state."
+  [ch f]
+  (bridge-in-order ch nil "receive-in-order"
+
+    :callback
+    (fn [msg]
+      (p/run-pipeline msg
+        {:error-handler (fn [ex]
+                          (log/error ex "error in receive-in-order")
+                          (p/complete nil))}
+        f))))
+
+(defn emit-in-order
+  "Returns a channel that emits messages one at a time."
+  [ch]
+  (let [ch* (mimic ch)]
+    (bridge-in-order ch ch* "emit-in-order"
+      :callback #(enqueue ch* %))
+
+    ch*))
+
+(defn take*
+  "A dual to take.
+
+   (take* 2 (channel 1 2 3)) => [1 2]"
+  [n ch]
+  (let [n   (long n)
+        ch* (mimic ch)
+        cnt (AtomicLong. 0)]
+    (bridge-in-order ch ch* (str "take* " n)
+      :callback
+      (fn [msg]
+        (try
+          (enqueue ch* msg)
+          (finally
+            (when (<= (.incrementAndGet cnt) n)
+              (close ch*))))))
+
+    ch*))
+
 
 ;; TODO: think about race conditions with closing the destination channel while a message is en-route
 ;; hand-over-hand locking in the node when ::consumed?
@@ -166,53 +266,7 @@
 
 ;;;
 
-(defn receive-in-order
-  "Consumes messages from the source channel, passing them to 'f' one at a time.  If
-   'f' returns a result-channel, consumption of the next message is deferred until
-   it's realized.
 
-   If an exception is thrown or the return result is realized as an error, the source
-   channel is put into an error state."
-  [ch f]
-  (consume ch
-    :channel nil
-    :initial-value nil
-    :reduce (fn [_ x]
-              (p/run-pipeline x
-                {:error-handler (fn [ex]
-                                  (log/error ex "error in receive-in-order")
-                                  (p/complete nil))}
-                f))
-    :description "receive-in-order"))
-
-(defn emit-in-order
-  "Returns a channel that emits messages one at a time."
-  [ch]
-  (consume ch
-    :description "emit-in-order"))
-
-(defn last*
-  "A dual to last.  Returns a result that is realized as the final message from the
-   source channel before it was closed.
-
-   (last* (closed-channel 3 2 1)) => 1"
-  [ch]
-  (consume ch
-    :channel nil
-    :initial-value nil
-    :reduce (fn [_ x] x)
-    :description "last*"))
-
-(defn take*
-  "A dual to take.
-
-   (take* 2 (channel 1 2 3)) => [1 2]"
-  [n ch]
-  (consume ch
-    :description (str "take* " n)
-    :initial-value 0
-    :reduce (fn [n _] (inc n))
-    :predicate #(< % n)))
 
 (defn take-while*
   "A dual to take-while.

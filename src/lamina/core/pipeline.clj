@@ -9,7 +9,7 @@
 (ns lamina.core.pipeline
   (:use
     [potemkin]
-    [lamina.core.utils :only (description)])
+    [lamina.core.utils :only (description try*)])
   (:require
     [lamina.trace.timer :as t]
     [lamina.core.result :as r]
@@ -31,6 +31,7 @@
 (defprotocol+ IPipeline
   (implicit? [_])
   (gen-timer [_ stage])
+  (run-finally [_])
   (run [_ result initial-value value stage])
   (error [_ result initial-value ex]))
  
@@ -65,7 +66,9 @@
                       (.value redirect))
               pipeline (if (identical? ::current (.pipeline redirect))
                          pipeline
-                         (.pipeline redirect))]
+                         (do
+                           (run-finally pipeline)
+                           (.pipeline redirect)))]
           (recur pipeline value value 0))
         val))))
 
@@ -166,13 +169,15 @@
 
      :else
      ~(if (empty? stages)
-        `(if (identical? nil result##)
-           ~(if unwrap?
-              `val##
-              `(r/success-result val##))
-           (do
-             (r/success result## val##)
-             result##))
+        `(do
+           (run-finally this##)
+           (if (identical? nil result##)
+             ~(if unwrap?
+                `val##
+                `(r/success-result val##))
+             (do
+               (r/success result## val##)
+               result##)))
         `(let [val## (~(first stages) val##)]
            ~(if (zero? remaining)
               `(recur val## (long ~(inc idx)))
@@ -199,6 +204,7 @@
     (let [[opts stages] (split-options (rest error-handler) form-meta)]
       (unify-gensyms
         `(error [this# result## initial-value# ex#]
+           (run-finally this#)
            (let [result## (or result## (r/result-channel))
                  p# (pipeline
                       ~(merge {:error-handler `(fn [_#])} opts {:result `result##})
@@ -213,6 +219,7 @@
 
     ;; function error-handler
     `(error [this# result# initial-value# ex#]
+       (run-finally this#)
        (let [value# (~error-handler ex#)]
          (if (instance? Redirect value#)
            (handle-redirect value# result# this# initial-value#)
@@ -232,6 +239,7 @@
                 description
                 implicit?
                 unwrap?
+                finally
                 flow-exceptions]
          :or {description "pipeline"
               implicit? false
@@ -256,6 +264,13 @@
 
          (implicit? [_#]
            ~implicit?)
+
+         (run-finally [_#]
+           ~@(when finally
+               `((try*
+                   (~finally)
+                   (catch Throwable e#
+                     (log/error e# "error in finally clause"))))))
 
          ~(unify-gensyms
             `(gen-timer [_# stage##]
@@ -303,9 +318,10 @@
        
         ~(if error-handler
            (complex-error-handler error-handler (meta &form))
-           `(error [_# result# _# ex#]
+           `(error [this# result# _# ex#]
               (when-not ~(contains? options :error-handler)
                 (log/error ex# (str "Unhandled exception in pipeline at " ~location)))
+              (run-finally this#)
               (if result#
                 (r/error result# ex#)
                 (r/error-result ex#))))

@@ -111,6 +111,19 @@
                                 (fn [_] (complete 1)))}
               boom))))
 
+(deftest test-finally
+  (let [latch (atom false)]
+    (is (= 1 @(run-pipeline 0
+                {:finally #(reset! latch true)}
+                inc)))
+    (is (= true @latch)))
+  (let [latch (atom false)]
+    (is (thrown? Exception @(run-pipeline nil
+                              {:error-handler (fn [_])
+                               :finally #(reset! latch true)}
+                              boom)))
+    (is (= true @latch))))
+
 ;;;
 
 (deftest ^:benchmark benchmark-pipelines
