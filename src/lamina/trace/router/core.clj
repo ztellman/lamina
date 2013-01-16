@@ -17,7 +17,7 @@
 
 ;;;
 
-(def ^ConcurrentHashMap operators (ConcurrentHashMap.))
+(defonce ^ConcurrentHashMap operators (ConcurrentHashMap.))
 
 (defn operator [name]
   (when name
@@ -85,7 +85,7 @@
                  (aggregate [_ desc# ch#]
                    (if aggregate#
                      (aggregate# desc# ch#)
-                     ch#)))]
+                     (transform# desc# ch#))))]
        
        (when-let [existing-operator# (.putIfAbsent operators ~(str name) op#)]
          (if (= ~ns-str (namespace existing-operator#))
@@ -101,13 +101,17 @@
     (= "group-by" name)))
 
 (defn operator-seq [ops]
-  (->> ops
-    (map
-      (fn [{:strs [operators] :as op}]
+  (mapcat
+    (fn [{:strs [operators aggregate pre-aggregate] :as op}]
+      (concat
+        (when aggregate
+          [aggregate])
         (if (group-by? op)
           (cons op (operator-seq operators))
-          [op])))
-    (apply concat)))
+          [op])
+        (when pre-aggregate
+          [pre-aggregate])))
+    ops))
 
 (defn last-operation [ops]
   (let [op (last ops)]
@@ -115,57 +119,67 @@
      (update-in op ["operators"] #(vector (last-operation %)))
      op)))
 
+(defn minify-maps
+  [s]
+  s
+  #_(map
+    #(->> %
+       (remove (fn [[k v]] (empty? v)))
+       (map (fn [[k v]] [k (if (map? v) (first (minify-maps [v])) v)]))
+       (into {}))
+    s))
+
 (defn distributable-chain
   "Operators which can be performed at the leaves of the topology."
   [ops]
-  (loop [acc [], ops ops]
-    (if (empty? ops)
-      acc
-      (let [{:strs [operators name] :as op} (first ops)]
-        (if (group-by? op)
-
-          ;; traverse the group-by, see if it has to terminate mid-stream
-          (let [{operators* "operators" pre-aggregate "pre-aggregate"} (distributable-chain operators)]
-            (if (= operators operators*)
+  (minify-maps
+    (loop [acc [], ops ops]
+      (if (empty? ops)
+        acc
+        (let [{:strs [operators name] :as op} (first ops)]
+          (if (group-by? op)
+            
+            ;; traverse the group-by, see if it has to terminate mid-stream
+            (let [operators* (distributable-chain operators)]
+              (if (= operators operators*) 
+                (recur (conj acc op) (rest ops))
+                (conj acc (assoc op "operators" operators*))))
+            
+            (if (or
+                  ;; we don't know what this is, maybe the endpoint does
+                  (not (operator name))
+                  (distribute? (operator name)))
               (recur (conj acc op) (rest ops))
-              {"operators" (conj acc (assoc op
-                                       "operators" operators*
-                                       "pre-aggregate" pre-aggregate))}))
-
-          (if (or
-                ;; we don't know what this is, maybe the endpoint does
-                (not (operator name))
-                (distribute? (operator name)))
-            (recur (conj acc op) (rest ops))
-            {"operators" acc
-             "pre-aggregate" (when (pre-aggregate? (operator name))
-                               op)}))))))
+              (concat
+                acc
+                (when (pre-aggregate? (operator name))
+                  [{"pre-aggregate" op}])))))))))
 
 (defn non-distributable-chain
   "Operators which must be performed at the root of the topology."
   [ops]
-  (loop [ops ops]
-    (when-not (empty? ops)
-      (let [{:strs [operators name] :as op} (first ops)]
-        (if (group-by? op)
-
-          ;; traverse the group-by, see if it has to terminate mid-stream
-          (let [{operators* "operators" aggregate "aggregate"} (non-distributable-chain operators)]
-            (if (= operators operators*)
-              (recur (rest ops))
-              (cons
-                (assoc op
-                  "operators" operators*
-                  "aggregate" aggregate)
-                (rest ops))))
+  (minify-maps
+    (loop [ops ops]
+      (when-not (empty? ops)
+        (let [{:strs [operators name] :as op} (first ops)]
+          (if (group-by? op)
               
-          (if (or
-                (not (operator name))
-                (distribute? (operator name)))
-            (recur (rest ops))
-            {"operators" (rest ops)
-             "aggregate" (when (operator name)
-                           op)}))))))
+            ;; traverse the group-by, see if it has to terminate mid-stream
+            (let [operators* (non-distributable-chain operators)]
+              (if (= operators operators*)
+                (recur (rest ops))
+                (list*
+                  {"aggregate" (assoc op "operators" operators*)}
+                  (rest ops))))
+              
+            (if (or
+                  (not (operator name))
+                  (distribute? (operator name)))
+              (recur (rest ops))
+              (concat
+                (when (operator name)
+                  [{"aggregate" op}])
+                (rest ops)))))))))
 
 (defn periodic-chain?
   "Returns true if operators emit traces periodically, rather than synchronously."
@@ -173,6 +187,7 @@
   (->> ops
     operator-seq
     (map #(get % "name"))
+    (remove nil?)
     (map operator)
     (some periodic?)
     boolean))

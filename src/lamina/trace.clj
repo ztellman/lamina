@@ -11,6 +11,7 @@
     [potemkin]
     [lamina.core.utils :only (enqueue)])
   (:require
+    [lamina.trace.router :as r]
     [lamina.trace.context :as ctx]
     [lamina.trace.instrument :as i]
     [lamina.trace.timer :as t]
@@ -71,3 +72,10 @@
         (pr-str probe) "' cannot be resolved to a static probe. "
         "This will work, but may cause performance issues. Use trace* to hide this warning.")))
   `(trace* ~probe ~@body))
+
+;;;
+
+(import-fn r/query-stream)
+(import-fn r/trace-router)
+(import-fn r/local-router)
+(import-fn r/aggregating-router)

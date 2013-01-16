@@ -34,7 +34,7 @@
     (stringify-keys (p/parse-stream x))
     x))
 
-(defn ? [transform-descriptor ch]
+(defn query-stream [transform-descriptor ch]
   (c/transform-trace-stream (parse-descriptor (str "." transform-descriptor)) ch))
 
 ;;;
@@ -102,4 +102,19 @@
   (trace-router
     {:generator (fn [{:strs [pattern]}]
                   (select-probes pattern))}))
+
+(defn aggregating-router [endpoint-router]
+  (let [router (trace-router
+                 {:generator
+                  (fn [{:strs [endpoint]}]
+                    (subscribe endpoint-router endpoint))})]
+    (reify IRouter
+      (subscribe- [_ topic args]
+        (let [{:strs [operators] :as topic} (parse-descriptor topic)
+              distributable (assoc topic
+                              "operators" (c/distributable-chain operators))
+              non-distributable (assoc topic
+                                  "endpoint" distributable
+                                  "operators" (c/non-distributable-chain operators))]
+          (subscribe router non-distributable))))))
 

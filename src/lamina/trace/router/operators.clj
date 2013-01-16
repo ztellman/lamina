@@ -8,7 +8,7 @@
 
 (ns lamina.trace.router.operators
   (:use
-    [lamina core trace])
+    [lamina core])
   (:require
     [lamina.trace.router.core :as r]
     [clojure.string :as str]
@@ -114,7 +114,7 @@
 
 ;;; group-by
 
-(defn group-by-op [{:strs [options operators]} ch]
+(defn group-by-op [{:strs [options operators] :as desc} ch]
   (let [expiration (get options "expiration" (* 1000 60))
         facet (or
                 (get options "facet")
@@ -132,16 +132,23 @@
             ch)))
       ch)))
 
-(defn merge-group-by [{:strs [options operators]} ch]
-  (let [expiration (get options "expiration" (* 1000 30))]
+(defn merge-group-by [{:strs [options operators] :as desc} ch]
+  (let [expiration (get options "expiration" (* 1000 60))
+        periodic? (r/periodic-chain? operators)]
     (->> ch
       concat*
       (distribute-aggregate first
         (fn [k ch]
-          (->> ch
-            (close-on-idle expiration)
-            (map* second)
-            (r/transform-trace-stream operators)))))))
+          (let [ch (->> ch
+                     (close-on-idle expiration)
+                     (map* second))
+                ch (if-not periodic?
+                     (concat* ch)
+                     ch)
+                ch (r/transform-trace-stream {"operators" operators} ch)]
+            (if-not periodic?
+              (partition-every 1000 ch)
+              ch)))))))
 
 (r/def-trace-operator group-by
   :periodic? true
@@ -157,18 +164,18 @@
 
 (r/def-trace-operator sum
   :periodic? true
-  :distribute? true
+  :distribute? false
   
-  (:transform :aggregate) sum-op)
+  (:transform :pre-aggregate :aggregate) sum-op)
 
 (defn rate-op [{:strs [options]} ch]
   (lamina.stats/rate (keywordize options) ch))
 
 (r/def-trace-operator rate
   :periodic? true
-  :distribute? true
+  :distribute? false
   
-  :transform rate-op
+  (:transform :pre-aggregate) rate-op
   :aggregate sum-op)
 
 (r/def-trace-operator moving-average
@@ -185,7 +192,7 @@
   :periodic? true
   :distribute? true
 
-  (:transform :aggregate)
+  :transform
   (fn [{:strs [options]} ch]
     (let [period (or
                    (get options "period")

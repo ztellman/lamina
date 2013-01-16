@@ -8,7 +8,7 @@
 
 (ns lamina.stats
   (:use
-    [lamina core api executor]
+    [lamina core api]
     [lamina.core.channel :only (mimic)]
     [lamina.stats.utils :only (update)])
   (:require
@@ -18,7 +18,8 @@
     [lamina.stats.variance :as var])
   (:import
     [java.util.concurrent.atomic
-     AtomicLong]
+     AtomicLong
+     AtomicBoolean]
     [com.yammer.metrics.stats
      ExponentiallyDecayingSample
      Snapshot]))
@@ -34,9 +35,18 @@
      :or {period 1000}}
     ch]
      (let [ch* (channel)
-           cnt (AtomicLong. 0)]
-       (bridge-join ch ch* "sum" #(.addAndGet cnt (long %)))
-       (siphon (periodically period #(.getAndSet cnt 0)) ch*)
+           cnt (AtomicLong. 0)
+           latch (AtomicBoolean. false)]
+       
+       (bridge-join ch ch* "sum"
+         (fn [n]
+
+           (.addAndGet cnt (long n))
+
+           (when (.compareAndSet latch false true)
+             (siphon
+               (periodically period #(.getAndSet cnt 0))
+               ch*))))
        ch*)))
 
 (defn rate
@@ -64,11 +74,18 @@
           window (t/minutes 5)}}
     ch]
      (let [avg (avg/moving-average period window)
-           ch* (channel)]
-       (bridge-join ch ch* "moving-average" #(update avg (long %)))
-       (siphon
-         (periodically period #(deref avg))
-         ch*)
+           ch* (channel)
+           latch (AtomicBoolean. false)]
+       
+       (bridge-join ch ch* "moving-average"
+         (fn [n]
+
+           (update avg (long n))
+
+           (when (.compareAndSet latch false true)
+             (siphon
+               (periodically period #(deref avg))
+               ch*))))
        ch*)))
 
 (defn moving-quantiles
@@ -94,16 +111,22 @@
     ch]
      (let [sample (ExponentiallyDecayingSample. 1024 0.015)
            ch* (channel)
-           scaled-quantiles (map #(/ % 100) quantiles)]
-       (bridge-join ch ch* "moving-quantiles" #(.update sample (long %)))
-       (siphon
-         (periodically period
-           (fn []
-             (let [snapshot (.getSnapshot sample)]
-               (zipmap
-                 quantiles
-                 (map #(.getValue snapshot %) scaled-quantiles)))))
-         ch*)
+           scaled-quantiles (map #(/ % 100) quantiles)
+           latch (AtomicBoolean. false)]
+       (bridge-join ch ch* "moving-quantiles"
+         (fn [n]
+           
+           (.update sample (long n))
+
+           (when (.compareAndSet latch false true)
+             (siphon
+               (periodically period
+                 (fn []
+                   (let [snapshot (.getSnapshot sample)]
+                     (zipmap
+                       quantiles
+                       (map #(.getValue snapshot %) scaled-quantiles)))))
+               ch*))))
        ch*)))
 
 (defn variance
@@ -115,11 +138,15 @@
      :or {period (t/seconds 5)}}
     ch]
      (let [vr (atom (var/create-variance))
-           ch* (channel)]
-       (bridge-join ch ch* "variance" #(swap! vr update (long %)))
-       (siphon
-         (periodically period #(var/variance @vr))
-         ch*)
+           ch* (channel)
+           latch (AtomicBoolean. false)]
+       (bridge-join ch ch* "variance"
+         (fn [n]
+           (swap! vr update (long n))
+           (when (.compareAndSet latch false true)
+             (siphon
+               (periodically period #(var/variance @vr))
+               ch*))))
        ch*)))
 
 (defn- abs [x]
