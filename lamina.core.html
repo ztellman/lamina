@@ -57,7 +57,7 @@ if the channel goes into an error state.</pre></div><div class="public" id="var-
 </pre></div><div class="public" id="var-enqueue"><h3>enqueue</h3><div class="usage"><code>(enqueue channel message)</code><code>(enqueue channel message &amp; messages)</code></div><pre class="doc">Enqueues the message or messages into the channel.
 </pre></div><div class="public" id="var-enqueue-and-close"><h3>enqueue-and-close</h3><div class="usage"><code>(enqueue-and-close ch &amp; messages)</code></div><pre class="doc">something goes here
 </pre></div><div class="public" id="var-error"><h3>error</h3><div class="usage"><code>(error channel err)</code></div><pre class="doc">Puts the channel or result-channel into an error state.
-</pre></div><div class="public" id="var-error-result"><h3>error-result</h3><div class="usage"><code>(error-result error)</code></div><pre class="doc">Returns a result already realized with an error.
+</pre></div><div class="public" id="var-error-result"><h3>error-result</h3><div class="usage"><code>(error-result error)</code><code>(error-result error listener)</code></div><pre class="doc">Returns a result already realized with an error.
 </pre></div><div class="public" id="var-expiring-result"><h3>expiring-result</h3><div class="usage"><code>(expiring-result interval)</code></div><pre class="doc">Returns a result-channel that will be realized as a 'lamina/timeout!' error if a value is not enqueued within
 'interval' milliseconds.</pre></div><div class="public" id="var-filter*"><h3>filter*</h3><div class="usage"><code>(filter* f channel)</code></div><pre class="doc">A dual to filter.
 
@@ -83,10 +83,8 @@ expands to
   (join
     (-&gt;&gt; ch (map* inc) (map* dec))
     (named-channel :foo))
-  ch)</pre></div><div class="public" id="var-last*"><h3>last*</h3><div class="usage"><code>(last* ch)</code></div><pre class="doc">A dual to last.  Returns a result that is realized as the final message from the
-source channel before it was closed.
-
-(last* (closed-channel 3 2 1)) =&gt; 1</pre></div><div class="public" id="var-lazy-seq-%3Echannel"><h3>lazy-seq-&gt;channel</h3><div class="usage"><code>(lazy-seq-&gt;channel s)</code></div><pre class="doc">Returns a channel representing the elements of the sequence.
+  ch)</pre></div><div class="public" id="var-last*"><h3>last*</h3><div class="usage"><code>(last* ch)</code></div><pre class="doc">A dual to last.
+</pre></div><div class="public" id="var-lazy-seq-%3Echannel"><h3>lazy-seq-&gt;channel</h3><div class="usage"><code>(lazy-seq-&gt;channel s)</code></div><pre class="doc">Returns a channel representing the elements of the sequence.
 </pre></div><div class="public" id="var-map*"><h3>map*</h3><div class="usage"><code>(map* f channel)</code></div><pre class="doc">A dual to map.
 
 (map* inc (channel 1 2 3)) =&gt; [2 3 4]</pre></div><div class="public" id="var-mapcat*"><h3>mapcat*</h3><div class="usage"><code>(mapcat* f ch)</code></div><pre class="doc">A dual to mapcat.
@@ -138,7 +136,7 @@ when the source channel has been drained.
 (reductions* max (channel 1 3 2)) =&gt; [1 3 3]</pre></div><div class="public" id="var-release-named-channel"><h3>release-named-channel</h3><div class="usage"><code>(release-named-channel id)</code></div><pre class="doc">something goes here
 </pre></div><div class="public" id="var-remove*"><h3>remove*</h3><div class="usage"><code>(remove* f channel)</code></div><pre class="doc">A dual to remove.
 
-(remove* even? (channel 2 3 4)) =&gt; [3]</pre></div><div class="public" id="var-result-channel"><h3>result-channel</h3><div class="usage"><code>(result-channel)</code></div><pre class="doc">Returns a result-channel, representing an unrealized value or error.
+(remove* even? (channel 2 3 4)) =&gt; [3]</pre></div><div class="public" id="var-result-channel"><h3>result-channel</h3><div class="usage"><code>(result-channel)</code><code>(result-channel listener)</code></div><pre class="doc">Returns a result-channel, representing an unrealized value or error.
 </pre></div><div class="public" id="var-run-pipeline"><h3>run-pipeline</h3><div class="usage"><code>(run-pipeline value &amp; opts+stages)</code></div><pre class="doc">something goes here
 </pre></div><div class="public" id="var-sample-every"><h3>sample-every</h3><div class="usage"><code>(sample-every period ch)</code></div><pre class="doc">Takes a source channel, and returns a channel that emits the most recent message
 from the source channel every 'period' milliseconds.</pre></div><div class="public" id="var-sink"><h3>sink</h3><div class="usage"><code>(sink callback)</code></div><pre class="doc">Creates a channel which will forward all messages to 'callback'.
@@ -174,7 +172,7 @@ message flows:
 (join-&gt;&gt; (map* inc)
   (split
     (sink-&gt;&gt; (filter* even?) log-even)
-    (sink-&gt;&gt; (filter* odd?) log-odd)))</pre></div><div class="public" id="var-success-result"><h3>success-result</h3><div class="usage"><code>(success-result value)</code></div><pre class="doc">Returns a result already realized with a value.
+    (sink-&gt;&gt; (filter* odd?) log-odd)))</pre></div><div class="public" id="var-success-result"><h3>success-result</h3><div class="usage"><code>(success-result value)</code><code>(success-result value listener)</code></div><pre class="doc">Returns a result already realized with a value.
 </pre></div><div class="public" id="var-take*"><h3>take*</h3><div class="usage"><code>(take* n ch)</code></div><pre class="doc">A dual to take.
 
 (take* 2 (channel 1 2 3)) =&gt; [1 2]</pre></div><div class="public" id="var-take-while*"><h3>take-while*</h3><div class="usage"><code>(take-while* f ch)</code></div><pre class="doc">A dual to take-while.
