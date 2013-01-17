@@ -8,7 +8,9 @@
 
 (ns lamina.core.watch
   (:use
-    [lamina.core channel utils]))
+    [lamina.core
+     channel
+     [utils :only (enqueue)]]))
 
 (defn watch-channel
   "something goes here"

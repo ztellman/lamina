@@ -29,9 +29,10 @@
 (deftype+ CallbackPropagator [callback]
   IDescribed
   (description [_] (describe-fn callback))
+  IError
+  (error [_ _ force?])
   IPropagator
   (close [_ force?])
-  (error [_ _ force?])
   (transactional [_] false)
   (downstream [_] nil)
   (propagate [_ msg _]
@@ -46,13 +47,14 @@
 (deftype+ BridgePropagator [description callback downstream]
   IDescribed
   (description [_] description)
+  IError
+  (error [_ err force?]
+    (doseq [^Edge e downstream]
+      (error (.next e) err force?)))
   IPropagator
   (close [_ force?]
     (doseq [^Edge e downstream]
       (close (.next e) force?)))
-  (error [_ err force?]
-    (doseq [^Edge e downstream]
-      (error (.next e) err force?)))
   (downstream [_] downstream)
   (propagate [_ msg _] (callback msg))
   (transactional [this]
@@ -62,9 +64,10 @@
 (deftype+ TerminalPropagator [description]
   IDescribed
   (description [_] description)
+  IError
+  (error [_ err force?])
   IPropagator
   (close [_ force?])
-  (error [_ err force?])
   (downstream [_] nil)
   (propagate [_ _ _] nil)
   (transactional [_] nil))
@@ -90,13 +93,14 @@
    ^ConcurrentHashMap downstream]
   IDescribed
   (description [_] "distributor")
+  IError
+  (error [_ err force?]
+    (doseq [n (close-and-clear lock closed? downstream)]
+      (error n err force?)))
   IPropagator
   (close [_ force?]
     (doseq [n (close-and-clear lock closed? downstream)]
       (close n force?)))
-  (error [_ err force?]
-    (doseq [n (close-and-clear lock closed? downstream)]
-      (error n err force?)))
   (transactional [_]
     (let [downstream
           (l/with-exclusive-lock

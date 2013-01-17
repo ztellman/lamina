@@ -216,6 +216,38 @@
   (try-acquire [_] (l/try-acquire lock))
   (try-acquire-exclusive [_] (l/try-acquire-exclusive lock))
 
+  IError
+  
+  (error [this err force?]
+    (r/defer-within-transaction (error this err force?)
+      (if-let [old-queue (l/with-exclusive-lock lock
+                           (let [s state]
+                             (case (.mode s)
+                               
+                               (::drained ::error)
+                               nil
+                               
+                               (when-not (and (not force?) (.permanent? s))
+                                 (let [q (.queue s)]
+                                   (set-state! this s
+                                     :mode ::error
+                                     :queue (q/error-queue err)
+                                     :error err)
+                                   (.clear edges)
+                                   (or q ::nil-queue))))))]
+        ;; signal state change
+        (do
+          (when-not (identical? ::nil-queue old-queue)
+            (q/error old-queue err))
+          (doseq [l watchers]
+            (l ::error 0 err))
+          (.clear watchers)
+          (.clear cancellations)
+          true)
+        
+        ;; state has already been permanently changed or cannot be changed
+        false)))
+
   IPropagator
 
   ;;
@@ -445,7 +477,7 @@
 
   ;;
   (close [this force?] 
-    (defer-within-transaction [(close this force?) :lamina/deferred]
+    (r/defer-within-transaction (close this force?)
       (if-let [^NodeState s
                (l/with-exclusive-lock lock
                  (let [s state]
@@ -467,40 +499,9 @@
         false)))
 
   ;;
-  (error [this err force?]
-    (defer-within-transaction [(error this err force?) :lamina/deferred]
-      (if-let [old-queue (l/with-exclusive-lock lock
-                           (let [s state]
-                             (case (.mode s)
-                               
-                               (::drained ::error)
-                               nil
-                               
-                               (when-not (and (not force?) (.permanent? s))
-                                 (let [q (.queue s)]
-                                   (set-state! this s
-                                     :mode ::error
-                                     :queue (q/error-queue err)
-                                     :error err)
-                                   (.clear edges)
-                                   (or q ::nil-queue))))))]
-        ;; signal state change
-        (do
-          (when-not (identical? ::nil-queue old-queue)
-            (q/error old-queue err))
-          (doseq [l watchers]
-            (l ::error 0 err))
-          (.clear watchers)
-          (.clear cancellations)
-          true)
-        
-        ;; state has already been permanently changed or cannot be changed
-        false)))
-
-  ;;
   (consume [this edge]
     (let [latch (AtomicBoolean. false)]
-      (defer-within-transaction [(consume this edge) #(unconsume this edge latch)]
+      (r/defer-within-transaction (consume this edge)
         (let [result
               (l/with-exclusive-lock lock
                 ;; mark that we've consumed, so that we handle out-of-order consume/unconsume
@@ -530,12 +531,12 @@
             (consume (.split state) edge)
             (when result
               (doseq [f watchers]
-                (f ::consumed 1 nil))
-              #(unconsume this edge latch)))))))
+                (f ::consumed 1 nil))))))
+      #(unconsume this edge latch)))
 
   ;;
   (unconsume [this edge latch]
-    (defer-within-transaction [(unconsume this edge latch) :lamina/deferred]
+    (r/defer-within-transaction (unconsume this edge latch)
       (let [result
             (l/with-exclusive-lock lock
               ;; if we beat the consume call, just bail out
@@ -595,7 +596,7 @@
 
   ;;
   (link [this name edge pre post]
-    (defer-within-transaction [(link this name edge pre post) :lamina/deferred]
+    (r/defer-within-transaction (link this name edge pre post)
       (if-let [^NodeState s
                (l/with-exclusive-lock lock
                  (when-not (.containsKey cancellations name)
@@ -662,7 +663,7 @@
 
   ;;
   (unlink [this edge]
-    (defer-within-transaction [(unlink this edge) :lamina/deferred]
+    (r/defer-within-transaction (unlink this edge)
       (if-let [s (l/with-exclusive-lock lock
                    (let [s state]
                      (case (.mode s)
@@ -707,7 +708,7 @@
 
   ;;
   (on-state-changed [this name callback]
-    (defer-within-transaction [(on-state-changed this name callback) :lamina/deferred]
+    (r/defer-within-transaction (on-state-changed this name callback)
       (let [callback (fn [& args]
                        (try
                          (apply callback args)
@@ -837,7 +838,7 @@
              (r/success result true)
 
              ::error
-             (r/error result err)
+             (error result err false)
           
              nil)))
        result)))
@@ -854,7 +855,7 @@
              (r/success result true)
 
              ::error
-             (r/error result err)
+             (error result err false)
           
              nil)))
        result)))
@@ -868,7 +869,7 @@
          (fn [state _ err]
            (case state
              ::error
-             (r/error result err)
+             (error result err false)
           
              nil)))
        result)))

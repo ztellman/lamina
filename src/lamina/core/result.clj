@@ -36,7 +36,6 @@
 
 (defprotocol+ IResult
   (success [_ val])
-  (error [_ err])
   (success! [_ val])
   (error! [_ err])
   (claim [_])
@@ -49,40 +48,85 @@
 
 ;;;
 
-(deftype+ SuccessResult [value]
+(declare result-channel)
+
+(defmacro defer-within-transaction [defer-expr & body]
+  `(if (lamina.core.utils/in-transaction?)
+     (let [result# (result-channel)]
+       (do
+         (send (agent nil)
+           (fn [_#]
+             (try
+               (lamina.core.result/success result# ~defer-expr)
+               (catch Exception e#
+                 (clojure.tools.logging/error e# "Error in deferred action.")
+                 (lamina.core.utils/error result# e# false)))))
+         result#))
+     (do ~@body)))
+
+;;;
+
+(deftype+ SuccessResult
+  [value
+   ^{:volatile-mutable true} metadata
+   listener]
   IEnqueue
   (enqueue [_ _]
     :lamina/already-realized!)
+
+  IError
+  (error [_ _ _]
+    :lamina/already-realized!)
+
   clojure.lang.IDeref
   (deref [_] value)
+
+  clojure.lang.IMeta
+  clojure.lang.IReference
+  (meta [_] metadata)
+  (alterMeta [_ _ _] (throw (Exception. "not implemented, use .resetMeta instead")))
+  (resetMeta [_ m] (set! metadata m))
+
   IResult
   (success [_ _]
     :lamina/already-realized!)
   (success! [_ _]
     :lamina/already-realized!)
-  (error [_ _]
-    :lamina/already-realized!)
   (error! [_ _]
     :lamina/already-realized!)
   (claim [_]
     false)
-  (success-value [_ _]
-    value)
+  (success-value [_ default-value]
+    (if listener
+      default-value
+      value))
   (error-value [_ default-value]
     default-value)
   (result [_]
     :success)
   (subscribe [_ callback]
-    ((.on-success ^ResultCallback callback) value))
+    (let [result ((.on-success ^ResultCallback callback) value)]
+      (when listener
+        (enqueue listener result))
+      result))
   (cancel-callback [_ callback]
     false)
   (toString [_]
     (str "<< " (pr-str value) " >>")))
 
-(deftype+ ErrorResult [error]
+(deftype+ ErrorResult
+  [error
+   ^{:volatile-mutable true} metadata
+   listener]
+
   IEnqueue
   (enqueue [_ _]
     :lamina/already-realized!)
+
+  IError
+  (error [_ _ _]
+    :lamina/already-realized!)
+
   clojure.lang.IDeref
   (deref [_]
     (if (instance? Throwable error)
@@ -91,12 +135,17 @@
         (or
           (codes/error-code->exception error)
           (Exception. (pr-str error))))))
+
+  clojure.lang.IMeta
+  clojure.lang.IReference
+  (meta [_] metadata)
+  (alterMeta [_ _ _] (throw (Exception. "not implemented, use .resetMeta instead")))
+  (resetMeta [_ m] (set! metadata m))
+  
   IResult
   (success [_ _]
     :lamina/already-realized!)
   (success! [_ _]
-    :lamina/already-realized!)
-  (error [_ _]
     :lamina/already-realized!)
   (error! [_ _]
     :lamina/already-realized!)
@@ -104,12 +153,17 @@
     false)
   (success-value [_ default-value]
     default-value)
-  (error-value [_ _]
-    error)
+  (error-value [_ default-value]
+    (if listener
+      default-value
+      error))
   (result [_]
     :error)
   (subscribe [_ callback]
-    ((.on-error ^ResultCallback callback) error))
+    (let [result ((.on-error ^ResultCallback callback) error)]
+      (when listener
+        (enqueue listener result))
+      result))
   (cancel-callback [_ callback]
     false)
   (toString [_]
@@ -127,6 +181,8 @@
                  (.mode state#))
          value# ~value]
      (if (and (identical? ::claim signal#) (in-transaction?))
+
+       ;; do a transactional claim
        (when (identical? ::none mode#)
          (if-let [ref# (.claim-ref state#)]
            (do
@@ -136,6 +192,8 @@
                  state# (assoc-record ^ResultState state# :claim-ref ref#)]
              (ref-set ref# true)
              state#)))
+
+       ;; all other cases
        (case mode#
          ::none
          (case signal#
@@ -166,44 +224,56 @@
 
 ;;;
 
-(defmacro compare-and-trigger [[this this-f lock state subscribers] signal f value]
-  `(defer-within-transaction [(~this-f ~this ~value) :lamina/deferred]
+(defmacro compare-and-trigger [[this this-f lock state subscribers listener] signal f value & args]
+  `(defer-within-transaction (~this-f ~this ~value ~@args)
      (let [value# ~value
+           listener# ~listener
            s# (l/with-exclusive-lock ~lock
                 (let [^ResultState s# (update-state ~state ~signal ~value)]
                   (if (keyword? s#)
                     s#
                     (set-state ~this s#))))]
-       
+         
        (if (keyword? s#)
          s#
          (let [^ResultState s# s#]
            (case (int (.subscribers s#))
-             
+               
              0
              :lamina/realized
-             
+               
              1
              (try
-               ((~f ^ResultCallback (.poll ~subscribers)) (.value s#))
+               (let [result# ((~f ^ResultCallback (.poll ~subscribers)) (.value s#))]
+                 (when listener#
+                   (enqueue listener# result#))
+                 result#)
                (catch Exception e#
                  (log/error e# "Error in result callback.")
+                 (when listener#
+                   (error listener# e# false))
                  :lamina/error!))
-
+               
              (let [value# (.value s#)
-                   result# (try
-                             ((~f ^ResultCallback (.poll ~subscribers)) value#)
-                             (catch Exception e#
-                               (log/error e# "Error in result callback.")
-                               :lamina/error!))]
-               (loop []
+                   ^{:tag "objects"} ary# (object-array (.size ~subscribers))]
+                 
+               (loop [idx# 0]
                  (when-let [^ResultCallback c# (.poll ~subscribers)]
+                     
                    (try
-                     ((~f c#) value#)
+                     (let [result# ((~f c#) value#)]
+                       (when listener#
+                         (enqueue listener# result#))
+                       (aset ary# idx# result#))
                      (catch Exception e#
+                       (when listener#
+                         (error listener# e# false))
+                       (aset ary# idx# :lamina/error!)
                        (log/error e# "Error in result callback.")))
-                   (recur)))
-               result#)))))))
+                     
+                   (recur (unchecked-inc idx#))))
+
+               (result-seq ary#))))))))
 
 (defmacro def-result-channel [params & body]
   (let [{:keys [major minor]} *clojure-version*]
@@ -221,7 +291,7 @@
                  (subscribe this#
                    (result-callback
                      #(success r# %)
-                     #(error r# %)))
+                     #(error r# % false)))
                  @r#))))
        ~@body)))
 
@@ -232,6 +302,8 @@
 (def-result-channel
   [^Lock lock
    ^{:volatile-mutable true :tag ResultState} state
+   listener
+   ^{:volatile-mutable true} metadata
    ^LinkedList subscribers]
 
   IEnqueue
@@ -239,9 +311,26 @@
   (enqueue [this msg]
     (success this msg))
 
-  clojure.lang.IDeref
+  IError
+  
+  (error [this err _]
+    (compare-and-trigger
+      [this error lock state subscribers listener]
+      ::error .on-error err nil))
 
   ;;
+
+  clojure.lang.IMeta
+  clojure.lang.IReference
+  
+  (meta [_] metadata)
+  (alterMeta [_ _ _] (throw (Exception. "not implemented, use .resetMeta instead")))
+  (resetMeta [_ m] (set! metadata m))
+
+  ;;
+
+  clojure.lang.IDeref
+
   (deref [this]
     (let [state state
           value (.value state)
@@ -268,25 +357,19 @@
   ;;
   (success [this val]
     (compare-and-trigger
-      [this success lock state subscribers]
+      [this success lock state subscribers listener]
       ::success .on-success val)) 
 
   ;;
   (success! [this val]
     (compare-and-trigger
-      [this success! lock state subscribers]
+      [this success! lock state subscribers listener]
       ::success! .on-success val))
-
-  ;;
-  (error [this err]
-    (compare-and-trigger
-      [this error lock state subscribers]
-      ::error .on-error err))
 
   ;;
   (error! [this err]
     (compare-and-trigger
-      [this error! lock state subscribers]
+      [this error! lock state subscribers listener]
       ::error! .on-error err))
 
   ;;
@@ -305,14 +388,14 @@
   ;;
   (success-value [_ default-value]
     (let [state state]
-      (if (identical? ::success (.mode state))
+      (if (and (not listener) (identical? ::success (.mode state)))
         (.value state)
         default-value)))
 
   ;;
   (error-value [_ default-value]
     (let [state state]
-      (if (identical? ::error (.mode state))
+      (if (and (not listener) (identical? ::error (.mode state)))
         (.value state)
         default-value)))
 
@@ -325,7 +408,7 @@
 
   ;;
   (subscribe [this callback]
-    (defer-within-transaction [(subscribe this callback) :lamina/deferred]
+    (defer-within-transaction (subscribe this callback)
       (let [^ResultCallback callback callback
             x (l/with-exclusive-lock lock
                 (let [s state]
@@ -338,11 +421,14 @@
                       nil))))]
         (if (identical? nil x)
           :lamina/subscribed
-          (x (.value state))))))
+          (let [result (x (.value state))]
+            (when listener
+              (enqueue listener result))
+            result)))))
 
   ;;
   (cancel-callback [this callback]
-    (defer-within-transaction [(cancel-callback this callback) :lamina/deferred]
+    (defer-within-transaction (cancel-callback this callback)
       (l/with-exclusive-lock lock
         (let [s state]
           (case (.mode s)
@@ -368,21 +454,34 @@
 
 (defn success-result
   "Returns a result already realized with a value."
-  [value]
-  (SuccessResult. value))
+  ([value]
+     (SuccessResult. value nil nil))
+  ([value listener]
+     (SuccessResult. value nil listener)))
 
 (defn error-result
   "Returns a result already realized with an error."
-  [error]
-  (ErrorResult. error))
+  ([error]
+     (ErrorResult. error nil nil))
+  ([error listener]
+     (ErrorResult. error nil listener)))
 
 (defn result-channel
   "Returns a result-channel, representing an unrealized value or error."
-  []
-  (ResultChannel.
-    (l/lock)
-    (ResultState. 0 ::none nil nil)
-    (LinkedList.)))
+  ([]
+     (ResultChannel.
+       (l/lock)
+       (ResultState. 0 ::none nil nil)
+       nil
+       nil
+       (LinkedList.)))
+  ([listener]
+     (ResultChannel.
+       (l/lock)
+       (ResultState. 0 ::none nil nil)
+       listener
+       nil
+       (LinkedList.))))
 
 (defn result-callback [on-success on-error]
   (ResultCallback. on-success on-error))
@@ -398,7 +497,7 @@
 (defn siphon-result
   "When the source result is realized, that value or error is forwarded to the destination result-channel."
   [src dst]
-  (subscribe src (result-callback #(success dst %) #(error dst %)))
+  (subscribe src (result-callback #(success dst %) #(error dst % false)))
   dst)
 
 (defn with-timeout
@@ -407,8 +506,8 @@
   [interval result]
   (let [result* (siphon-result result (result-channel))]
     (if (zero? interval)
-      (error result* :lamina/timeout!)
-      (t/delay-invoke interval #(error result* :lamina/timeout!)))
+      (error result* :lamina/timeout! false)
+      (t/delay-invoke interval #(error result* :lamina/timeout! false)))
     result*))
 
 (defn expiring-result
@@ -418,7 +517,7 @@
   (if (zero? interval)
     (error-result :lamina/timeout!)
     (let [result (result-channel)]
-      (t/delay-invoke interval #(error result :lamina/timeout!))
+      (t/delay-invoke interval #(error result :lamina/timeout! false))
       result)))
 
 (defn timed-result
@@ -479,7 +578,7 @@
                       (when (zero? (.decrementAndGet counter))
                         (success combined-result (seq ary))))
                     (fn [err]
-                      (error combined-result err))))
+                      (error combined-result err false))))
                 (recur (inc idx) (rest results))))))))))
 
 ;;;

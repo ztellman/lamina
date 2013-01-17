@@ -11,6 +11,7 @@
     [potemkin]
     [lamina.core.utils :only (description try*)])
   (:require
+    [lamina.core.utils :as u]
     [lamina.trace.timer :as t]
     [lamina.core.result :as r]
     [lamina.executor.utils :as ex]
@@ -224,7 +225,7 @@
          (if (instance? Redirect value#)
            (handle-redirect value# result# this# initial-value#)
            (if result#
-             (r/error result# ex#)
+             (u/error result# ex# false)
              (r/error-result ex#)))))))
 
 (defmacro pipeline
@@ -323,7 +324,7 @@
                 (log/error ex# (str "Unhandled exception in pipeline at " ~location)))
               (run-finally this#)
               (if result#
-                (r/error result# ex#)
+                (u/error result# ex# false)
                 (r/error-result ex#))))
 
         clojure.lang.IFn
@@ -346,7 +347,7 @@
                        result# ~result]
                    (when timeout#
                      (on-success (r/timed-result timeout#)
-                       (fn [_] (r/error result# :lamina/timeout!))))
+                       (fn [_] (u/error result# :lamina/timeout! false))))
                    (start-pipeline this## result# val##))
 
                 :else

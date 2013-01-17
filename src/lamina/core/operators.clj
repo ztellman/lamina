@@ -9,7 +9,7 @@
 (ns lamina.core.operators
   (:use
     [potemkin]
-    [lamina.core channel utils threads])
+    [lamina.core utils channel threads])
   (:require
     [lamina.core.graph :as g]
     [lamina.core.lock :as l]
@@ -33,8 +33,7 @@
   "something goes here"
   [src dst description &
    {:keys [predicate
-           callback]
-    :or {predicate (constantly true)}}]
+           callback]}]
   (if-let [unconsume (g/consume
                        (emitter-node src)
                        (g/edge
@@ -44,7 +43,9 @@
                            (g/terminal-propagator description))))]
     (p/run-pipeline nil
 
-      {:error-handler (fn [ex] (when dst (error dst ex)))
+      {:error-handler (fn [ex] (if dst
+                                 (error dst ex false)
+                                 (error src ex false)))
        :finally unconsume}
 
       (fn [_]
@@ -59,9 +60,9 @@
             (when dst (close dst))
             (p/complete nil))
           (when callback
-            (defer-within-transaction [(callback msg)]
+            (r/defer-within-transaction (callback msg)
               (callback msg)))))
-
+      
       (fn [_]
         (if dst
           (when-not (closed? dst)
@@ -71,7 +72,7 @@
     ;; something's already consuming the channel
     (do
       (when dst
-        (error dst :lamina/already-consumed!))
+        (error dst :lamina/already-consumed! false))
       (r/error-result :lamina/already-consumed!))))
 
 (defn last*
@@ -80,8 +81,9 @@
   (let [r (r/result-channel)
         msg (atom nil)]
     (p/run-pipeline
-      (bridge-in-order ch nil "last*" #(reset! msg %))
-      :callback (fn [_] @msg))))
+      (bridge-in-order ch nil "last*"
+        :callback #(reset! msg %))
+      (fn [_] @msg))))
 
 (defn receive-in-order
   "Consumes messages from the source channel, passing them to 'f' one at a time.  If
@@ -119,15 +121,91 @@
         ch* (mimic ch)
         cnt (AtomicLong. 0)]
     (bridge-in-order ch ch* (str "take* " n)
+
       :callback
       (fn [msg]
         (try
           (enqueue ch* msg)
           (finally
-            (when (<= (.incrementAndGet cnt) n)
+            (when (>= (.incrementAndGet cnt) n)
               (close ch*))))))
 
     ch*))
+
+(defn take-while*
+  "A dual to take-while.
+
+   (take-while* pos? (channel 1 2 0 4)) => [1 2]"
+  [f ch]
+  (let [ch* (mimic ch)]
+    (bridge-in-order ch ch* "take-while*"
+      :callback #(enqueue ch* %)
+      :predicate f)
+    ch*))
+
+(defn reductions*
+  "A dual to reductions.
+
+   (reductions* max (channel 1 3 2)) => [1 3 3]"
+  ([f ch]
+     (let [ch* (mimic ch)]
+       (p/run-pipeline (read-channel* ch :on-drained ::drained)
+         {:error-handler (fn [ex] (error ch* ex false))}         
+         (fn [val]
+           (if (= ::drained val)
+
+             ;; no elements, just invoke function
+             (do
+               (enqueue ch* (f))
+               (close ch*))
+
+             ;; reduce over channel
+             (do
+               (enqueue ch* val)
+               (let [val (atom val)]
+                 (bridge-in-order ch ch* "reductions*"
+                   :callback #(enqueue ch* (swap! val f %))))))))
+       ch*))
+  ([f val ch]
+     (let [ch* (mimic ch)
+           val (atom val)]
+
+       (enqueue ch* @val)
+       (bridge-in-order ch ch* "reductions*"
+         :callback #(enqueue ch* (swap! val f %)))
+
+       ch*)))
+
+(defn reduce*
+  "A dual to reduce.  Returns a result-channel that emits the final reduced value
+   when the source channel has been drained.
+
+   (reduce* max (channel 1 3 2)) => 3"
+  ([f ch]
+     (p/run-pipeline (read-channel* ch :on-drained ::drained)
+       {:error-handler (fn [_])}
+       (fn [val]
+         (if (= ::drained val)
+           (r/success-result (f))
+           (reduce* f val ch)))))
+  ([f val ch]
+     (let [val (atom val)
+           result (r/result-channel)]
+       (p/run-pipeline nil
+         {:error-handler (fn [_])
+          :result result}
+         (fn [_]
+           (bridge-in-order ch nil "reduce*"
+             :callback #(try*
+                          (swap! val f %)
+                          (catch Throwable ex
+                            (error result ex false)))))
+         (fn [_]
+           @val))
+
+       result)))
+
+
 
 
 ;; TODO: think about race conditions with closing the destination channel while a message is en-route
@@ -202,7 +280,7 @@
                    {:error-handler (fn [ex#]
                                      (log/error ex# (str "error in " ~description))
                                      (if dst##
-                                       (error dst## ex#)
+                                       (error dst## ex# false)
                                        (p/redirect (p/pipeline (constantly (r/error-result ex#))) nil)))}
                    (fn [val##]
                      ;; if we shouldn't even try to read a message, clean up
@@ -260,74 +338,13 @@
            ;; something's already attached to the source
            (if dst##
              (do
-               (error dst## :lamina/already-consumed!)
+               (error dst## :lamina/already-consumed! false)
                dst##)
              (r/error-result :lamina/already-consumed!)))))))
 
 ;;;
 
 
-
-(defn take-while*
-  "A dual to take-while.
-
-   (take-while* pos? (channel 1 2 0 4)) => [1 2]"
-  [f ch]
-  (consume ch
-    :description "take-while*"
-    :take-while f))
-
-(defn reductions*
-  "A dual to reductions.
-
-   (reductions* max (channel 1 3 2)) => [1 3 3]"
-  ([f ch]
-     (let [ch* (mimic ch)]
-       (consume ch
-         :channel ch*
-         :description "reductions*"
-         :initial-value (p/run-pipeline (read-channel* ch :on-drained ::drained)
-                          {:error-handler (fn [_])}
-                          #(let [val (if (= ::drained %)
-                                       (f)
-                                       %)]
-                             (enqueue ch* val)
-                             val))
-         :reduce f
-         :map (fn [v _] v))))
-  ([f val ch]
-     (consume ch
-       :channel (let [ch* (mimic ch)]
-                  (enqueue ch* val)
-                  ch*)
-       :description "reductions*"
-       :initial-value val
-       :reduce f
-       :map (fn [v _] v))))
-
-(defn reduce*
-  "A dual to reduce.  Returns a result-channel that emits the final reduced value
-   when the source channel has been drained.
-
-   (reduce* max (channel 1 3 2)) => 3"
-  ([f ch]
-     (consume ch
-       :channel nil
-       :description "reduce*"
-       :initial-value (p/run-pipeline (read-channel* ch :on-drained ::drained)
-                        {:error-handler (fn [_])}
-                        #(if (= ::drained %)
-                           (f)
-                           %))
-       :reduce f
-       :map (fn [v _] v)))
-  ([f val ch]
-     (consume ch
-       :channel nil
-       :description "reduce*"
-       :initial-value val
-       :reduce f
-       :map (fn [v _] v))))
 
 (defn partition-
   [n step ch final-messages]
@@ -535,6 +552,7 @@
               (try
                 (enqueue ch* (apply f ary))
                 (catch Exception e
-                  (error ch* e))))))))
+                  (error ch* e false))))))
+        ch*))
 
     ch*))
