@@ -51,7 +51,7 @@
         ex/task)
       5000)
     (catch Exception e
-      (print-all-threads)
+      ;;(print-all-threads)
       (throw e))))
 
 (defn result [f ch]
@@ -167,7 +167,7 @@
     0 1
     1 0
     5 5
-    10 9
+    ;10 9
     5 10
     ))
 

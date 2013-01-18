@@ -54,18 +54,13 @@
   `(if (lamina.core.utils/in-transaction?)
      (let [result# (result-channel)]
        (do
-         (~@(if (use-send-via?)
-              `(send-via lamina.core.utils/immediate-executor)
-              `(send))
-          (agent nil)
+         (send (agent nil)
            (fn [_#]
              (try
-               (future (lamina.core.result/success result# ~defer-expr))
-               nil
+               (lamina.core.result/success result# ~defer-expr)
                (catch Exception e#
                  (clojure.tools.logging/error e# "Error in deferred action.")
-                 (lamina.core.utils/error result# e# false)
-                 nil))))
+                 (lamina.core.utils/error result# e# false)))))
          result#))
      (do ~@body)))
 
