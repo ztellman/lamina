@@ -23,6 +23,7 @@
      ConcurrentLinkedQueue]
     [java.util.concurrent.atomic
      AtomicReferenceArray
+     AtomicReference
      AtomicLong]
     [java.math
      BigInteger])) 
@@ -33,47 +34,62 @@
   "something goes here"
   [src dst description &
    {:keys [predicate
-           callback]}]
-  (if-let [unconsume (g/consume
-                       (emitter-node src)
-                       (g/edge
-                         (when dst description)
-                         (if dst
-                           (receiver-node dst)
-                           (g/terminal-propagator description))))]
-    (p/run-pipeline nil
+           callback
+           on-complete
+           wait-on-callback?]}]
 
-      {:error-handler (fn [ex] (if dst
-                                 (error dst ex false)
-                                 (error src ex false)))
-       :finally unconsume}
+  (p/run-pipeline (g/consume
+                    (emitter-node src)
+                    (g/edge
+                      (when dst description)
+                      (if dst
+                        (receiver-node dst)
+                        (g/terminal-propagator description))))
 
-      (fn [_]
-        (read-channel* src
-          :on-drained ::stop
-          :predicate predicate
-          :on-false ::stop))
+    (fn [unconsume]
 
-      (fn [msg]
-        (if (identical? ::stop msg)
-          (do
-            (when dst (close dst))
-            (p/complete nil))
-          (when callback
-            (r/defer-within-transaction (callback msg)
-              (callback msg)))))
-      
-      (fn [_]
-        (if dst
-          (when-not (closed? dst)
-            (p/restart))
-          (p/restart))))
+      (if-not unconsume
 
-    ;; something's already consuming the channel
-    (do
-      (when dst
-        (error dst :lamina/already-consumed! false))
-      (r/error-result :lamina/already-consumed!))))
+        ;; something's already consuming the channel
+        (do
+          (when dst
+            (error dst :lamina/already-consumed! false))
+          (r/error-result :lamina/already-consumed!))
+        
+        (let [cleanup (fn cleanup []
+                        (r/defer-within-transaction (cleanup)
+                          (unconsume)
+                          (when on-complete (on-complete))
+                          (when dst (close dst))))]
+          
+          (p/run-pipeline nil
+            
+            {:error-handler (fn [ex] (if dst
+                                       (error dst ex false)
+                                       (error src ex false)))
+             :finally cleanup}
+            
+            (fn [_]
+              (read-channel* src
+                :on-drained ::stop
+                :predicate predicate
+                :on-false ::stop))
+            
+            (fn [msg]
+              (if (identical? ::stop msg)
+                (p/complete nil)
+                (when callback
+                  (let [f #(let [result (callback msg)]
+                             (when wait-on-callback?
+                               result))]
+                    (r/defer-within-transaction (f)
+                      (f))))))
+            
+            (fn [_]
+              (if dst
+                (if-not (closed? dst)
+                  (p/restart))
+                (p/restart)))))))))
 
 (defn last*
   "A dual to last."
@@ -94,7 +110,7 @@
    channel is put into an error state."
   [ch f]
   (bridge-in-order ch nil "receive-in-order"
-
+    :wait-on-callback? true
     :callback
     (fn [msg]
       (p/run-pipeline msg
@@ -106,30 +122,52 @@
 (defn emit-in-order
   "Returns a channel that emits messages one at a time."
   [ch]
-  (let [ch* (mimic ch)]
+  (let [ch* (channel)]
     (bridge-in-order ch ch* "emit-in-order"
       :callback #(enqueue ch* %))
 
     ch*))
+
+(defn take-
+  [description n ch ch*]
+  (let [n (long n)
+        cnt (AtomicLong. 0)]
+    (if (zero? n)
+
+      (close ch*)
+
+      (bridge-in-order ch ch* description
+        
+        :callback
+        (fn [msg]
+          (try
+            (enqueue ch* msg)
+            (finally
+              (when (>= (.incrementAndGet cnt) n)
+                (close ch*)))))))))
 
 (defn take*
   "A dual to take.
 
    (take* 2 (channel 1 2 3)) => [1 2]"
   [n ch]
-  (let [n   (long n)
-        ch* (mimic ch)
-        cnt (AtomicLong. 0)]
-    (bridge-in-order ch ch* (str "take* " n)
+  (let [ch* (channel)]
+    (take- "take*" n ch ch*)
+    ch*))
 
-      :callback
-      (fn [msg]
-        (try
-          (enqueue ch* msg)
-          (finally
-            (when (>= (.incrementAndGet cnt) n)
-              (close ch*))))))
+(defn drop*
+  "A dual to drop.
 
+  (drop* 2 (closed-channel 1 2 3 4) => [3 4]"
+  [n ch]
+  (let [ch* (channel)]
+    (p/run-pipeline nil
+      {:error-handler (fn [_])}
+      (fn [_]
+        (take- "drop*" n ch (grounded-channel)))
+      (fn [_]
+        (bridge-join ch ch* "drop*"
+          #(enqueue ch* %))))
     ch*))
 
 (defn take-while*
@@ -186,8 +224,13 @@
        {:error-handler (fn [_])}
        (fn [val]
          (if (= ::drained val)
+
+           ;; no elements, just invoke function
            (r/success-result (f))
+
+           ;; reduce over channel
            (reduce* f val ch)))))
+
   ([f val ch]
      (let [val (atom val)
            result (r/result-channel)]
@@ -196,170 +239,47 @@
           :result result}
          (fn [_]
            (bridge-in-order ch nil "reduce*"
-             :callback #(try*
-                          (swap! val f %)
-                          (catch Throwable ex
-                            (error result ex false)))))
+             :callback #(do (swap! val f %) nil)))
          (fn [_]
            @val))
 
        result)))
 
 
-
-
-;; TODO: think about race conditions with closing the destination channel while a message is en-route
-;; hand-over-hand locking in the node when ::consumed?
-
-(deftype+ FinalValue [val])
-
-(defmacro consume
-  "something goes here"
-  [ch & {:keys [map
-                predicate
-                initial-value
-                reduce
-                take-while
-                final-messages
-                timeout
-                description
-                channel] :as m}]
-  (let [channel? (not (and (contains? m :channel) (nil? channel)))
-        take-while? (or channel? take-while)]
-    (unify-gensyms
-      `(let [src-channel## ~ch
-             dst## ~(when channel?
-                      (or channel `(mimic src-channel##)))
-             dst-node## (when dst## (receiver-node dst##)) 
-             initial-val# ~initial-value
-
-             ;; message predicate
-             take-while## ~take-while
-             take-while## ~(if take-while
-                             `(fn [~@(when reduce `(val##)) x#]
-                                (and
-                                  (or
-                                    (nil? dst-node##)
-                                    (not (g/closed? dst-node##)))
-                                  (take-while##
-                                    ~@(when reduce `(val##))
-                                    x#)))
-                             `(fn [~'& _#]
-                                (or
-                                  (nil? dst-node##)
-                                  (not (g/closed? dst-node##)))))
-
-             ;; general predicate
-             predicate## ~predicate
-             map## ~map
-             reduce## ~reduce
-             timeout## ~timeout]
-
-         ;; if we're able to consume, take the unconsume function
-         (if-let [unconsume# (g/consume
-                               (emitter-node src-channel##)
-                               (g/edge
-                                 ~(or description "consume")
-                                 (if dst##
-                                   (receiver-node dst##)
-                                   (g/terminal-propagator nil))))]
-
-           ;; and define a more comprehensive cleanup function
-           (let [cleanup#
-                 (fn [val##]
-                   ~@(when (and channel? final-messages)
-                       `((let [msgs# (~final-messages val##)]
-                           (doseq [msg# msgs#]
-                             (enqueue dst## msg#)))))
-                   (unconsume#)
-                   (when dst## (close dst##))
-                   (FinalValue. val##))
-
-                 result#
-                 (p/run-pipeline initial-val#
-                   {:error-handler (fn [ex#]
-                                     (log/error ex# (str "error in " ~description))
-                                     (if dst##
-                                       (error dst## ex# false)
-                                       (p/redirect (p/pipeline (constantly (r/error-result ex#))) nil)))}
-                   (fn [val##]
-                     ;; if we shouldn't even try to read a message, clean up
-                     (if-not ~(if predicate
-                                `(predicate## ~@(when reduce `(val##)))
-                                true)
-                       (cleanup# val##)
-
-                       ;; if we should, call read-channel*
-                       (p/run-pipeline
-                         (read-channel* src-channel##
-                           :on-false ::close
-                           :on-timeout ::close
-                           :on-drained ::close
-                           ~@(when timeout
-                               `(:timeout (timeout##)))
-                           ~@(when take-while?
-                               `(:predicate
-                                  ~(if reduce
-                                     `(fn [msg#]
-                                        (take-while## ~@(when reduce `(val##)) msg#))
-                                     `take-while##))))
-
-                         {:error-handler (fn [_#])}
-
-                         (fn [msg##]
-                           ;; if we didn't read a message or the destination is closed, clean up
-                           (if (or (and dst## (closed? dst##))
-                                 (identical? ::close msg##))
-                             (cleanup# val##)
-
-                             ;; update the reduce value
-                             (p/run-pipeline ~(when reduce `(reduce## val## msg##))
-
-                               {:error-handler (fn [_#])}
-
-                               ;; once the value's realized, emit the next message
-                               (fn [val##]
-                                 (when dst##
-                                   (enqueue dst##
-                                     ~(if map
-                                        `(map## ~@(when reduce `(val##)) msg##)
-                                        `msg##)))
-                                 val##)))))))
-
-                   (fn [val#]
-                     ;; if this isn't a terminal message from cleanup, restart
-                     (if (instance? FinalValue val#)
-                       (.val ^FinalValue val#)
-                       (p/restart val#))))]
-             (if dst##
-               dst##
-               result#))
-
-           ;; something's already attached to the source
-           (if dst##
-             (do
-               (error dst## :lamina/already-consumed! false)
-               dst##)
-             (r/error-result :lamina/already-consumed!)))))))
-
-;;;
-
-
-
 (defn partition-
-  [n step ch final-messages]
-  (remove* nil?
-    (consume ch
-      :description "partition*"
-      :initial-value []
-      :reduce (fn [v msg]
-                (if (= n (count v))
-                  (-> (drop step v) vec (conj msg))
-                  (conj v msg)))
-      :map (fn [v _]
-             (when (= n (count v))
-               v))
-      :final-messages final-messages)))
+  [n step ch description final-messages]
+  (let [ch* (mimic ch)
+        acc (atom [])
+        result (atom (r/result-channel))]
+    (p/run-pipeline nil
+      {:error-handler (fn [ex] (error ch* ex false))}
+
+      (fn [_]
+        (bridge-in-order ch ch* description
+          :on-complete
+          (fn []
+            (doseq [msg (final-messages @acc)]
+              (enqueue ch* msg)))
+
+          :callback
+          (fn [msg]
+
+            (if-not (= n (count (swap! acc conj msg)))
+
+              ;; accumulate, and wait for the next
+              @result
+
+              ;; flush and advance
+              (let [msgs @acc]
+                (if (= n step)
+                  (reset! acc [])
+                  (swap! acc #(-> (drop step %) vec)))
+                (p/run-pipeline nil
+                  {:result @result
+                   :finally #(reset! result (r/result-channel))}
+                  (fn [_] (enqueue ch* msgs)))))))))
+
+    ch*))
 
 (defn partition*
   "A dual to partition.
@@ -368,7 +288,8 @@
   ([n ch]
      (partition* n n ch))
   ([n step ch]
-     (partition- n step ch (constantly nil))))
+     (partition- n step ch "partition*"
+       (constantly nil))))
 
 (defn partition-all*
   "A dual to partition-all.
@@ -377,10 +298,8 @@
   ([n ch]
      (partition-all* n n ch))
   ([n step ch]
-     (partition- n step ch
-       #(if (= n (count %))
-          (partition-all n step (drop step %))
-          (partition-all n step %)))))
+     (partition- n step ch "partition-all*"
+       #(partition-all n step %))))
 
 ;;;
 
@@ -447,14 +366,26 @@
             val))))
     ch*))
 
-
-
 (defn mapcat*
   "A dual to mapcat.
 
    (mapcat* reverse (channel [1 2] [3 4])) => [2 1 4 3]"
   [f ch]
   (->> ch (map* f) concat*))
+
+(defn transitions
+  "Emits messages only when they differ from the preceding message."
+  [ch]
+  (let [ch* (mimic ch)
+        r (AtomicReference. ::unmatchable)]
+    (bridge-join ch ch* "transitions"
+      (fn [msg]
+        (if (= msg (.getAndSet r msg))
+          :lamina/filtered
+          (enqueue ch* msg))))
+    ch*))
+
+;;;
 
 (defn periodically
   "Returns a channel.  Every 'period' milliseconds, 'f' is invoked with no arguments

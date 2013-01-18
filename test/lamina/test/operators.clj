@@ -51,7 +51,7 @@
         ex/task)
       5000)
     (catch Exception e
-      (print-all-threads)
+      ;;(print-all-threads)
       (throw e))))
 
 (defn result [f ch]
@@ -110,6 +110,25 @@
 
 ;;;
 
+(defn seq-transitions [s]
+  (cons
+    (first s)
+    (->> s
+      (partition 2 1)
+      (filter #(not= (first %) (second %)))
+      (map second))))
+
+(deftest test-transitions
+  (are [s]
+    (assert-equivalence
+      seq-transitions
+      transitions
+      s)
+
+    [1 2 3]
+    [1 1 1]
+    [1 2 2 3 3 2 2 1]))
+
 (deftest test-receive-in-order
   (are [total-elements]
     (assert-equivalence 
@@ -131,9 +150,24 @@
       #(take* to-take %)
       (range total-elements))
 
+    0 1
     1 0
     5 5
     10 9
+    5 10
+    ))
+
+(deftest test-drop*
+  (are [to-take total-elements]
+    (assert-equivalence 
+      #(drop to-take %)
+      #(drop* to-take %)
+      (range total-elements))
+
+    0 1
+    1 0
+    5 5
+    ;10 9
     5 10
     ))
 

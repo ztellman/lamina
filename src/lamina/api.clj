@@ -8,9 +8,19 @@
 
 (ns lamina.api
   (:use [potemkin])
-  (:require [lamina.core.channel :as ch])) 
+  (:require
+    lamina.core.channel
+    lamina.core.operators))
 
-(import-fn ch/connect)
-(import-fn ch/bridge)
-(import-fn ch/bridge-join)
-(import-fn ch/bridge-siphon)
+(import-vars
+  [lamina.core.channel
+
+   connect
+   bridge
+   bridge-join
+   bridge-siphon]
+
+  [lamina.core.operators
+
+   bridge-in-order])
+

@@ -54,7 +54,7 @@
      otherwise.")
   (consume [_ ^Edge edge]
     )
-  (unconsume [_ edge latch]
+  (unconsume [_ edge]
     )
   (split [_]
     "Splits a node so that the upstream half can be forked.")
@@ -500,72 +500,67 @@
 
   ;;
   (consume [this edge]
-    (let [latch (AtomicBoolean. false)]
-      (r/defer-within-transaction (consume this edge)
-        (let [result
-              (l/with-exclusive-lock lock
-                ;; mark that we've consumed, so that we handle out-of-order consume/unconsume
-                (when (.compareAndSet latch false true)
-                  (let [s state]
-                    (case (.mode s)
-                      ::split
-                      ::split
-
-                      ::consumed
-                      false
-
-                      (::drained ::error)
-                      true
-
-                      (if-not (= 0 (.downstream-count s))
-                        false
-                        (do
-                          (.add edges edge)
-                          (set-state! this s
-                            :mode ::consumed
-                            :downstream-count 1)
-                          (when (.transactional? s)
-                            (transactional (.next ^Edge edge)))
-                          true))))))]
-          (if (identical? ::split result)
-            (consume (.split state) edge)
-            (when result
-              (doseq [f watchers]
-                (f ::consumed 1 nil))))))
-      #(unconsume this edge latch)))
-
-  ;;
-  (unconsume [this edge latch]
-    (r/defer-within-transaction (unconsume this edge latch)
+    (r/defer-within-transaction (consume this edge)
       (let [result
             (l/with-exclusive-lock lock
-              ;; if we beat the consume call, just bail out
-              (when-not (.compareAndSet ^AtomicBoolean latch false true)
-                (let [s state]
-                  (case (.mode s)
-                    ::split
-                    ::split
+              (let [s state]
+                (case (.mode s)
+                  ::split
+                  ::split
 
-                    ::consumed
-                    (if-not (= edge (first edges))
-                      false
-                      (let [q (.queue s)]
-                        (.clear edges)
-                        (set-state! this s
-                          :mode (if (q/closed? q)
-                                  ::closed
-                                  ::open)
-                          :downstream-count 0)
-                        (q/closed? q)))
+                  ::consumed
+                  false
 
-                    false))))]
+                  (::drained ::error)
+                  true
+
+                  (if-not (= 0 (.downstream-count s))
+                    false
+                    (do
+                      (.add edges edge)
+                      (set-state! this s
+                        :mode ::consumed
+                        :downstream-count 1)
+                      (when (.transactional? s)
+                        (transactional (.next ^Edge edge)))
+                      true)))))]
         (if (identical? ::split result)
-          (unconsume (.split state) edge latch)
+          (consume (.split state) edge)
+          (when result
+            (doseq [f watchers]
+              (f ::consumed 1 nil))
+            #(unconsume this edge ))))))
+
+  ;;
+  (unconsume [this edge]
+    (r/defer-within-transaction (unconsume this edge)
+      (let [result
+            (l/with-exclusive-lock lock
+              (let [s state]
+                (case (.mode s)
+                  ::split
+                  ::split
+
+                  ::consumed
+                  (if-not (= edge (first edges))
+                    false
+                    (let [q (.queue s)]
+                      (.clear edges)
+                      (set-state! this s
+                        :mode (if (q/closed? q)
+                                ::closed
+                                ::open)
+                        :downstream-count 0)
+                      (q/closed? q)))
+
+                  false)))]
+        (if (identical? ::split result)
+          (unconsume (.split state) edge)
           (do
             (when result
               (doseq [f watchers]
                 (f ::open 0 nil)))
-            result)))))
+            (boolean result))))))
 
   ;;
   (split [this]

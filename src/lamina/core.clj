@@ -165,19 +165,21 @@
 (import-fn ch/distribute-aggregate)
 (import-fn op/combine-latest)
 
-(import-macro op/consume)
 (import-fn ch/map*)
 (import-fn ch/filter*)
 (import-fn ch/remove*)
 (import-fn op/mapcat*)
 (import-fn op/concat*)
 (import-fn op/take*)
+(import-fn op/drop*)
 (import-fn op/take-while*)
 (import-fn op/reductions*)
 (import-fn op/reduce*)
 (import-fn op/last*)
 (import-fn op/partition*)
 (import-fn op/partition-all*)
+
+(import-fn op/transitions)
 
 (import-fn op/sample-every)
 (import-fn op/partition-every)
