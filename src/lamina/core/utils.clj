@@ -11,7 +11,10 @@
     [potemkin])
   (:require
     [clojure.tools.logging :as log]
-    [clojure.string :as str]))
+    [clojure.string :as str])
+  (:import
+    [java.util.concurrent
+     Executor]))
 
 (defprotocol+ IEnqueue
   (enqueue [_ msg]))
@@ -24,6 +27,26 @@
 
 (defn in-transaction? []
   (clojure.lang.LockingTransaction/isRunning))
+
+(defn use-send-via? []
+  (let [{:keys [major minor]} *clojure-version*]
+    #_(or
+      (> major 1)
+      (>= minor 5))
+    false))
+
+(defn binding-protector-runnable [runnable] 
+  (fn []
+    (let [frame (clojure.lang.Var/getThreadBindingFrame)]
+      (try
+        (.run ^Runnable runnable)
+        (finally
+          (clojure.lang.Var/resetThreadBindingFrame frame))))))
+
+(def immediate-executor
+  (reify Executor
+    (execute [_ f]
+      (.run ^Runnable (binding-protector-runnable f)))))
 
 (defn result-seq [s]
   (with-meta (seq s) {:lamina/result-seq true}))
