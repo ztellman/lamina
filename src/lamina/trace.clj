@@ -77,5 +77,5 @@
 
 (import-fn r/query-stream)
 (import-fn r/trace-router)
-(import-fn r/local-router)
-(import-fn r/aggregating-router)
+(import-fn r/local-trace-router)
+(import-fn r/aggregating-trace-router)

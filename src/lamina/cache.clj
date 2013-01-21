@@ -9,7 +9,7 @@
 (ns lamina.cache
   (:use
     [potemkin :only (defprotocol+)]
-    [lamina.core.channel :only (on-closed on-error close siphon)])
+    [lamina.core.channel :only (channel channel* on-closed on-error close siphon)])
   (:require
     [clojure.tools.logging :as log])
   (:import
@@ -156,3 +156,57 @@
 
       (id->topic [_ id]
         (id->topic cache id)))))
+
+;;;
+
+(defprotocol+ IRouter
+  (subscribe- [_ descriptor args]))
+
+(defn subscribe [router topic & args]
+  (subscribe- router topic args))
+
+(defn router
+  [{:keys [generator
+           topic->id
+           on-subscribe
+           on-unsubscribe
+           cache+topic->topic-descriptor]
+    :or {topic->id identity
+         cache+topic->topic-descriptor (constantly nil)}
+    :as options}]
+    (let [bridges (channel-cache (fn [_] (channel* :description "bridge")))
+        cache (dependent-topic-channel-cache
+                (assoc options
+                  :generator
+                  #(channel* :description %)
+                  
+                  :on-subscribe
+                  (fn [this topic id]
+                    
+                    (let [{:strs [name operators]} topic]
+                      
+                      ;; can it escape the router?
+                      (when-not (cache+topic->topic-descriptor this topic)
+                        (let [bridge (get-or-create bridges topic nil)]
+                          (siphon (generator topic) bridge)
+                          (siphon bridge (get-or-create this topic nil)))))
+                    
+                    (when on-subscribe
+                      (on-subscribe this topic id)))
+                  
+                  :on-unsubscribe
+                  (fn [this topic id]
+                    
+                    ;; todo: this will create and immediately close a lot of channels, potentially
+                    (close (get-or-create bridges topic nil))
+                    
+                    (when on-unsubscribe
+                      (on-unsubscribe this topic id)))
+                  
+                  :cache+topic->topic-descriptor
+                  cache+topic->topic-descriptor))]
+
+    (reify IRouter
+      (subscribe- [_ topic args]
+        (let [ch (get-or-create cache topic nil)]
+          (siphon ch (channel)))))))

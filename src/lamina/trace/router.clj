@@ -39,50 +39,14 @@
 
 ;;;
 
-(defprotocol+ IRouter
-  (subscribe- [_ descriptor args]))
-
-(defn subscribe [router topic & args]
-  (subscribe- router topic args))
-
 (defn trace-router
   [{:keys [generator
            topic->id
            on-subscribe
            on-unsubscribe]
-    :or {topic->id identity}
     :as options}]
 
-  (let [bridges (cache/channel-cache (fn [_] (channel* :description "bridge")))
-        cache (cache/dependent-topic-channel-cache
-                (assoc options
-                  :generator
-                  #(channel* :description %)
-                  
-                  :on-subscribe
-                  (fn [this topic id]
-                    
-                    (let [{:strs [name operators]} topic]
-                      
-                      ;; can it escape the router?
-                      (when (and (not name) (empty? operators))
-                        (siphon
-                          (generator topic)
-                          (cache/get-or-create bridges topic nil)
-                          (cache/get-or-create this topic nil))))
-                    
-                    (when on-subscribe
-                      (on-subscribe this topic id)))
-                  
-                  :on-unsubscribe
-                  (fn [this topic id]
-                    
-                    ;; todo: this will create and immediately close a lot of channels, potentially
-                    (close (cache/get-or-create bridges topic nil))
-                    
-                    (when on-unsubscribe
-                      (on-unsubscribe this topic id)))
-                  
+  (let [options (assoc options
                   :cache+topic->topic-descriptor
                   (fn [this {:strs [operators name] :as topic}]
                     
@@ -91,24 +55,24 @@
                       {:cache this
                        :topic (update-in topic ["operators"] butlast)
                        :transform #(c/transform-trace-stream
-                                     (update-in topic ["operators"] (partial take-last 1)) %)}))))]
+                                     (update-in topic ["operators"] (partial take-last 1)) %)})))
+        router (cache/router options)]
 
-    (reify IRouter
+    (reify cache/IRouter
       (subscribe- [_ topic args]
-        (let [ch (cache/get-or-create cache (parse-descriptor topic) nil)]
-          (siphon ch (channel)))))))
+        (cache/subscribe router (parse-descriptor topic) nil)))))
 
-(def local-router
+(def local-trace-router
   (trace-router
     {:generator (fn [{:strs [pattern]}]
                   (select-probes pattern))}))
 
-(defn aggregating-router [endpoint-router]
+(defn aggregating-trace-router [endpoint-router]
   (let [router (trace-router
                  {:generator
                   (fn [{:strs [endpoint]}]
-                    (subscribe endpoint-router endpoint))})]
-    (reify IRouter
+                    (cache/subscribe endpoint-router endpoint))})]
+    (reify cache/IRouter
       (subscribe- [_ topic args]
         (let [{:strs [operators] :as topic} (parse-descriptor topic)
               distributable (assoc topic
@@ -116,5 +80,5 @@
               non-distributable (assoc topic
                                   "endpoint" distributable
                                   "operators" (c/non-distributable-chain operators))]
-          (subscribe router non-distributable))))))
+          (cache/subscribe router non-distributable))))))
 

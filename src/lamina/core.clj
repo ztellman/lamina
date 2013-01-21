@@ -164,6 +164,9 @@
 (import-fn ch/aggregate)
 (import-fn ch/distribute-aggregate)
 (import-fn op/combine-latest)
+(import-fn op/merge-channels)
+(import-fn op/zip)
+(import-fn op/zip-all)
 
 (import-fn ch/map*)
 (import-fn ch/filter*)

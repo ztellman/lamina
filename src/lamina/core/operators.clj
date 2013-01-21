@@ -19,6 +19,8 @@
   (:import
     [lamina.core.lock
      Lock]
+    [java.util
+     BitSet]
     [java.util.concurrent
      ConcurrentLinkedQueue]
     [java.util.concurrent.atomic
@@ -441,49 +443,81 @@
 
 ;;;
 
-(defn create-bitset [n]
-  (reduce
-    #(.setBit ^BigInteger %1 %2)
-    (BigInteger/valueOf 0)
-    (range n)))
+(defn create-bitset [^long n]
+  (let [bitset (BitSet. n)]
+    (dotimes [idx n]
+      (.set bitset idx))
+    bitset))
 
-(defn unset-bit [^BigInteger b idx]
-  (when b
-    (let [b (.clearBit b idx)]
-      (when-not (zero? (.bitCount b))
-        b))))
+(defn zip-all
+  "something goes here"
+  [& channels]
+  (let [cnt (count channels)
+        ^objects ary (object-array cnt)
+        ^BitSet bitset (create-bitset cnt)
+        lock (l/lock)
+        ch* (channel* :description "zip-all")]
+    
+    (doseq [[^long idx ch] (map vector (range cnt) channels)]
+      (bridge-join ch ch* ""
+        (fn [msg]
+          (if-let [ary* (l/with-exclusive-lock lock
+                          (aset ary idx msg)
+                          (when (or (.isEmpty bitset)
+                                  (do
+                                    (.set bitset idx false)
+                                    (.isEmpty bitset)))
+                            (let [ary* (object-array cnt)]
+                              (System/arraycopy ary 0 ary* 0 cnt)
+                              ary*)))]
+            (enqueue ch* (seq ary*))
+            :lamina/incomplete))))
+
+    ch*))
+
+(defn zip
+  "something goes here"
+  [& channels]
+  (let [cnt (count channels)
+        lock (l/lock)
+        ^objects ary (object-array cnt)
+        bitset (atom (create-bitset cnt))
+        result (atom (r/result-channel))
+        ch* (channel)]
+    (doseq [[^long idx ch] (map vector (range cnt) channels)]
+      (bridge-siphon ch ch* "zip"
+        (fn [msg]
+          (let [curr-result @result]
+            (if-let [ary* (l/with-exclusive-lock lock
+                            (aset ary idx msg)
+                            (let [^BitSet curr-bitset @bitset]
+                              (.set curr-bitset idx false)
+                              (when (.isEmpty curr-bitset)
+                                (reset! bitset (create-bitset cnt))
+                                (reset! result (r/result-channel))
+                                (let [ary* (object-array cnt)]
+                                  (System/arraycopy ary 0 ary* 0 cnt)
+                                  ary*))))]
+
+              (p/run-pipeline nil
+                {:error-handler (fn [_])
+                 :result curr-result}
+                (fn [_] (enqueue ch* (seq ary*))))
+
+              curr-result)))))
+    ch*))
 
 (defn combine-latest
   "something goes here"
   [f & channels]
-  (let [cnt (count channels)
-        bitset (atom (create-bitset cnt))
-        vals (AtomicReferenceArray. cnt)
-        ch* (channel* :description "combine-latest")]
+  (->> (apply zip-all channels)
+    (map* #(apply f %))))
 
-    (doseq [[idx ch] (map vector (range cnt) channels)]
-      (bridge-join ch ch* ""
-        (fn [msg]
-          (.set vals idx msg)
-          
-          (if-not (and @bitset (swap! bitset unset-bit idx))
-
-            :lamina/incomplete
-            
-            ;; copy value array into argument array
-            (let [ary (object-array cnt)]
-              (dotimes [i idx]
-                (aset ary i (.get vals i)))
-              (aset ary idx msg)
-              (dotimes [j (- cnt idx)]
-                (let [i (+ j idx)]
-                  (aset ary i (.get vals i))))
-              
-              ;; pass along updated evaluation
-              (try
-                (enqueue ch* (apply f ary))
-                (catch Exception e
-                  (error ch* e false))))))
-        ch*))
-
+(defn merge-channels
+  "something goes here"
+  [& channels]
+  (let [ch* (channel)]
+    (doseq [ch channels]
+      (siphon ch ch*))
     ch*))
+

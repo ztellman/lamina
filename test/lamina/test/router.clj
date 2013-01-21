@@ -11,7 +11,7 @@
     [clojure.test]
     [lamina.trace.router]
     [lamina.core]
-    [lamina.cache :only (get-or-create)]
+    [lamina.cache :only (get-or-create subscribe)]
     [lamina.trace :only (trace)]))
 
 (defn next-msg [ch]
@@ -62,13 +62,14 @@
         (close-all sum sum* filtered-sum* filtered-sum** filtered-sum*** avg rate sum-avg lookup)))))
 
 (defn run-group-by-test [subscribe-fn enqueue-fn]
-  (let [foo-grouping   (subscribe-fn "group-by(foo)")
-        foo-rate       (subscribe-fn "group-by(foo).rate()")
-        bar-rate       (subscribe-fn "group-by(facet: bar).rate()")
-        bar-rate*      (subscribe-fn "select(foo, bar).group-by(bar).rate()")
-        bar-rate**     (subscribe-fn "select(bar).group-by(bar).bar.rate()")
-        foo-bar-rate   (subscribe-fn "group-by(foo).select(bar).group-by(bar).rate()")
-        foo-bar-rate*  (subscribe-fn "group-by([foo bar]).rate()")
+  (let [foo-grouping       (subscribe-fn "group-by(foo)")
+        foo-rate           (subscribe-fn "group-by(foo).rate()")
+        bar-rate           (subscribe-fn "group-by(facet: bar).rate()")
+        bar-rate*          (subscribe-fn "select(foo, bar).group-by(bar).rate()")
+        bar-rate**         (subscribe-fn "select(bar).group-by(bar).bar.rate()")
+        foo-bar-rate       (subscribe-fn "group-by(foo).select(bar).group-by(bar).rate()")
+        foo-bar-rate*      (subscribe-fn "group-by([foo bar]).rate()")
+        ;; filtered-group-by  (subscribe-fn "group-by(foo).rate().where(_ > 1)")
         val (fn [foo bar] {:foo foo, :bar bar})]
     
     (try
@@ -86,7 +87,7 @@
       (is* (= {:c {:y 1}, :b {:y 1, :z 1}, :a {:x 2}}
             (next-msg foo-bar-rate)))
       (is* (= {[:a :x] 2, [:b :z] 1, [:c :y] 1, [:b :y] 1}
-            (next-msg foo-bar-rate*)))
+             (next-msg foo-bar-rate*)))
 
       (finally
         (close-all foo-grouping foo-rate bar-rate bar-rate* bar-rate** foo-bar-rate foo-bar-rate*)))))
@@ -101,14 +102,14 @@
     (println)))
 
 (deftest test-local-router
-  (let [sub #(subscribe local-router (str "abc." %))
+  (let [sub #(subscribe local-trace-router (str "abc." %))
         enq #(trace :abc %)]
     (run-basic-operator-test sub enq)
     (run-group-by-test sub enq)
     (println)))
 
 (deftest test-split-router
-  (let [router (aggregating-router local-router)
+  (let [router (aggregating-trace-router local-trace-router)
         sub #(subscribe router (str "abc." %))
         enq #(trace :abc %)]
     (run-basic-operator-test sub enq)
