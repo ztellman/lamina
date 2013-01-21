@@ -443,8 +443,8 @@
 
 ;;;
 
-(defn create-bitset [^long n]
-  (let [bitset (BitSet. n)]
+(defn create-bitset [n] ;; todo: typehint with 'long'
+  (let [bitset (BitSet. (long n))]
     (dotimes [idx n]
       (.set bitset idx))
     bitset))
@@ -458,7 +458,7 @@
         lock (l/lock)
         ch* (channel* :description "zip-all")]
     
-    (doseq [[^long idx ch] (map vector (range cnt) channels)]
+    (doseq [[idx ch] (map vector (range cnt) channels)] ;; todo: typehint with 'long'
       (bridge-join ch ch* ""
         (fn [msg]
           (if-let [ary* (l/with-exclusive-lock lock
@@ -484,7 +484,7 @@
         bitset (atom (create-bitset cnt))
         result (atom (r/result-channel))
         ch* (channel)]
-    (doseq [[^long idx ch] (map vector (range cnt) channels)]
+    (doseq [[idx ch] (map vector (range cnt) channels)] ;; todo: typehint with 'long'
       (bridge-siphon ch ch* "zip"
         (fn [msg]
           (let [curr-result @result]

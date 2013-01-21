@@ -166,6 +166,11 @@
   (subscribe- router topic args))
 
 (defn router
+  "Like a cache, except that it doesn't assume exclusive control of the generated channels.
+   Rather, bridges are built between the router and the generated channels, which are closed
+   when there are no more subscribers.
+
+   Similarly, channels returned by 'subscribe' can be closed without affecting other subscribers."
   [{:keys [generator
            topic->id
            on-subscribe
