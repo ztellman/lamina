@@ -59,6 +59,8 @@
         router (cache/router options)]
 
     (reify cache/IRouter
+      (inner-cache [_]
+        (cache/inner-cache router))
       (subscribe- [_ topic args]
         (cache/subscribe router (parse-descriptor topic) nil)))))
 
@@ -73,6 +75,8 @@
                   (fn [{:strs [endpoint]}]
                     (cache/subscribe endpoint-router endpoint))})]
     (reify cache/IRouter
+      (inner-cache [_]
+        (cache/inner-cache router))
       (subscribe- [_ topic args]
         (let [{:strs [operators] :as topic} (parse-descriptor topic)
               distributable (assoc topic

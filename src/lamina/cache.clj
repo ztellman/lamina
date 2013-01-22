@@ -160,6 +160,7 @@
 ;;;
 
 (defprotocol+ IRouter
+  (inner-cache [_])
   (subscribe- [_ descriptor args]))
 
 (defn subscribe [router topic & args]
@@ -211,7 +212,9 @@
                   :cache+topic->topic-descriptor
                   cache+topic->topic-descriptor))]
 
-    (reify IRouter
-      (subscribe- [_ topic args]
-        (let [ch (get-or-create cache topic nil)]
-          (siphon ch (channel)))))))
+      (reify IRouter
+        (inner-cache [_]
+          cache)
+        (subscribe- [_ topic args]
+          (let [ch (get-or-create cache topic nil)]
+            (siphon ch (channel)))))))

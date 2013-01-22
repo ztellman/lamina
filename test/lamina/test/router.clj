@@ -69,6 +69,7 @@
         bar-rate**         (subscribe-fn "select(bar).group-by(bar).bar.rate()")
         foo-bar-rate       (subscribe-fn "group-by(foo).select(bar).group-by(bar).rate()")
         foo-bar-rate*      (subscribe-fn "group-by([foo bar]).rate()")
+        filtered-group-by  (subscribe-fn "where(foo = a).group-by(bar).rate()")
         ;; filtered-group-by  (subscribe-fn "group-by(foo).rate().where(_ > 1)")
         val (fn [foo bar] {:foo foo, :bar bar})]
     
@@ -88,6 +89,7 @@
             (next-msg foo-bar-rate)))
       (is* (= {[:a :x] 2, [:b :z] 1, [:c :y] 1, [:b :y] 1}
              (next-msg foo-bar-rate*)))
+      (is* (= {:x 2} (next-msg filtered-group-by)))
 
       (finally
         (close-all foo-grouping foo-rate bar-rate bar-rate* bar-rate** foo-bar-rate foo-bar-rate*)))))

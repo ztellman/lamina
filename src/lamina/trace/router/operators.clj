@@ -91,15 +91,24 @@
 
 ;;; where
 
+(defn normalize-for-comparison [x]
+  (if (keyword? x)
+    (name x)
+    x))
+
 (defn comparison-filter [[a comparison b]]
   (assert (and a comparison b))
   (let [a (getter a)]
     (case comparison
-      "=" #(= (a %) b)
+      "=" #(= (normalize-for-comparison (a %)) b)
       "<" #(< (a %) b)
       ">" #(> (a %) b)
       "~=" (let [b (-> b (str/replace "*" ".*") Pattern/compile)]
-             #(boolean (re-find b (str (a %))))))))
+             #(->> (a %)
+                normalize-for-comparison
+                str
+                (re-find b)
+                boolean)))))
 
 (defn filters [filters]
   (fn [x] (->> filters (map #(% x)) (every? identity))))
