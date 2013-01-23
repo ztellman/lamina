@@ -55,14 +55,20 @@
                       {:cache this
                        :topic (update-in topic ["operators"] butlast)
                        :transform #(c/transform-trace-stream
-                                     (update-in topic ["operators"] (partial take-last 1)) %)})))
+                                     (update-in topic ["operators"] (comp list last)) %)})))
         router (cache/router options)]
 
     (reify cache/IRouter
       (inner-cache [_]
         (cache/inner-cache router))
-      (subscribe- [_ topic args]
-        (cache/subscribe router (parse-descriptor topic) nil)))))
+      (subscribe- [this topic args]
+        (let [options (apply hash-map args)]
+          (binding [c/*stream-generator* (or c/*stream-generator* this)]
+            (cache/subscribe router
+              (merge
+                (when-let [period (options :period)]
+                  {"period" period})
+                (parse-descriptor topic)))))))))
 
 (def local-trace-router
   (trace-router
@@ -77,12 +83,20 @@
     (reify cache/IRouter
       (inner-cache [_]
         (cache/inner-cache router))
-      (subscribe- [_ topic args]
-        (let [{:strs [operators] :as topic} (parse-descriptor topic)
-              distributable (assoc topic
-                              "operators" (c/distributable-chain operators))
-              non-distributable (assoc topic
-                                  "endpoint" distributable
-                                  "operators" (c/non-distributable-chain operators))]
-          (cache/subscribe router non-distributable))))))
+      (subscribe- [this topic args]
+        (let [options (apply hash-map args)
+              {:strs [operators] :as topic} (parse-descriptor topic)
+              distributable (merge
+                              (when-let [period (options :period)]
+                                {"period" period})
+                              (assoc topic
+                                "operators" (c/distributable-chain operators)))
+              non-distributable (merge
+                                  (when-let [period (options :period)]
+                                    {"period" period})
+                                  (assoc topic
+                                    "endpoint" distributable
+                                    "operators" (c/non-distributable-chain operators)))]
+          (binding [c/*stream-generator* (or c/*stream-generator* this)]
+            (cache/subscribe router non-distributable)))))))
 

@@ -88,6 +88,43 @@
   (fn [{:strs [options]} ch]
     (map* (selector options) ch)))
 
+;;; merge, zip
+
+(r/def-trace-operator merge
+  :periodic? false
+  :distribute? false
+
+  :transform
+  (fn [{:strs [options]} ch]
+    (let [options (dissoc options "period")
+          descs (vals options)]
+      (assert (every? #(contains? % "operators") descs))
+      (apply merge-channels
+        (map
+          (fn [{:strs [operators pattern] :as desc}]
+            (if pattern
+              (r/generate-stream desc)
+              (r/transform-trace-stream desc (fork ch))))
+          descs)))))
+
+(r/def-trace-operator zip
+  :periodic? false
+  :distribute? false
+
+  :transform
+  (fn [{:strs [options]} ch]
+    (let [options (dissoc options "period")
+          ks (keys options)
+          descs (vals options)]
+      (assert (every? #(contains? % "operators") descs))
+      (->> (apply zip
+             (map
+               (fn [{:strs [operators pattern] :as desc}]
+                 (if pattern
+                   (r/generate-stream desc)
+                   (r/transform-trace-stream desc (fork ch))))
+               descs))
+        (map* #(zipmap ks %))))))
 
 ;;; where
 
@@ -161,7 +198,7 @@
 
 (r/def-trace-operator group-by
   :periodic? true
-  :distribute? true
+  :distribute? false
   
   :transform group-by-op
   :aggregate merge-group-by)
@@ -204,17 +241,15 @@
   :transform
   (fn [{:strs [options]} ch]
     (let [period (or
-                   (get options "period")
                    (get options "0")
-                   1000)]
+                   (get options "period"))]
       (sample-every period ch))))
 
 (defn partition-every-op
   [{:strs [options]} ch]
   (let [period (or
-                 (get options "period")
                  (get options "0")
-                 1000)]
+                 (get options "period"))]
     (partition-every period ch)))
 
 (r/def-trace-operator partition-every

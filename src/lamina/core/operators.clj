@@ -513,6 +513,7 @@
   (->> (apply zip-all channels)
     (map* #(apply f %))))
 
+;; todo: what happens when all the channels close?
 (defn merge-channels
   "something goes here"
   [& channels]

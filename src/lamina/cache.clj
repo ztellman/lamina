@@ -184,7 +184,7 @@
         cache (dependent-topic-channel-cache
                 (assoc options
                   :generator
-                  #(channel* :description %)
+                  #(channel* :description %, :grounded? true)
                   
                   :on-subscribe
                   (fn [this topic id]

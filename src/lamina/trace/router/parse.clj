@@ -136,10 +136,14 @@
 
 (declare stream)
 (declare pair)
+(declare inner-stream)
+(declare transform)
 
+(deftoken transform-prefix #"\.")
+(deftoken stream-prefix #"&")
 (deftoken pattern #"[a-zA-Z0-9:_\-\*]*")
 (deftoken id #"[_a-zA-Z][a-zA-Z0-9\-_]*")
-(deftoken comparison #"[<|>|=|~=]")
+(deftoken comparison #"<|>|=|~=")
 (deftoken field #"[_a-zA-Z][a-zA-Z0-9\-_\.]*")
 (deftoken number #"[0-9\.]+" read-string)
 (deftoken string #"[a-zA-Z0-9\-\*_]")
@@ -167,11 +171,7 @@
     (fn [[[a b]]]
       (vec (list* a b)))))
 
-(let [t (delay (token (chain colon stream) second))]
-  (defn substream [s]
-    (@t s)))
-
-(let [t (delay (one-of tuple pair substream relationship field number))]
+(let [t (delay (one-of tuple pair relationship transform field number inner-stream))]
   (defn param [s]
     (@t s)))
 
@@ -197,10 +197,17 @@
 
 ;;;
 
+(defn collapsible-map? [x]
+  (and
+    (map? x)
+    (= 1 (count x))
+    (not (contains? x :operators))
+    (not (contains? x :pattern))))
+
 (defn collapse-options [s]
   (map
     (fn [idx v]
-      (if (and (map? v) (= 1 (count v)))
+      (if (collapsible-map? v)
         v
         {idx v}))
     (iterate inc 0)
@@ -218,6 +225,14 @@
          :options {:field name}}
         {:name name
          :options (apply merge {} (collapse-options options))}))))
+
+(def transform
+  (token
+    (second*
+      transform-prefix
+      (many operator))
+    (fn [operators]
+      {:operators operators})))
 
 ;;;
 
@@ -240,6 +255,12 @@
     (fn [[pattern operators]]
       {:pattern pattern
        :operators (collapse-group-bys operators)})))
+
+(def inner-stream
+  (token
+    (second*
+      stream-prefix
+      stream)))
 
 ;;;
 

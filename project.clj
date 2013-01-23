@@ -3,7 +3,7 @@
   :min-lein-version "2.0.0"
   :dependencies [[org.clojure/tools.logging "0.2.4"]
                  [org.flatland/useful "0.9.0"]
-                 [potemkin "0.2.0-SNAPSHOT"]
+                 [potemkin "0.2.0"]
                  [com.yammer.metrics/metrics-core "2.1.0"
                   :exclusions [org.slf4j/slf4j-api]]]
   :exclusions [org.clojure/contrib

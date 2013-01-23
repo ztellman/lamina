@@ -8,12 +8,21 @@
 
 (ns lamina.trace.router.core
   (:use
+    [lamina.cache :only (subscribe)]
     [potemkin :only (defprotocol+)])
   (:require
     [lamina.trace.context])
   (:import
     [java.util.concurrent
      ConcurrentHashMap]))
+
+;;;
+
+(def ^{:dynamic true} *stream-generator* nil)
+(def ^{:dynamic true} *period* 1000)
+
+(defn generate-stream [descriptor]
+  (subscribe *stream-generator* descriptor))
 
 ;;;
 
@@ -43,6 +52,9 @@
   (pre-aggregate [_ desc ch])
   (intra-aggregate [_ desc ch])
   (aggregate [_ desc ch]))
+
+(defn populate-desc [desc]
+  (update-in desc ["options" "period"] #(or % *period*)))
 
 (defmacro def-trace-operator [name & {:as args}]
   (let [{:keys [transform
@@ -75,17 +87,20 @@
                  (transform [_ desc# ch#]
                    (transform# desc# ch#))
                  (pre-aggregate [_ desc# ch#]
-                   (if pre-aggregate#
-                     (pre-aggregate# desc# ch#)
-                     (transform# desc# ch#)))
+                   (let [desc# (lamina.trace.router.core/populate-desc desc#)]
+                     (if pre-aggregate#
+                       (pre-aggregate# desc# ch#)
+                       (transform# desc# ch#))))
                  (intra-aggregate [_ desc# ch#]
-                   (if intra-aggregate#
-                     (intra-aggregate# desc# ch#)
-                     ch#))
+                   (let [desc# (lamina.trace.router.core/populate-desc desc#)]
+                     (if intra-aggregate#
+                       (intra-aggregate# desc# ch#)
+                       ch#)))
                  (aggregate [_ desc# ch#]
-                   (if aggregate#
-                     (aggregate# desc# ch#)
-                     (transform# desc# ch#))))]
+                   (let [desc# (lamina.trace.router.core/populate-desc desc#)]
+                     (if aggregate#
+                       (aggregate# desc# ch#)
+                       (transform# desc# ch#)))))]
        
        (when-let [existing-operator# (.putIfAbsent operators ~(str name) op#)]
          (if (= ~ns-str (namespace existing-operator#))
@@ -108,75 +123,57 @@
         [op]))
     ops))
 
-(defn last-operation [ops]
-  (let [op (last ops)]
-    (if (and (group-by? op) (seq (op "operators")))
-     (update-in op ["operators"] #(vector (last-operation %)))
-     op)))
-
-(defn minify-maps
-  [s]
-  s
-  #_(map
-    #(->> %
-       (remove (fn [[k v]] (empty? v)))
-       (map (fn [[k v]] [k (if (map? v) (first (minify-maps [v])) v)]))
-       (into {}))
-    s))
-
 (defn distributable-chain
   "Operators which can be performed at the leaves of the topology."
   [ops]
-  (minify-maps
-    (loop [acc [], ops ops]
-      (if (empty? ops)
-        acc
-        (let [{:strs [operators name] :as op} (first ops)]
-          (if (group-by? op)
+  (loop [acc [], ops ops]
+    (if (empty? ops)
+      acc
+      (let [{:strs [operators name] :as op} (first ops)]
+        (if (group-by? op)
             
-            ;; traverse the group-by, see if it has to terminate mid-stream
-            (let [operators* (distributable-chain operators)]
-              (if (= operators operators*) 
-                (recur (conj acc op) (rest ops))
-                (conj acc (assoc op "operators" operators*))))
-            
-            (if (or
-                  ;; we don't know what this is, maybe the endpoint does
-                  (not (operator name))
-                  (distribute? (operator name)))
+          ;; traverse the group-by, see if it has to terminate mid-stream
+          (let [operators* (distributable-chain operators)]
+            (if (= operators operators*) 
               (recur (conj acc op) (rest ops))
-              (concat
-                acc
-                (when (pre-aggregate? (operator name))
-                  [(assoc op "stage" "pre-aggregate")])))))))))
+              (conj acc (assoc op "operators" operators*))))
+            
+          (if (or
+                ;; we don't know what this is, maybe the endpoint does
+                (not (operator name))
+                (distribute? (operator name)))
+            (recur (conj acc op) (rest ops))
+            (concat
+              acc
+              (when (pre-aggregate? (operator name))
+                [(assoc op "stage" "pre-aggregate")]))))))))
 
 (defn non-distributable-chain
   "Operators which must be performed at the root of the topology."
   [ops]
-  (minify-maps
-    (loop [ops ops]
-      (when-not (empty? ops)
-        (let [{:strs [operators name] :as op} (first ops)]
-          (if (group-by? op)
+  (loop [ops ops]
+    (when-not (empty? ops)
+      (let [{:strs [operators name] :as op} (first ops)]
+        (if (group-by? op)
               
-            ;; traverse the group-by, see if it has to terminate mid-stream
-            (let [operators* (non-distributable-chain operators)]
-              (if (= operators operators*)
-                (recur (rest ops))
-                (list*
-                  (assoc op
-                    "stage" "aggregate"
-                    "operators" operators*)
-                  (rest ops))))
-              
-            (if (or
-                  (not (operator name))
-                  (distribute? (operator name)))
+          ;; traverse the group-by, see if it has to terminate mid-stream
+          (let [operators* (non-distributable-chain operators)]
+            (if (= operators operators*)
               (recur (rest ops))
-              (concat
-                (when (operator name)
-                  [(assoc op "stage" "aggregate")])
-                (rest ops)))))))))
+              (list*
+                (assoc op
+                  "stage" "aggregate"
+                  "operators" operators*)
+                (rest ops))))
+              
+          (if (or
+                (not (operator name))
+                (distribute? (operator name)))
+            (recur (rest ops))
+            (concat
+              (when (operator name)
+                [(assoc op "stage" "aggregate")])
+              (rest ops))))))))
 
 (defn periodic-chain?
   "Returns true if operators emit traces periodically, rather than synchronously."
@@ -190,20 +187,23 @@
     boolean))
 
 (defn transform-trace-stream
-  ([{:strs [name operators stage]
+  ([{:strs [name operators stage period]
      :or {stage "transform"}
      :as desc}
     ch]
-     (let [f (case (keyword stage)
-               :pre-aggregate pre-aggregate
-               :aggregate aggregate
-               :transform transform)]
-       (cond
-         name
-         (f (operator name) desc ch)
-         
-         (not (empty? operators))
-         (reduce #(transform-trace-stream %2 %1) ch operators)
-
-         :else
-         ch))))
+     (with-bindings (if period
+                      {#'*period* period}
+                      {})
+       (let [f (case (keyword stage)
+                 :pre-aggregate pre-aggregate
+                 :aggregate aggregate
+                 :transform transform)]
+         (cond
+           name
+           (f (operator name) desc ch)
+           
+           (not (empty? operators))
+           (reduce #(transform-trace-stream %2 %1) ch operators)
+           
+           :else
+           ch)))))
