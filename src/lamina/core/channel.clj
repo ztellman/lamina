@@ -9,7 +9,8 @@
 (ns lamina.core.channel
   (:use
     [potemkin]
-    [lamina.core.utils])
+    [lamina.core.utils]
+    [clojure.set :only [rename-keys]])
   (:require
     [lamina.core.graph :as g]
     [lamina.core.queue :as q]
@@ -444,11 +445,8 @@
                                  (doto (ConcurrentHashMap.)
                                    (.put id* msg)))
                                m)))]
-            (let [m (into {} msg)
-                  m (if (contains? m ::nil)
-                      (let [v (m ::nil)]
-                        (-> m (dissoc ::nil) (assoc nil v)))
-                      m)]
+            (let [m (-> (into {} msg)
+                        (rename-keys {::nil nil}))]
               (enqueue ch* m))))))
     ch*))
 
