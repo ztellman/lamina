@@ -11,6 +11,7 @@
     [potemkin]
     [lamina.core utils channel threads])
   (:require
+    [lamina.executor.core :as ex]
     [lamina.core.graph :as g]
     [lamina.core.lock :as l]
     [lamina.core.result :as r]
@@ -392,24 +393,28 @@
 (defn periodically
   "Returns a channel.  Every 'period' milliseconds, 'f' is invoked with no arguments
    and the value is emitted as a message."
-  [period f]
-  (let [ch (channel* :description (str "periodically " (describe-fn f)))]
-    (p/run-pipeline (System/currentTimeMillis)
+  ([period f]
+     (periodically period f ex/default-executor))
+  ([period f executor]
+     (let [ch (channel* :description (str "periodically " (describe-fn f)))]
+       (p/run-pipeline (System/currentTimeMillis)
 
-      ;; figure out how long to sleep, given the previous target timestamp
-      (fn [timestamp]
-        (let [target-timestamp (+ timestamp period)]
-          (r/timed-result
-            (max 0.1 (- target-timestamp (System/currentTimeMillis)))
-            target-timestamp)))
+         {:executor executor}
 
-       ;; run the callback, and repeat
-      (fn [timestamp]
-        (let [result (enqueue ch (f))]
-          (when-not (or (= :lamina/error! result)
-                      (= :lamina/closed! result))
-           (p/restart timestamp)))))
-    ch))
+         ;; figure out how long to sleep, given the previous target timestamp
+         (fn [timestamp]
+           (let [target-timestamp (+ timestamp period)]
+             (r/timed-result
+               (max 0.1 (- target-timestamp (System/currentTimeMillis)))
+               target-timestamp)))
+
+         ;; run the callback, and repeat
+         (fn [timestamp]
+           (let [result (enqueue ch (f))]
+             (when-not (or (= :lamina/error! result)
+                         (= :lamina/closed! result))
+               (p/restart timestamp)))))
+       ch)))
 
 (defn sample-every
   "Takes a source channel, and returns a channel that emits the most recent message
