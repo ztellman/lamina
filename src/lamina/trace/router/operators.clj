@@ -108,7 +108,7 @@
           descs)))))
 
 (r/def-trace-operator zip
-  :periodic? false
+  :periodic? true
   :distribute? false
 
   :transform
@@ -165,22 +165,24 @@
         facet (or
                 (get options "facet")
                 (get options "0"))
-        periodic? (r/periodic-chain? operators)]
+        periodic? (r/periodic-chain? operators)
+        period (get options "period" 1000)]
     (assert facet)
     (distribute-aggregate
       (getter facet)
       (fn [k ch]
         (let [ch (->> ch
                    (close-on-idle expiration)
-                   (r/transform-trace-stream {"operators" operators}))]
+                   (r/transform-trace-stream (dissoc desc "name")))]
           (if-not periodic?
-            (partition-every 1000 ch)
+            (partition-every period ch)
             ch)))
       ch)))
 
 (defn merge-group-by [{:strs [options operators] :as desc} ch]
   (let [expiration (get options "expiration" (* 1000 60))
-        periodic? (r/periodic-chain? operators)]
+        periodic? (r/periodic-chain? operators)
+        period (get options "period" 1000)]
     (->> ch
       concat*
       (distribute-aggregate first
@@ -191,9 +193,9 @@
                 ch (if-not periodic?
                      (concat* ch)
                      ch)
-                ch (r/transform-trace-stream {"operators" operators} ch)]
+                ch (r/transform-trace-stream (dissoc desc "name") ch)]
             (if-not periodic?
-              (partition-every 1000 ch)
+              (partition-every period ch)
               ch)))))))
 
 (r/def-trace-operator group-by
@@ -214,6 +216,17 @@
   
   (:transform :pre-aggregate :aggregate) sum-op)
 
+(defn rolling-sum-op [{:strs [options]} ch]
+  (->> ch
+    (lamina.stats/sum (keywordize options))
+    (reductions* +)))
+
+(r/def-trace-operator rolling-sum
+  :periodic? true
+  :distribute? false
+  
+  (:transform :pre-aggregate :aggregate) rolling-sum-op)
+
 (defn rate-op [{:strs [options]} ch]
   (lamina.stats/rate (keywordize options) ch))
 
@@ -231,6 +244,14 @@
   :transform
   (fn [{:strs [options]} ch]
     (lamina.stats/moving-average (keywordize options) ch)))
+
+(r/def-trace-operator moving-quantiles
+  :periodic? true
+  :distribute? false
+
+  :transform
+  (fn [{:strs [options]} ch]
+    (lamina.stats/moving-quantiles (keywordize options) ch)))
 
 ;;;
 

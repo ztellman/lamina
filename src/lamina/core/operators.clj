@@ -522,8 +522,12 @@
 (defn merge-channels
   "something goes here"
   [& channels]
-  (let [ch* (channel)]
+  (let [ch* (channel)
+        cnt (atom (count channels))]
     (doseq [ch channels]
+      (on-closed ch
+        #(when (zero? (swap! cnt dec))
+           (close ch*)))
       (siphon ch ch*))
     ch*))
 

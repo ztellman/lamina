@@ -29,13 +29,17 @@
         x))
     x))
 
-(defn parse-descriptor [x]
-  (if (string? x)
-    (stringify-keys (p/parse-stream x))
-    x))
+(defn parse-descriptor [x & {:as options}]
+  (merge
+    (if (string? x)
+      (stringify-keys (p/parse-stream x))
+      x)
+    (stringify-keys options)))
 
-(defn query-stream [transform-descriptor ch]
-  (c/transform-trace-stream (parse-descriptor (str "." transform-descriptor)) ch))
+(defn query-stream [transform-descriptor ch & options]
+  (c/transform-trace-stream
+    (apply parse-descriptor transform-descriptor options)
+    ch))
 
 ;;;
 
@@ -49,7 +53,7 @@
   (let [options (assoc options
                   :cache+topic->topic-descriptor
                   (fn [this {:strs [operators name] :as topic}]
-                    
+
                     ;; is it a chain of operators?
                     (when (and (not name) (not (empty? operators)))
                       {:cache this
@@ -62,13 +66,11 @@
       (inner-cache [_]
         (cache/inner-cache router))
       (subscribe- [this topic args]
-        (let [options (apply hash-map args)]
+        (let [options (apply hash-map args)
+              period (options :period)]
           (binding [c/*stream-generator* (or c/*stream-generator* this)]
             (cache/subscribe router
-              (merge
-                (when-let [period (options :period)]
-                  {"period" period})
-                (parse-descriptor topic)))))))))
+              (apply parse-descriptor topic args))))))))
 
 (def local-trace-router
   (trace-router
@@ -85,18 +87,13 @@
         (cache/inner-cache router))
       (subscribe- [this topic args]
         (let [options (apply hash-map args)
-              {:strs [operators] :as topic} (parse-descriptor topic)
-              distributable (merge
-                              (when-let [period (options :period)]
-                                {"period" period})
-                              (assoc topic
-                                "operators" (c/distributable-chain operators)))
-              non-distributable (merge
-                                  (when-let [period (options :period)]
-                                    {"period" period})
-                                  (assoc topic
-                                    "endpoint" distributable
-                                    "operators" (c/non-distributable-chain operators)))]
+              {:strs [operators] :as topic} (apply parse-descriptor topic args)
+              period (options :period)
+              distributable (assoc topic
+                              "operators" (c/distributable-chain operators))
+              non-distributable (assoc topic
+                                  "endpoint" distributable
+                                  "operators" (c/non-distributable-chain operators))]
           (binding [c/*stream-generator* (or c/*stream-generator* this)]
             (cache/subscribe router non-distributable)))))))
 

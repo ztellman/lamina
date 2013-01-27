@@ -19,7 +19,6 @@
 ;;;
 
 (def ^{:dynamic true} *stream-generator* nil)
-(def ^{:dynamic true} *period* 1000)
 
 (defn generate-stream [descriptor]
   (subscribe *stream-generator* descriptor))
@@ -53,8 +52,10 @@
   (intra-aggregate [_ desc ch])
   (aggregate [_ desc ch]))
 
-(defn populate-desc [desc]
-  (update-in desc ["options" "period"] #(or % *period*)))
+(defn populate-desc [operator desc]
+  (if-let [period (and (periodic? operator) (get desc "period"))]
+    (update-in desc ["options" "period"] #(or % period))
+    desc))
 
 (defmacro def-trace-operator [name & {:as args}]
   (let [{:keys [transform
@@ -84,20 +85,21 @@
                  (pre-aggregate? [_]
                    (boolean pre-aggregate#))
                  
-                 (transform [_ desc# ch#]
-                   (transform# desc# ch#))
-                 (pre-aggregate [_ desc# ch#]
-                   (let [desc# (lamina.trace.router.core/populate-desc desc#)]
+                 (transform [this# desc# ch#]
+                   (let [desc# (lamina.trace.router.core/populate-desc this# desc#)]
+                     (transform# desc# ch#)))
+                 (pre-aggregate [this# desc# ch#]
+                   (let [desc# (lamina.trace.router.core/populate-desc this# desc#)]
                      (if pre-aggregate#
                        (pre-aggregate# desc# ch#)
                        (transform# desc# ch#))))
-                 (intra-aggregate [_ desc# ch#]
-                   (let [desc# (lamina.trace.router.core/populate-desc desc#)]
+                 (intra-aggregate [this# desc# ch#]
+                   (let [desc# (lamina.trace.router.core/populate-desc this# desc#)]
                      (if intra-aggregate#
                        (intra-aggregate# desc# ch#)
                        ch#)))
-                 (aggregate [_ desc# ch#]
-                   (let [desc# (lamina.trace.router.core/populate-desc desc#)]
+                 (aggregate [this# desc# ch#]
+                   (let [desc# (lamina.trace.router.core/populate-desc this# desc#)]
                      (if aggregate#
                        (aggregate# desc# ch#)
                        (transform# desc# ch#)))))]
@@ -191,19 +193,19 @@
      :or {stage "transform"}
      :as desc}
     ch]
-     (with-bindings (if period
-                      {#'*period* period}
-                      {})
-       (let [f (case (keyword stage)
-                 :pre-aggregate pre-aggregate
-                 :aggregate aggregate
-                 :transform transform)]
-         (cond
-           name
-           (f (operator name) desc ch)
+     (let [f (case (keyword stage)
+               :pre-aggregate pre-aggregate
+               :aggregate aggregate
+               :transform transform)]
+
+       (cond
+         name
+         (f (operator name) desc ch)
            
-           (not (empty? operators))
-           (reduce #(transform-trace-stream %2 %1) ch operators)
+         (not (empty? operators))
+         (->> operators
+           (map #(if period (assoc % "period" period) %))
+           (reduce #(transform-trace-stream %2 %1) ch))
            
-           :else
-           ch)))))
+         :else
+         ch))))

@@ -265,7 +265,12 @@
 ;;;
 
 (defn parse-stream [s]
-  ((parser stream) s))
+  (->> s
+    str/split-lines
+    (map str/trim)
+    ;(interpose " ")
+    (apply str)
+    ((parser stream))))
 
 
 
