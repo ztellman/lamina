@@ -73,6 +73,9 @@
         "This will work, but may cause performance issues. Use trace* to hide this warning.")))
   `(trace* ~probe ~@body))
 
+(import-fn t/add-sub-trace)
+(import-fn t/add-to-last-sub-trace)
+
 ;;;
 
 (import-fn r/query-stream)

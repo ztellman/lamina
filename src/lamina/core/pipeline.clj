@@ -374,7 +374,9 @@
   "something goes here"
   [value]
   (redirect
-    (pipeline (constantly value))
+    (if (instance? Throwable value)
+      (pipeline {:error-handler (fn [_])} (fn [_] (throw value)))
+      (pipeline (constantly value)))
     nil))
 
 (defmacro wait-stage

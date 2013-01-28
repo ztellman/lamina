@@ -136,6 +136,15 @@
 
 ;;;
 
+(deftest test-add-sub-trace
+  (is (= [{1 2, :sub-tasks [{:sub-tasks [], 3 4}]}]
+        (:sub-tasks
+          (with-instrumentation
+            (add-sub-trace {1 2})
+            (add-to-last-sub-trace {3 4}))))))
+
+;;;
+
 (defn benchmark-active-probe [description probe]
   (let [nm (gensym "name")
         p (probe-channel [nm probe])

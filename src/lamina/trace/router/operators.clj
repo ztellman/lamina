@@ -216,16 +216,15 @@
   
   (:transform :pre-aggregate :aggregate) sum-op)
 
-(defn rolling-sum-op [{:strs [options]} ch]
-  (->> ch
-    (lamina.stats/sum (keywordize options))
-    (reductions* +)))
-
 (r/def-trace-operator rolling-sum
   :periodic? true
   :distribute? false
   
-  (:transform :pre-aggregate :aggregate) rolling-sum-op)
+  (:transform :pre-aggregate :aggregate)
+  (fn [{:strs [options]} ch]
+    (->> ch
+      (lamina.stats/sum (keywordize options))
+      (reductions* +))))
 
 (defn rate-op [{:strs [options]} ch]
   (lamina.stats/rate (keywordize options) ch))

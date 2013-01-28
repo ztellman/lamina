@@ -34,7 +34,8 @@
   (mark-error [_ err])
   (mark-waiting [_])
   (mark-return [_ val])
-  (add-sub-task [_ timer]))
+  (add-sub-task [_ timer])
+  (add-to-last-sub-task [_ timer]))
 
 (defn dummy-timer [name enqueue-error?]
   (reify
@@ -47,7 +48,29 @@
     (mark-enter [_])
     (mark-waiting [_])
     (mark-return [_ _])
-    (add-sub-task [_ _] )))
+    (add-sub-task [_ _] )
+    (add-to-last-sub-task [_ _])))
+
+(defn trace-wrapper [trace]
+  (let [sub-tasks (ConcurrentLinkedQueue.)]
+    (reify ITimed
+      (timing [_ start]
+        (update-in trace [:sub-tasks]
+          #(map
+             (fn [t] (timing t start))
+             (concat % (seq sub-tasks)))))
+      (add-sub-task [_ timing]
+        (.add ^ConcurrentLinkedQueue sub-tasks timing)))))
+
+(defn add-sub-trace [trace]
+  (if-let [timer (context/timer)]
+    (add-sub-task timer (trace-wrapper trace))
+    false))
+
+(defn add-to-last-sub-trace [trace]
+  (if-let [timer (context/timer)]
+    (boolean (add-to-last-sub-task timer (trace-wrapper trace)))
+    false))
 
 ;;;
 
@@ -111,7 +134,11 @@
                            -1
                            (unchecked-subtract (long enter) (long enqueued)))))
   (add-sub-task [_ timer]
-    (.add sub-tasks timer))
+    (.add sub-tasks timer)
+    true)
+  (add-to-last-sub-task [_ timer]
+    (when-let [task (last (seq sub-tasks))]
+      (add-sub-task task timer)))
   (mark-enter [this]
     (set! enter (System/nanoTime)))
   (mark-error [this err]
@@ -226,7 +253,11 @@
   (timing [_ start]
     (make-timing Timing start enter))
   (add-sub-task [_ timer]
-    (.add sub-tasks timer))
+    (.add sub-tasks timer)
+    true)
+  (add-to-last-sub-task [_ timer]
+    (when-let [task (last (seq sub-tasks))]
+      (add-sub-task task timer)))
   (mark-enter [_]
     )
   (mark-waiting [this]

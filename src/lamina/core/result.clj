@@ -514,11 +514,10 @@
   "Returns a result-channel that will be realized as a 'lamina/timeout!' error if a value is not enqueued within
    'interval' milliseconds."
   [interval]
-  (if (zero? interval)
-    (error-result :lamina/timeout!)
-    (let [result (result-channel)]
-      (t/delay-invoke interval #(error result :lamina/timeout! false))
-      result)))
+  (let [result (result-channel)]
+    (when interval
+      (t/delay-invoke interval #(error result :lamina/timeout! false)))
+    result))
 
 (defn timed-result
   "Returns a result-channel that will be realized as 'value' (defaulting to nil) in 'interval' milliseconds."
@@ -526,7 +525,8 @@
      (timed-result interval nil))
   ([interval value]
      (let [result (result-channel)]
-       (t/delay-invoke interval #(success result value))
+       (when interval
+         (t/delay-invoke interval #(success result value)))
        result)))
 
 (defn merge-results
