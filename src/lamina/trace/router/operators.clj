@@ -96,15 +96,19 @@
 
   :transform
   (fn [{:strs [options]} ch]
-    (let [options (dissoc options "period")
+    (let [period (options "period")
+          options (dissoc options "period")
           descs (vals options)]
       (assert (every? #(contains? % "operators") descs))
       (apply merge-channels
         (map
           (fn [{:strs [operators pattern] :as desc}]
-            (if pattern
-              (r/generate-stream desc)
-              (r/transform-trace-stream desc (fork ch))))
+            (let [desc (if period
+                         (assoc desc "period" period)
+                         desc)]
+              (if pattern
+                (r/generate-stream desc)
+                (r/transform-trace-stream desc (fork ch)))))
           descs)))))
 
 (r/def-trace-operator zip
@@ -113,16 +117,20 @@
 
   :transform
   (fn [{:strs [options]} ch]
-    (let [options (dissoc options "period")
+    (let [period (options "period")
+          options (dissoc options "period")
           ks (keys options)
           descs (vals options)]
       (assert (every? #(contains? % "operators") descs))
       (->> (apply zip
              (map
                (fn [{:strs [operators pattern] :as desc}]
-                 (if pattern
-                   (r/generate-stream desc)
-                   (r/transform-trace-stream desc (fork ch))))
+                 (let [desc (if period
+                              (assoc desc "period" period)
+                              desc)]
+                   (if pattern
+                     (r/generate-stream desc)
+                     (r/transform-trace-stream desc (fork ch)))))
                descs))
         (map* #(zipmap ks %))))))
 
