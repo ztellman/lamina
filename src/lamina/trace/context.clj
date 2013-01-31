@@ -7,6 +7,8 @@
 ;;   You must not remove this notice, or any other, from this software.
 
 (ns lamina.trace.context
+  (:use
+    [potemkin])
   (:require
     [clojure.string :as str])
   (:import
@@ -22,10 +24,7 @@
   (def pid pid)
   (def host host))
 
-(defrecord Context
-  [^long pid
-   ^long tid
-   host])
+(def ctx {:host host, :pid pid})
 
 (def context-builder (atom nil))
 
@@ -36,10 +35,6 @@
   (reset! context-builder f))
 
 (defn context []
-  (let [ctx (Context. pid (.getId (Thread/currentThread)) host)]
-    (if-let [f @context-builder]
-      (f ctx)
-      ctx)))
-
-(defmethod print-method Context [o ^Writer w]
-  (.write w (pr-str (into {} o))))
+  (if-let [f @context-builder]
+    (f ctx)
+    ctx))

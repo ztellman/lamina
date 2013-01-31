@@ -24,6 +24,8 @@
 (import-macro i/instrumented-fn)
 (import-macro i/defn-instrumented)
 
+(import-fn t/distill-timing)
+(import-fn t/merge-distilled-timings)
 (import-fn t/format-timing)
 (import-macro u/time*)
 (import-macro u/with-instrumentation)

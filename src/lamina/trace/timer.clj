@@ -22,7 +22,8 @@
     [java.io
      Writer]
     [java.util.concurrent
-     ConcurrentLinkedQueue]))
+     ConcurrentLinkedQueue
+     ConcurrentHashMap]))
 
 
 
@@ -390,8 +391,96 @@
             (interpose "\n")
             (apply str)))))))
 
+;;;
+
+(defprotocol+ IDistilledTiming
+  (add-sub-timing! [_ x])
+  (merge-distilled-timing! [_ x])
+  (set-context-visible! [_ visible?]))
+
+(declare distilled-timing)
+
+(def-map-type DistilledTiming
+  [task-name
+   durations ;; todo: make this some sort of primitive collection
+   ^ConcurrentHashMap sub-tasks
+   context
+   ^{:volatile-mutable true} context-visible?]
+
+  ;; map impl
+  (get* [_ k default]
+    (case k
+      :task task-name
+      :durations @durations
+      :sub-tasks (or (seq (.values sub-tasks)) default)
+      :context (if context-visible? context default)
+      default))
+  (keys* [_]
+    (concat
+      [:task :durations]
+      (when context-visible?
+        [:context])
+      (when-not (.isEmpty sub-tasks)
+        [:sub-tasks])))
+  (assoc* [this k v]
+    (assoc (into {} this) k v))
+  (dissoc* [this k]
+    (dissoc (into {} this) k))
+
+  IDistilledTiming
+  (add-sub-timing! [_ timing]
+    (let [^DistilledTiming timing timing
+          k [(:task timing) (:context timing)]]
+      (if-let [sub-timing (.get sub-tasks k)]
+        
+        ;; already registered, just merge this in
+        (merge-distilled-timing! sub-timing timing)
+
+        ;; create and put, allowing for race conditions
+        (let [sub-timing (distilled-timing (.task-name timing) (.context timing))]
+          (when (= (.context timing) context)
+            (set-context-visible! sub-timing false))
+          (merge-distilled-timing!
+            (or (.putIfAbsent sub-tasks k sub-timing) sub-timing)
+            timing)))))
+  
+  (merge-distilled-timing! [this timing]
+    (swap! durations concat (:durations timing))
+    (doseq [t (:sub-tasks timing)]
+      (add-sub-timing! this t)))
+
+  (set-context-visible! [_ visible?]
+    (set! context-visible? visible?)))
+
+(defn distilled-timing
+  ([name context]
+     (DistilledTiming. name (atom (list)) (ConcurrentHashMap.) context true))
+  ([name context duration]
+     (DistilledTiming. name (atom (list duration)) (ConcurrentHashMap.) context true)))
+
+(defn distill-timing
+  "Returns a distillation of the timing object, containing only :task, :durations, :context, and :sub-tasks.
+
+   This data structure can be merged using merge-distilled-timings."
+  [timing]
+  (let [^DistilledTiming timing* (distilled-timing (:name timing) (:context timing) (:duration timing))]
+    (doseq [t (:sub-tasks timing)]
+      (add-sub-timing! timing* (distill-timing t)))
+    timing*))
+
+(defn merge-distilled-timings
+  "Returns a list of one or distilled timings, where :durations have been concatenated together for
+   identical tasks."
+  [& distilled-timings]
+  (let [root-timing (distilled-timing nil nil)]
+    (doseq [t distilled-timings]
+      (merge-distilled-timing! root-timing t))
+    (:sub-tasks root-timing)))
 
 ;;;
+
+(defmethod print-method DistilledTiming [o ^Writer w]
+  (.write w (pr-str (into {} o))))
 
 (defmethod print-method Timing [o ^Writer w]
   (.write w (pr-str (into {} o))))
