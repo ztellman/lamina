@@ -14,7 +14,7 @@
   (:require
     [lamina.core.utils :as u]
     [lamina.core.result :as r]
-    [lamina.core.threads :as t]
+    [lamina.time :as t]
     [lamina.core.graph.core :as c]
     [lamina.core.graph.node :as n]
     [lamina.core.graph.propagator :as p])
@@ -125,7 +125,7 @@
        ~@(when (contains? options :timeout)
            `((let [timeout# ~timeout]
                (when (and timeout# (instance? ResultChannel ~result-sym))
-                 (t/delay-invoke timeout#
+                 (t/invoke-once timeout#
                    (fn []
                      ~(if on-timeout
                         `(r/success ~result-sym ~on-timeout)

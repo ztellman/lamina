@@ -7,40 +7,34 @@
 ;;   You must not remove this notice, or any other, from this software.
 
 (ns lamina.core.threads
+  (:use
+    [lamina.core.utils])
   (:require
     [clojure.tools.logging :as log])
   (:import
     [java.util.concurrent
-     ExecutorService
-     Executors
      ThreadFactory
-     ScheduledThreadPoolExecutor
-     TimeUnit]))
-
-
-
-;;;
-
-(defn num-cores []
-  (.availableProcessors (Runtime/getRuntime)))
-
-(defn ^ThreadFactory thread-factory [name-generator]
-  (reify ThreadFactory
-    (newThread [_ runnable]
-      (doto
-        (Thread. runnable)
-        (.setName (name-generator))
-        (.setDaemon true)))))
+     ThreadPoolExecutor
+     TimeUnit
+     LinkedBlockingQueue
+     ScheduledThreadPoolExecutor]))
 
 ;;;
 
 (let [cnt (atom 0)
       tf (thread-factory #(str "lamina-cleanup-" (swap! cnt inc)))]
-  (def ^ScheduledThreadPoolExecutor cleanup-executor
-    (ScheduledThreadPoolExecutor. (int (num-cores)) ^ThreadFactory tf)))
+  (def ^ThreadPoolExecutor cleanup-executor
+    (ThreadPoolExecutor.
+      (int (num-cores))
+      Integer/MAX_VALUE
+      60
+      TimeUnit/SECONDS
+      (LinkedBlockingQueue.)
+      ^ThreadFactory tf)))
 
 (def ^ThreadLocal cleanup-count (ThreadLocal.))
 
+;; to prevent stack overflows
 (def max-successive-cleanups 50)
 
 (defn enqueue-cleanup [f]
@@ -55,25 +49,6 @@
         (finally
           (when (zero? cleanups)
             (.set cleanup-count 0)))))))
-
-;;;
-
-(let [cnt (atom 0)
-      tf (thread-factory #(str "lamina-scheduler-" (swap! cnt inc)))]
-  (def ^ScheduledThreadPoolExecutor scheduled-executor
-    (ScheduledThreadPoolExecutor. (int (num-cores)) ^ThreadFactory tf)))
-
-(defn delay-invoke [interval ^Runnable f]
-  (if-not (pos? interval)
-    (f)
-    (let [^Runnable f
-          (fn []
-            (try
-              (f)
-              (catch Throwable e
-                (log/error e "Error in delayed invocation."))))]
-      (.schedule scheduled-executor f (long (* 1e6 interval)) TimeUnit/NANOSECONDS)
-      nil)))
 
 ;;;
 

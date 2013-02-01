@@ -15,6 +15,7 @@
     [lamina.core.graph :as g]
     [lamina.core.lock :as l]
     [lamina.core.result :as r]
+    [lamina.time :as t]
     [lamina.core.pipeline :as p]
     [clojure.tools.logging :as log])
   (:import
@@ -393,6 +394,21 @@
 (defn periodically
   "Returns a channel.  Every 'period' milliseconds, 'f' is invoked with no arguments
    and the value is emitted as a message."
+  [period f]
+  (let [ch (channel* :description (str "periodically " (describe-fn f)))
+        cnt (atom 0)]
+    (t/invoke-repeatedly period
+      (fn [cancel-callback]
+        (try
+          (enqueue ch (f))
+          (finally
+            (when (closed? ch)
+              (cancel-callback))))))
+    ch))
+
+#_(defn periodically
+  "Returns a channel.  Every 'period' milliseconds, 'f' is invoked with no arguments
+   and the value is emitted as a message."
   ([period f]
      (periodically period f ex/default-executor))
   ([period f executor]
@@ -415,6 +431,7 @@
                          (= :lamina/closed! result))
                (p/restart timestamp)))))
        ch)))
+
 
 (defn sample-every
   "Takes a source channel, and returns a channel that emits the most recent message
@@ -451,7 +468,7 @@
 (defn create-bitset [n] ;; todo: typehint with 'long'
   (let [bitset (BitSet. (long n))]
     (dotimes [idx n]
-      (.set bitset idx))
+      (.set ^BitSet bitset idx))
     bitset))
 
 (defn zip-all
@@ -470,7 +487,7 @@
                           (aset ary idx msg)
                           (when (or (.isEmpty bitset)
                                   (do
-                                    (.set bitset idx false)
+                                    (.set bitset (int idx) false)
                                     (.isEmpty bitset)))
                             (let [ary* (object-array cnt)]
                               (System/arraycopy ary 0 ary* 0 cnt)
@@ -496,7 +513,7 @@
             (if-let [ary* (l/with-exclusive-lock lock
                             (aset ary idx msg)
                             (let [^BitSet curr-bitset @bitset]
-                              (.set curr-bitset idx false)
+                              (.set curr-bitset (int idx) false)
                               (when (.isEmpty curr-bitset)
                                 (reset! bitset (create-bitset cnt))
                                 (reset! result (r/result-channel))

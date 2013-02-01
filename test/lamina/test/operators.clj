@@ -8,7 +8,7 @@
 (ns lamina.test.operators
   (:use
     [lamina core]
-    [lamina.core threads]
+    [lamina.time]
     [lamina.core.channel :only (mimic)]
     [clojure test]
     [lamina.test utils])
@@ -22,7 +22,7 @@
        (f#))))
 
 (defmacro task [& body]
-  `(delay-invoke 1 (fn [] ~@body)))
+  `(invoke-once 1 (fn [] ~@body)))
 
 (defn async-enqueue 
   [transactional? ch messages]

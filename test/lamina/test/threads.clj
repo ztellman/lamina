@@ -14,8 +14,6 @@
     [lamina.core.threads :as t]))
 
 (deftest ^:benchmark benchmark-threads
-  (bench "scheduled-executor"
-    (t/delay-invoke 100 (fn [])))
   (bench "cleanup-executor"
     (t/enqueue-cleanup (fn []))))
 

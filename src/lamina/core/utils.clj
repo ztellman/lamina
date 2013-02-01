@@ -11,7 +11,31 @@
     [potemkin])
   (:require
     [clojure.tools.logging :as log]
-    [clojure.string :as str]))
+    [clojure.string :as str])
+  (:import
+    [java.util.concurrent
+     ThreadFactory]))
+
+;;;
+
+(defn num-cores []
+  (.availableProcessors (Runtime/getRuntime)))
+
+(defn ^ThreadFactory thread-factory [name-generator]
+  (reify ThreadFactory
+    (newThread [_ runnable]
+      (let [name (name-generator)]
+        (doto
+          (Thread.
+            (fn []
+              (try
+                (.run ^Runnable runnable)
+                (catch Throwable e
+                  (log/error e (str "error in thread '" name "'"))))))
+          (.setName name)
+          (.setDaemon true))))))
+
+;;;
 
 (defprotocol+ IEnqueue
   (enqueue [_ msg]))

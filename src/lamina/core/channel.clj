@@ -16,7 +16,7 @@
     [lamina.core.queue :as q]
     [lamina.core.lock :as l]
     [lamina.core.result :as r]
-    [lamina.core.threads :as t]
+    [lamina.time :as t]
     [clojure.string :as str]
     [clojure.tools.logging :as log])
   (:import
@@ -474,7 +474,7 @@
 
 (defn check-idle [^AtomicLong last-message interval result]
   (let [mark (.get last-message)]
-    (t/delay-invoke (- interval (- (System/currentTimeMillis) mark))
+    (t/invoke-once (- interval (- (System/currentTimeMillis) mark))
       (fn []
         (if (= mark (.get last-message))
           (r/success result true)

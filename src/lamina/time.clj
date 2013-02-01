@@ -7,12 +7,23 @@
 ;;   You must not remove this notice, or any other, from this software.
 
 (ns lamina.time
+  (:use
+    [lamina.core.utils]
+    [potemkin])
   (:require
+    [clojure.tools.logging :as log]
     [clojure.string :as str])
   (:import
     [java.util
      Calendar
-     TimeZone]))
+     TimeZone]
+    [java.util.concurrent
+     ThreadFactory
+     TimeUnit
+     ThreadPoolExecutor
+     ScheduledThreadPoolExecutor
+     LinkedBlockingQueue
+     ]))
 
 (defn now []
   (System/currentTimeMillis))
@@ -79,27 +90,103 @@
               (rest intervals))
             (recur s n (rest intervals))))))))
 
-(let [sorted-intervals [:millisecond Calendar/MILLISECOND
-                        :second Calendar/SECOND
-                        :minute Calendar/MINUTE
-                        :hour Calendar/HOUR
-                        :day Calendar/DAY_OF_YEAR
-                        :week Calendar/WEEK_OF_MONTH
-                        :month Calendar/MONTH]
-      interval->calendar-intervals (apply hash-map sorted-intervals)
-      intervals (->> sorted-intervals (partition 2) (map first))
-      interval->cleared-fields (zipmap
-                                 intervals
-                                 (map
-                                   #(->> (take % intervals) (map interval->calendar-intervals))
-                                   (range (count intervals))))]
-
-  (defn floor [timestamp interval]
-    (assert (contains? interval->calendar-intervals interval))
+(let [sorted-units [:millisecond Calendar/MILLISECOND
+                    :second Calendar/SECOND
+                    :minute Calendar/MINUTE
+                    :hour Calendar/HOUR
+                    :day Calendar/DAY_OF_YEAR
+                    :week Calendar/WEEK_OF_MONTH
+                    :month Calendar/MONTH]
+      unit->calendar-unit (apply hash-map sorted-units)
+      units (->> sorted-units (partition 2) (map first))
+      unit->cleared-fields (zipmap
+                             units
+                             (map
+                               #(->> (take % units) (map unit->calendar-unit))
+                               (range (count units))))]
+  
+  (defn floor [timestamp unit]
+    (assert (contains? unit->calendar-unit unit))
     (let [^Calendar cal (doto (Calendar/getInstance (TimeZone/getTimeZone "UTC"))
                           (.setTimeInMillis timestamp))]
-      (doseq [field (interval->cleared-fields interval)]
+      (doseq [field (unit->cleared-fields unit)]
         (.set cal field 0))
+      (.getTimeInMillis cal)))
+
+  (defn add [timestamp value unit]
+    (assert (contains? unit->calendar-unit unit))
+    (let [^Calendar cal (doto (Calendar/getInstance (TimeZone/getTimeZone "UTC"))
+                          (.setTimeInMillis timestamp))]
+      (.add cal (unit->calendar-unit unit) value)
       (.getTimeInMillis cal))))
 
+;;;
+
+(defprotocol+ ITaskQueue
+  (invoke-once- [_ delay f])
+  (invoke-repeatedly- [_ period f]))
+
+(let [queue-factory (thread-factory (constantly "lamina-scheduler-queue"))
+      task-queue    (ScheduledThreadPoolExecutor. 1 ^ThreadFactory queue-factory)
+
+      cnt (atom 0)
+      task-factory (thread-factory #(str "lamina-scheduler-" (swap! cnt inc)))
+      task-executor (ThreadPoolExecutor.
+                      (int (num-cores))
+                      Integer/MAX_VALUE
+                      60
+                      TimeUnit/SECONDS
+                      (LinkedBlockingQueue.)
+                      ^ThreadFactory task-factory)]
+
+  (def default-task-queue
+    (reify ITaskQueue
+      (invoke-once- [_ delay f]
+        (let [enqueue-fn (fn []
+                           (.execute task-executor
+                             #(try
+                                (f)
+                                (catch Throwable e
+                                  (log/error e "Error in delayed invocation")))))]
+          (if (<= delay 0)
+            (enqueue-fn)
+            (.schedule task-queue
+              ^Runnable enqueue-fn
+              (long (* 1e6 delay))
+              TimeUnit/NANOSECONDS)))
+        true)
+      (invoke-repeatedly- [this period f]
+        (let [target-time (atom (+ (now) period))
+              latch (atom false)
+              cancel-callback #(reset! latch true)
+
+              schedule-next (fn schedule-next []
+                              (invoke-once- this (max 0.1 (- @target-time (now)))
+                                (fn []
+                                  (try
+                                    (f cancel-callback)
+                                    (finally
+                                      (when-not @latch
+                                        (swap! target-time + period)
+                                        (schedule-next)))))))]
+          (schedule-next)
+          true)))))
+
+(defn invoke-once
+  "Delays invocation of a function by 'delay' milliseconds."
+  ([delay f]
+     (invoke-once default-task-queue delay f))
+  ([task-queue delay f]
+     (invoke-once- task-queue delay f)))
+
+(defn invoke-repeatedly
+  "Repeatedly invokes a function every 'period' milliseconds, but ensures that the function cannot
+   overlap its own invocation if it takes more than the period to complete.
+
+   The function will be given a single parameter, which is a callback that can be invoked to cancel
+   future invocations."
+  ([period f]
+     (invoke-repeatedly default-task-queue period f))
+  ([task-queue period f]
+     (invoke-repeatedly- task-queue period f)))
 

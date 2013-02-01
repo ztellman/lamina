@@ -8,7 +8,8 @@
 
 (ns lamina.test.result
   (:use
-    [lamina.core result threads utils]
+    [lamina.core result utils]
+    [lamina.time]
     [clojure test]
     [lamina.test utils]))
 
@@ -260,11 +261,11 @@
 (defn stress-test-result-channel [r-fn]
   (dotimes* [i 1e5]
     (let [r (r-fn)]
-      (delay-invoke 0.1 (fn [] (success r i)))
+      (invoke-once 0.1 (fn [] (success r i)))
       (Thread/sleep 1)
       (is (= i @r)))
     (let [r (r-fn)]
-      (delay-invoke 0.1 (fn [] (error r i false)))
+      (invoke-once 0.1 (fn [] (error r i false)))
       (Thread/sleep 1)
       (is (thrown? Exception @r)))))
 
