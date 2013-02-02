@@ -134,7 +134,7 @@
       task-executor (ThreadPoolExecutor.
                       (int (num-cores))
                       Integer/MAX_VALUE
-                      60
+                      (long 60)
                       TimeUnit/SECONDS
                       (LinkedBlockingQueue.)
                       ^ThreadFactory task-factory)]
