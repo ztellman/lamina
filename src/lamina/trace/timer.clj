@@ -58,7 +58,10 @@
       (timing [_ start]
         (update-in trace [:sub-tasks]
           #(map
-             (fn [t] (timing t start))
+             (fn [t]
+               (if (satisfies? ITimed t)
+                 (timing t start)
+                 t))
              (concat % (seq sub-tasks)))))
       (add-sub-task [_ timing]
         (.add ^ConcurrentLinkedQueue sub-tasks timing)))))
@@ -455,15 +458,19 @@
 (defn distilled-timing
   ([name context]
      (DistilledTiming. name (atom (list)) (ConcurrentHashMap.) context true))
-  ([name context duration]
-     (DistilledTiming. name (atom (list duration)) (ConcurrentHashMap.) context true)))
+  ([name context durations]
+     (DistilledTiming. name (atom durations) (ConcurrentHashMap.) context true)))
 
 (defn distill-timing
   "Returns a distillation of the timing object, containing only :task, :durations, :context, and :sub-tasks.
+   This is an idempotent operation.
 
    This data structure can be merged using merge-distilled-timings."
   [timing]
-  (let [^DistilledTiming timing* (distilled-timing (:name timing) (:context timing) (:duration timing))]
+  (let [^DistilledTiming timing* (distilled-timing
+                                   (or (:task timing) (:name timing))
+                                   (:context timing)
+                                   (or (:durations timing) [(:duration timing)]))]
     (doseq [t (:sub-tasks timing)]
       (add-sub-timing! timing* (distill-timing t)))
     timing*))
