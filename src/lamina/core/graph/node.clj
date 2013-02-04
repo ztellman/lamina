@@ -938,8 +938,11 @@
                    (not (sneaky-edge? dst))
                    (node? (.next dst)))
 
-             (on-state-changed (.next dst) nil
-               (upstream-callback src (.next dst) true)))
+             (let [callback (upstream-callback src (.next dst) true)]
+               (on-state-changed (.next dst) nil
+                 callback)
+               (on-state-changed src nil
+                 (siphon-cleanup-callback callback (.next dst)))))
            
            (when downstream?
              (on-state-changed src nil
