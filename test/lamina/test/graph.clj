@@ -235,6 +235,13 @@
          (wait-for-drained a)
          (wait-for-error a ::error))))
 
+  (join-and-siphon
+    #(let [a (node identity)
+           b (node identity)]
+       (close* b)
+       (% a b)
+       (wait-for-drained a)))
+
   (let [a (node identity)
         b (node identity)]
     (join a b)

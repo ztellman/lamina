@@ -596,6 +596,7 @@
                (l/with-exclusive-lock lock
                  (when-not (.containsKey cancellations name)
                    (let [s state
+
                          ^NodeState new-state
                          (case (.mode s)
 
@@ -638,12 +639,13 @@
                          (doseq [msg msgs]
                            (propagate nxt msg true))))
 
+                     (when new-state
+                       (.put cancellations name #(unlink % edge)))
+                     
                      (when post
                        (post (boolean new-state)))
-                     
-                     (when new-state 
-                       (.put cancellations name #(unlink % edge))
-                       new-state))))]
+
+                     new-state)))]
 
         (do
           ;; notify all state-changed listeners
@@ -932,8 +934,10 @@
        (link src (.next dst) dst
          pre
          (fn [success?]
-           
+
+           ;; upstream
            (when (and
+                   success?
                    upstream?
                    (not (sneaky-edge? dst))
                    (node? (.next dst)))
@@ -943,8 +947,11 @@
                  callback)
                (on-state-changed src nil
                  (siphon-cleanup-callback callback (.next dst)))))
-           
-           (when downstream?
+
+           ;; downstream
+           (when (and
+                   success?
+                   downstream?)
              (on-state-changed src nil
                (downstream-callback src (.next dst))))
            
