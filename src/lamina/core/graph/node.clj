@@ -939,7 +939,7 @@
                    (node? (.next dst)))
 
              (let [callback (upstream-callback src (.next dst) true)]
-               (on-state-changed (.next dst) nil
+               (on-state-changed (.next dst) callback
                  callback)
                (on-state-changed src nil
                  (siphon-cleanup-callback callback (.next dst)))))
