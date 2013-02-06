@@ -448,7 +448,7 @@
             timing)))))
   
   (merge-distilled-timing! [this timing]
-    (swap! durations concat (:durations timing))
+    (swap! durations #(concat %2 %1) (:durations timing))
     (doseq [t (:sub-tasks timing)]
       (add-sub-timing! this t)))
 
@@ -457,9 +457,9 @@
 
 (defn distilled-timing
   ([name context]
-     (DistilledTiming. name (atom (list)) (ConcurrentHashMap.) context true))
+     (DistilledTiming. name (atom []) (ConcurrentHashMap.) context true))
   ([name context durations]
-     (DistilledTiming. name (atom durations) (ConcurrentHashMap.) context true)))
+     (DistilledTiming. name (atom (vec durations)) (ConcurrentHashMap.) context true)))
 
 (defn distill-timing
   "Returns a distillation of the timing object, containing only :task, :durations, :context, and :sub-tasks.
@@ -480,8 +480,10 @@
    identical tasks."
   [& distilled-timings]
   (let [root-timing (distilled-timing nil nil)]
-    (doseq [t distilled-timings]
-      (merge-distilled-timing! root-timing t))
+    (->> distilled-timings
+      (partition 100)
+      (pmap #(doseq [t %] (merge-distilled-timing! root-timing t)))
+      doall)
     (:sub-tasks root-timing)))
 
 ;;;

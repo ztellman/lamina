@@ -937,7 +937,6 @@
 
            ;; upstream
            (when (and
-                   success?
                    upstream?
                    (not (sneaky-edge? dst))
                    (node? (.next dst)))
@@ -949,9 +948,7 @@
                  (siphon-cleanup-callback callback (.next dst)))))
 
            ;; downstream
-           (when (and
-                   success?
-                   downstream?)
+           (when downstream?
              (on-state-changed src nil
                (downstream-callback src (.next dst))))
            
