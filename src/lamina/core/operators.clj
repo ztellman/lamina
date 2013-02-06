@@ -309,12 +309,13 @@
 
 (defn channel->lazy-seq-
   [read-fn cleanup-fn]
-  (let [msg @(read-fn)]
-    (if (= ::end msg)
-      (do
-        (cleanup-fn)
-        nil)
-      (cons msg (lazy-seq (channel->lazy-seq- read-fn cleanup-fn))))))
+  (lazy-seq 
+    (let [msg @(read-fn)]
+      (if (= ::end msg)
+        (do
+          (cleanup-fn)
+          nil)
+        (cons msg (channel->lazy-seq- read-fn cleanup-fn))))))
 
 (defn channel->lazy-seq
   "Returns a sequence.  As elements of the sequence are realized, messages from the
