@@ -104,7 +104,7 @@
 
 ;;;
 
-(defprotocol INonRealTimeTaskQueue
+(defprotocol+ INonRealTimeTaskQueue
   (advance [_] "Advances to the next task. Returns false if there are no remaining tasks.")
   (advance-until [_ timestamp] "Advances across all tasks that occur before or on the given timestamp."))
 
@@ -114,7 +114,7 @@
     (let [^TaskTuple o o
           c (compare timestamp (.timestamp o))]
       (if (zero? c)
-        (compare f (.f o))
+        (compare (hash f) (hash (.f o)))
         c))))
 
 (defn non-realtime-task-queue

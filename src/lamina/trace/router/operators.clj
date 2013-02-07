@@ -14,6 +14,7 @@
     [clojure.string :as str]
     [clojure.tools.logging :as log]
     [lamina.trace.context]
+    [lamina.time :as t]
     [lamina.stats])
   (:import
     [java.util.regex
@@ -23,7 +24,7 @@
 
 (defn keywordize [m]
   (zipmap
-    (map keyword (keys m))
+    (map #(if (string? %) (keyword %) %) (keys m))
     (vals m)))
 
 (defn getter [lookup]
@@ -95,17 +96,14 @@
   :distribute? false
 
   :transform
-  (fn [{:strs [options]} ch]
-    (let [period (options "period")
-          options (dissoc options "period")
+  (fn [{:strs [options __implicit]} ch]
+    (let [period (get __implicit "period")
           descs (vals options)]
       (assert (every? #(contains? % "operators") descs))
       (apply merge-channels
         (map
           (fn [{:strs [operators pattern] :as desc}]
-            (let [desc (if period
-                         (assoc desc "period" period)
-                         desc)]
+            (let [desc (assoc desc "__implicit" __implicit)]
               (if pattern
                 (r/generate-stream desc)
                 (r/transform-trace-stream desc (fork ch)))))
@@ -116,18 +114,16 @@
   :distribute? false
 
   :transform
-  (fn [{:strs [options]} ch]
-    (let [period (options "period")
-          options (dissoc options "period")
+  (fn [{:strs [options __implicit]} ch]
+    (let [period (get __implicit "period")
+          options options
           ks (keys options)
           descs (vals options)]
       (assert (every? #(contains? % "operators") descs))
       (->> (apply zip
              (map
                (fn [{:strs [operators pattern] :as desc}]
-                 (let [desc (if period
-                              (assoc desc "period" period)
-                              desc)]
+                 (let [desc (assoc desc "__implicit" __implicit)]
                    (if pattern
                      (r/generate-stream desc)
                      (r/transform-trace-stream desc (fork ch)))))
@@ -164,7 +160,9 @@
   
   :transform
   (fn [{:strs [options]} ch]
-    (filter* (filters (->> options vals (map comparison-filter))) ch)))
+    (filter*
+      (->> options vals (map comparison-filter) filters)
+      ch)))
 
 ;;; group-by
 
@@ -174,7 +172,10 @@
                 (get options "facet")
                 (get options "0"))
         periodic? (r/periodic-chain? operators)
-        period (get options "period" 1000)]
+        period (or (get options "period")
+                 (get-in desc ["__implicit" "period"])
+                 1000)
+        task-queue (get-in desc ["__implicit" "task-queue"] t/default-task-queue)]
     (assert facet)
     (distribute-aggregate
       (getter facet)
@@ -183,14 +184,17 @@
                    (close-on-idle expiration)
                    (r/transform-trace-stream (dissoc desc "name")))]
           (if-not periodic?
-            (partition-every period ch)
+            (partition-every period task-queue ch)
             ch)))
       ch)))
 
 (defn merge-group-by [{:strs [options operators] :as desc} ch]
   (let [expiration (get options "expiration" (* 1000 60))
         periodic? (r/periodic-chain? operators)
-        period (get options "period" 1000)]
+        period (or (get options "period")
+                 (get-in desc ["__implicit" "period"])
+                 1000)
+        task-queue (get-in desc ["__implicit" "task-queue"] t/default-task-queue)]
     (->> ch
       concat*
       (distribute-aggregate first
@@ -203,7 +207,7 @@
                      ch)
                 ch (r/transform-trace-stream (dissoc desc "name") ch)]
             (if-not periodic?
-              (partition-every period ch)
+              (partition-every period task-queue ch)
               ch)))))))
 
 (r/def-trace-operator group-by
@@ -215,8 +219,14 @@
 
 ;;;
 
-(defn sum-op [{:strs [options]} ch]
-  (lamina.stats/sum (keywordize options) ch))
+(defn normalize-options [{:strs [options __implicit] :as desc}]
+  (keywordize
+    (merge
+      __implicit
+      options)))
+
+(defn sum-op [desc ch]
+  (lamina.stats/sum (normalize-options desc) ch))
 
 (r/def-trace-operator sum
   :periodic? true
@@ -229,13 +239,13 @@
   :distribute? false
   
   (:transform :pre-aggregate :aggregate)
-  (fn [{:strs [options]} ch]
+  (fn [desc ch]
     (->> ch
-      (lamina.stats/sum (keywordize options))
+      (lamina.stats/sum (normalize-options desc))
       (reductions* +))))
 
-(defn rate-op [{:strs [options]} ch]
-  (lamina.stats/rate (keywordize options) ch))
+(defn rate-op [desc ch]
+  (lamina.stats/rate (normalize-options desc) ch))
 
 (r/def-trace-operator rate
   :periodic? true
@@ -249,16 +259,16 @@
   :distribute? false
 
   :transform
-  (fn [{:strs [options]} ch]
-    (lamina.stats/moving-average (keywordize options) ch)))
+  (fn [desc ch]
+    (lamina.stats/moving-average (normalize-options desc) ch)))
 
 (r/def-trace-operator moving-quantiles
   :periodic? true
   :distribute? false
 
   :transform
-  (fn [{:strs [options]} ch]
-    (lamina.stats/moving-quantiles (keywordize options) ch)))
+  (fn [desc ch]
+    (lamina.stats/moving-quantiles (normalize-options desc) ch)))
 
 ;;;
 
@@ -267,17 +277,19 @@
   :distribute? true
 
   :transform
-  (fn [{:strs [options]} ch]
-    (let [period (or
+  (fn [{:strs [options] :as desc} ch]
+    (let [period (or (get options "period")
                    (get options "0")
-                   (get options "period"))]
+                   (get-in desc ["__implicit" "period"])
+                   1000)]
       (sample-every period ch))))
 
 (defn partition-every-op
-  [{:strs [options]} ch]
-  (let [period (or
+  [{:strs [options] :as desc} ch]
+  (let [period (or (get options "period")
                  (get options "0")
-                 (get options "period"))]
+                 (get-in desc ["__implicit" "period"])
+                 1000)]
     (partition-every period ch)))
 
 (r/def-trace-operator partition-every

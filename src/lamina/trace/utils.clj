@@ -14,7 +14,7 @@
     (run-pipeline r
       {:error-handler (fn [ex] )}
       #(do
-         (.write out (t/format-timing %))
+         (.write out ^String (t/format-timing %))
          (.write out "\n")
          (.flush out)))))
 

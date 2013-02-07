@@ -20,8 +20,10 @@
 
 (def ^{:dynamic true} *stream-generator* nil)
 
+(def ^{:dynamic true} *task-queue* nil)
+
 (defn generate-stream [descriptor]
-  (subscribe *stream-generator* descriptor))
+  (*stream-generator* descriptor))
 
 ;;;
 
@@ -53,9 +55,10 @@
   (aggregate [_ desc ch]))
 
 (defn populate-desc [operator desc]
-  (if-let [period (and (periodic? operator) (get desc "period"))]
-    (update-in desc ["options" "period"] #(or % period))
-    desc))
+  (update-in desc ["__implicit"]
+    #(merge %
+       (when-let [q *task-queue*]
+         {"task-queue" *task-queue*}))))
 
 (defmacro def-trace-operator [name & {:as args}]
   (let [{:keys [transform
@@ -189,7 +192,7 @@
     boolean))
 
 (defn transform-trace-stream
-  ([{:strs [name operators stage period]
+  ([{:strs [name operators stage __implicit]
      :or {stage "transform"}
      :as desc}
     ch]
@@ -204,7 +207,7 @@
            
          (not (empty? operators))
          (->> operators
-           (map #(if period (assoc % "period" period) %))
+           (map #(assoc % "__implicit" __implicit))
            (reduce #(transform-trace-stream %2 %1) ch))
            
          :else

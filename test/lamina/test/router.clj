@@ -12,7 +12,9 @@
     [lamina.trace.router]
     [lamina.core]
     [lamina.cache :only (get-or-create subscribe)]
-    [lamina.trace :only (trace)]))
+    [lamina.trace :only (trace select-probes)])
+  (:require
+    [lamina.time :as t]))
 
 (defn next-msg [ch]
   (-> ch read-channel (wait-for-result 10000)))
@@ -32,7 +34,7 @@
      (print ".")
      (flush)))
 
-(defn run-basic-operator-test [subscribe-fn enqueue-fn]
+(defn run-basic-operator-test [subscribe-fn enqueue-fn post-enqueue-fn]
   (let [sum              (subscribe-fn ".x.y.sum()")
         sum*             (subscribe-fn ".select(a: x.y, b: x).a.sum()")
         filtered-sum*    (subscribe-fn ".where(x.y > 1).x.y.sum()")
@@ -50,6 +52,9 @@
       (doseq [x (range 1 5)]
         (enqueue-fn {:x {:y x}}))
 
+      (when post-enqueue-fn
+        (post-enqueue-fn))
+
       (is* (= 10 (next-msg sum) (next-msg sum*)))
       (is* (= 20 (next-msg merge-sum)))
       
@@ -64,7 +69,7 @@
       (finally
         (close-all sum sum* filtered-sum* filtered-sum** filtered-sum*** avg rate sum-avg lookup merge-sum)))))
 
-(defn run-group-by-test [subscribe-fn enqueue-fn]
+(defn run-group-by-test [subscribe-fn enqueue-fn post-enqueue-fn]
   (let [foo-grouping       (subscribe-fn ".group-by(foo)")
         foo-rate           (subscribe-fn ".group-by(foo).rate()")
         bar-rate           (subscribe-fn ".group-by(facet: bar).rate()")
@@ -81,6 +86,9 @@
 
       (doseq [x (map val [:a :a :b :b :c] [:x :x :z :y :y])]
         (enqueue-fn x))
+      
+      (when post-enqueue-fn
+        (post-enqueue-fn))
     
       (is* (= {:a [:x :x], :b [:z :y], :c [:y]}
              (let [m (next-msg foo-grouping)]
@@ -100,13 +108,16 @@
       (finally
         (close-all foo-grouping foo-rate bar-rate bar-rate* bar-rate** foo-bar-rate foo-bar-rate* filtered-group-by filtered-group-by*)))))
 
-(defn run-merge-streams-test [subscribe-fn enqueue-fn]
+(defn run-merge-streams-test [subscribe-fn enqueue-fn post-enqueue-fn]
   (let [merged-sum (subscribe-fn ".merge(., &abc).x.sum()")]
 
     (try
 
       (doseq [x (range 1 5)]
         (enqueue-fn {:x x :y (* 2 x)}))
+
+      (when post-enqueue-fn
+        (post-enqueue-fn))
 
       (is* (= 20 (next-msg merged-sum)))
 
@@ -117,28 +128,43 @@
   (let [ch (channel)
         sub #(query-stream % ch :period 100)
         enq #(enqueue ch %)]
-    (run-basic-operator-test sub enq)
+    (run-basic-operator-test sub enq nil)
     (close ch))
   (let [ch (channel)
         sub #(query-stream % ch :period 100)
         enq #(enqueue ch %)]
-    (run-group-by-test sub enq)
+    (run-group-by-test sub enq nil)
     (close ch))
   (println))
+
+(deftest test-non-realtime-router
+  (let [q (t/non-realtime-task-queue)
+        router (trace-router
+                 {:generator (fn [{:strs [pattern]}]
+                               (select-probes pattern))
+                  :task-queue q
+                  :payload :value
+                  :timestamp :timestamp})
+        sub #(subscribe router (str "abc" %) :period 1e5)
+        enq #(trace :abc {:timestamp 0, :value %})]
+    (run-basic-operator-test sub enq #(t/advance-until q 2e5))
+    (run-group-by-test sub enq #(t/advance-until q 5e5))
+    (run-merge-streams-test sub enq #(t/advance-until q 5e5))
+    (println)))
 
 (deftest test-local-router
   (let [sub #(subscribe local-trace-router (str "abc" %) :period 100)
         enq #(trace :abc %)]
-    (run-basic-operator-test sub enq)
-    (run-group-by-test sub enq)
-    (run-merge-streams-test sub enq)
+    (run-basic-operator-test sub enq nil)
+    (run-group-by-test sub enq nil)
+    (run-merge-streams-test sub enq nil)
     (println)))
 
 (deftest test-split-router
   (let [router (aggregating-trace-router local-trace-router)
         sub #(subscribe router (str "abc" %) :period 100)
         enq #(trace :abc %)]
-    (run-basic-operator-test sub enq)
-    (run-group-by-test sub enq)
-    (run-merge-streams-test sub enq)
+    (run-basic-operator-test sub enq nil)
+    (run-group-by-test sub enq nil)
+    (run-merge-streams-test sub enq nil)
     (println)))
