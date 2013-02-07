@@ -153,7 +153,7 @@
        ch*)))
 
 (defn- abs [x]
-  (Math/abs x))
+  (Math/abs (double x)))
 
 (defn outliers
   "Returns a channel that will emit outliers from the source channel, as measured by the standard

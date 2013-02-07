@@ -39,13 +39,13 @@
           sum (.sum counter)
           cnt (.cnt counter)
           r*  (/ sum interval (max 1 cnt))]
-      (if (= 0 cnt)
-        0.0
-        (if initialized?
-          (let [r rate
-                rate* (double (+ r (* alpha (- r* r))))]
-            (set! rate rate*)
-            (* interval rate*))
+      (if initialized?
+        (let [r rate
+              rate* (double (+ r (* alpha (- r* r))))]
+          (set! rate rate*)
+          (* interval rate*))
+        (if (zero? cnt)
+          0.0
           (do
             (set! initialized? true)
             (set! rate (double r*))

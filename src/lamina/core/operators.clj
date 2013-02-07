@@ -190,7 +190,8 @@
 
    (reductions* max (channel 1 3 2)) => [1 3 3]"
   ([f ch]
-     (let [ch* (mimic ch)]
+     (let [ch (join ch (mimic ch))
+           ch* (mimic ch)]
        (p/run-pipeline (read-channel* ch :on-drained ::drained)
          {:error-handler (fn [ex] (error ch* ex false))}         
          (fn [val]
@@ -224,16 +225,17 @@
 
    (reduce* max (channel 1 3 2)) => 3"
   ([f ch]
-     (p/run-pipeline (read-channel* ch :on-drained ::drained)
-       {:error-handler (fn [_])}
-       (fn [val]
-         (if (= ::drained val)
-
-           ;; no elements, just invoke function
-           (r/success-result (f))
-
-           ;; reduce over channel
-           (reduce* f val ch)))))
+     (let [ch (join ch (mimic ch))]
+       (p/run-pipeline (read-channel* ch :on-drained ::drained)
+         {:error-handler (fn [_])}
+         (fn [val]
+           (if (= ::drained val)
+             
+             ;; no elements, just invoke function
+             (r/success-result (f))
+             
+             ;; reduce over channel
+             (reduce* f val ch))))))
 
   ([f val ch]
      (let [val (atom val)
