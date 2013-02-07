@@ -10,53 +10,38 @@
   (:use
     [clojure test]
     [lamina stats core]
-    [lamina.stats utils]
     [lamina.test utils])
   (:require
-    [lamina.stats.moving-average :as avg]
-    [lamina.stats.variance :as var]))
+    [lamina.time :as t]))
+
+;;;
+
+(defn run-stats-test [f values period window]
+  (let [q (t/non-realtime-task-queue)
+        ch (channel)
+        ch* (f
+              {:period period
+               :window window
+               :task-queue q}
+              ch)]
+    (doseq [vs values]
+      (apply enqueue ch vs)
+      (t/advance q))
+    (channel->seq ch*)))
+
+(deftest test-average
+  )
 
 ;;;
 
 (deftest ^:benchmark benchmark-rate
-  (let [ch (channel)]
-    (rate ch)
-    (bench "rate operator"
-      (enqueue ch 1))
-    (close ch)))
+  )
 
 (deftest ^:benchmark benchmark-average
-  (let [avg (avg/moving-average 1 1)]
-    (bench "moving-average update"
-      (update avg 1)))
-  (let [avg (avg/moving-average 1 1)]
-    (ground avg)
-    (update avg 1)
-    (bench "moving-average deref"
-      @avg))
-  (let [ch (channel)]
-    (moving-average ch)
-    (bench "mean operator"
-      (enqueue ch 1))
-    (close ch)))
+  )
 
 (deftest ^:benchmark benchmark-variance
-  (let [v (var/create-variance)]
-    (bench "variance update"
-      (update v 1)))
-  (let [v (var/create-variance)]
-    (update v 1)
-    (bench "variance deref"
-      (var/variance v)))
-  (let [ch (channel)]
-    (ground (variance ch))
-    (bench "variance operator"
-      (enqueue ch 1))
-    (close ch)))
+  )
 
 (deftest ^:benchmark benchmark-outliers
-  (let [ch (channel)]
-    (ground (outliers identity ch))
-    (bench "outliers operator"
-      (enqueue ch 1))
-    (close ch)))
+  )

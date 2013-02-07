@@ -242,10 +242,31 @@
        (% a b)
        (wait-for-drained a)))
 
+  (join-and-siphon
+    #(let [a (node identity)
+           b (node identity)]
+       (close* b)
+       (% a b)
+       (wait-for-drained a)))
+
   (let [a (node identity)
         b (node identity)]
     (join a b)
     (close* a)
+    (wait-for-drained a)
+    (wait-for-drained b))
+
+    (join-and-siphon
+    #(let [a (node identity)
+           b (node identity)]
+       (close* b)
+       (% a b)
+       (wait-for-drained a)))
+
+  (let [a (node identity)
+        b (node identity)]
+    (close* a)
+    (join a b)
     (wait-for-drained a)
     (wait-for-drained b))
 

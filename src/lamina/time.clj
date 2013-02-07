@@ -8,25 +8,21 @@
 
 (ns lamina.time
   (:use
-    [lamina.core.utils]
     [potemkin])
   (:require
-    [clojure.tools.logging :as log]
+    [lamina.time.queue :as q]
     [clojure.string :as str])
   (:import
     [java.util
      Calendar
-     TimeZone]
-    [java.util.concurrent
-     ThreadFactory
-     TimeUnit
-     ThreadPoolExecutor
-     ScheduledThreadPoolExecutor
-     LinkedBlockingQueue
-     ]))
+     TimeZone]))
 
-(defn now []
-  (System/currentTimeMillis))
+(defn now
+  "Returns the current time, in milliseconds since the epoch."
+  ([]
+     (System/currentTimeMillis))
+  ([clock]
+     (q/now clock)))
 
 (defn nanoseconds
   "Converts nanoseconds -> milliseconds"
@@ -122,71 +118,14 @@
 
 ;;;
 
-(defprotocol+ ITaskQueue
-  (invoke-once- [_ delay f])
-  (invoke-repeatedly- [_ period f]))
+(import-vars
+  [lamina.time.queue
 
-(let [queue-factory (thread-factory (constantly "lamina-scheduler-queue"))
-      task-queue    (ScheduledThreadPoolExecutor. 1 ^ThreadFactory queue-factory)
+   invoke-in
+   invoke-at
+   invoke-repeatedly
 
-      cnt (atom 0)
-      task-factory (thread-factory #(str "lamina-scheduler-" (swap! cnt inc)))
-      task-executor (ThreadPoolExecutor.
-                      (int (num-cores))
-                      Integer/MAX_VALUE
-                      (long 60)
-                      TimeUnit/SECONDS
-                      (LinkedBlockingQueue.)
-                      ^ThreadFactory task-factory)]
-
-  (def default-task-queue
-    (reify ITaskQueue
-      (invoke-once- [_ delay f]
-        (let [enqueue-fn (fn []
-                           (.execute task-executor
-                             #(try
-                                (f)
-                                (catch Throwable e
-                                  (log/error e "Error in delayed invocation")))))]
-          (if (<= delay 0)
-            (enqueue-fn)
-            (.schedule task-queue
-              ^Runnable enqueue-fn
-              (long (* 1e6 delay))
-              TimeUnit/NANOSECONDS)))
-        true)
-      (invoke-repeatedly- [this period f]
-        (let [target-time (atom (+ (now) period))
-              latch (atom false)
-              cancel-callback #(reset! latch true)
-
-              schedule-next (fn schedule-next []
-                              (invoke-once- this (max 0.1 (- @target-time (now)))
-                                (fn []
-                                  (try
-                                    (f cancel-callback)
-                                    (finally
-                                      (when-not @latch
-                                        (swap! target-time + period)
-                                        (schedule-next)))))))]
-          (schedule-next)
-          true)))))
-
-(defn invoke-once
-  "Delays invocation of a function by 'delay' milliseconds."
-  ([delay f]
-     (invoke-once default-task-queue delay f))
-  ([task-queue delay f]
-     (invoke-once- task-queue delay f)))
-
-(defn invoke-repeatedly
-  "Repeatedly invokes a function every 'period' milliseconds, but ensures that the function cannot
-   overlap its own invocation if it takes more than the period to complete.
-
-   The function will be given a single parameter, which is a callback that can be invoked to cancel
-   future invocations."
-  ([period f]
-     (invoke-repeatedly default-task-queue period f))
-  ([task-queue period f]
-     (invoke-repeatedly- task-queue period f)))
-
+   default-task-queue
+   non-realtime-task-queue
+   advance
+   advance-until])

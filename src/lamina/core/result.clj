@@ -287,7 +287,7 @@
              clojure.lang.IBlockingDeref
              (deref [this# timeout-ms# timeout-val#]
                (let [r# (result-channel)]
-                 (t/invoke-once r# timeout-ms# #(success r# timeout-val#))
+                 (t/invoke-in r# timeout-ms# #(success r# timeout-val#))
                  (subscribe this#
                    (result-callback
                      #(success r# %)
@@ -507,7 +507,7 @@
   (let [result* (siphon-result result (result-channel))]
     (if (zero? interval)
       (error result* :lamina/timeout! false)
-      (t/invoke-once interval #(error result* :lamina/timeout! false)))
+      (t/invoke-in interval #(error result* :lamina/timeout! false)))
     result*))
 
 (defn expiring-result
@@ -516,7 +516,7 @@
   [interval]
   (let [result (result-channel)]
     (when interval
-      (t/invoke-once interval #(error result :lamina/timeout! false)))
+      (t/invoke-in interval #(error result :lamina/timeout! false)))
     result))
 
 (defn timed-result
@@ -526,7 +526,7 @@
   ([interval value]
      (let [result (result-channel)]
        (when interval
-         (t/invoke-once interval #(success result value)))
+         (t/invoke-in interval #(success result value)))
        result)))
 
 (defn merge-results

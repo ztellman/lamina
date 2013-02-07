@@ -22,7 +22,7 @@
        (f#))))
 
 (defmacro task [& body]
-  `(invoke-once 1 (fn [] ~@body)))
+  `(invoke-in 1 (fn [] ~@body)))
 
 (defn async-enqueue 
   [transactional? ch messages]

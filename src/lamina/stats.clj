@@ -15,14 +15,12 @@
     [clojure.tools.logging :as log]
     [lamina.time :as t]
     [lamina.stats.moving-average :as avg]
-    [lamina.stats.variance :as var])
+    [lamina.stats.variance :as var]
+    [lamina.stats.quantiles :as qnt])
   (:import
     [java.util.concurrent.atomic
      AtomicLong
-     AtomicBoolean]
-    [com.yammer.metrics.stats
-     ExponentiallyDecayingSample
-     Snapshot]))
+     AtomicBoolean]))
 
 (defn sum
   "Returns a channel that will periodically emit the sum of all messages emitted by the source
@@ -31,8 +29,10 @@
    It is assumed that all numbers emitted by the source channel are integral values."
   ([ch]
      (sum nil ch))
-  ([{:keys [period]
-     :or {period 1000}}
+  ([{:keys [period
+            task-queue]
+     :or {period 1000
+          task-queue t/default-task-queue}}
     ch]
      (let [ch* (channel)
            cnt (AtomicLong. 0)
@@ -45,7 +45,7 @@
 
            (when (.compareAndSet latch false true)
              (siphon
-               (periodically period #(.getAndSet cnt 0))
+               (periodically period #(.getAndSet cnt 0) task-queue)
                ch*))))
        ch*)))
 
@@ -54,12 +54,15 @@
    channel over the last 'period' milliseconds, with a default of 1000."
   ([ch]
      (rate nil ch))
-  ([{:keys [period]
-     :or {period 1000}}
+  ([{:keys [period
+            task-queue]
+     :or {period 1000
+          task-queue t/default-task-queue}
+     :as options}
     ch]
      (->> ch
        (map* (constantly 1))
-       (sum {:period period}))))
+       (sum options))))
 
 (defn moving-average
   "Returns a channel that will periodically emit the moving average over all messages emitted by
@@ -69,9 +72,11 @@
   ([ch]
      (moving-average nil ch))
   ([{:keys [period
-            window]
+            window
+            task-queue]
      :or {period (t/seconds 5)
-          window (t/minutes 5)}}
+          window (t/minutes 5)
+          task-queue t/default-task-queue}}
     ch]
      (let [avg (avg/moving-average period window)
            ch* (channel)
@@ -84,7 +89,7 @@
 
            (when (.compareAndSet latch false true)
              (siphon
-               (periodically period #(deref avg))
+               (periodically period #(deref avg) task-queue)
                ch*))))
        ch*)))
 
@@ -104,28 +109,24 @@
      (moving-quantiles nil ch))
   ([{:keys [period
             window
-            quantiles]
+            quantiles
+            task-queue]
      :or {quantiles [50 75 95 99 99.9]
           period (t/seconds 5)
+          task-queue t/default-task-queue
           window (t/minutes 5)}}
     ch]
-     (let [sample (ExponentiallyDecayingSample. 1024 0.015)
-           ch* (channel)
-           scaled-quantiles (map #(/ % 100) quantiles)
-           latch (AtomicBoolean. false)]
+     (let [ch* (channel)
+           latch (AtomicBoolean. false)
+           quantiles (qnt/moving-quantiles task-queue window quantiles)]
        (bridge-join ch ch* "moving-quantiles"
          (fn [n]
-           
-           (.update sample (long n))
+
+           (update quantiles (long n))
 
            (when (.compareAndSet latch false true)
              (siphon
-               (periodically period
-                 (fn []
-                   (let [snapshot (.getSnapshot sample)]
-                     (zipmap
-                       quantiles
-                       (map #(.getValue snapshot %) scaled-quantiles)))))
+               (periodically period #(deref quantiles) task-queue)
                ch*))))
        ch*)))
 
@@ -134,8 +135,10 @@
    channel every 'period' milliseconds."
   ([ch]
      (variance nil ch))
-  ([{:keys [period]
-     :or {period (t/seconds 5)}}
+  ([{:keys [period
+            task-queue]
+     :or {period (t/seconds 5)
+          task-queue t/default-task-queue}}
     ch]
      (let [vr (atom (var/create-variance))
            ch* (channel)
@@ -145,7 +148,7 @@
            (swap! vr update (long n))
            (when (.compareAndSet latch false true)
              (siphon
-               (periodically period #(var/variance @vr))
+               (periodically period #(var/variance @vr) task-queue)
                ch*))))
        ch*)))
 
@@ -155,7 +158,7 @@
 (defn outliers
   "Returns a channel that will emit outliers from the source channel, as measured by the standard
    deviations from the mean value of (facet msg).  Outlier status is determined by
-   'deviation-predicate', which is given the standard deviations from the mean, and returns true
+   'variance-predicate', which is given the standard deviations from the mean, and returns true
    or false.  By default, it will return true for any value where the absolute value is greater
    than three.
 
@@ -169,7 +172,7 @@
      (outliers
        :duration
        {:window (lamina.time/minutes 15)
-        :predicate #(< % 3)}
+        :variance-predicate #(< % 3)}
        (probe-channel :name:return))
 
    :window describes the window of the moving average, which defaults to five minutes.  This can
@@ -178,9 +181,11 @@
      (outliers facet nil ch))
   ([facet
     {:keys [window
-            predicate]
+            variance-predicate
+            task-queue]
      :or {window (t/minutes 5)
-          predicate #(< 3 (abs (double %)))}}
+          variance-predicate #(< 3 (abs (double %)))
+          task-queue t/default-task-queue}}
     ch]
      (let [avg (avg/moving-average (t/seconds 5) window)
            vr (atom (var/create-variance))
@@ -190,7 +195,8 @@
                           (let [mean @avg
                                 std-dev (var/std-dev @vr)]
                             (when-not (zero? std-dev)
-                              #(predicate (/ (- (facet %) mean) std-dev))))))
+                              #(variance-predicate (/ (- (facet %) mean) std-dev)))))
+                        task-queue)
            f (atom-sink predicates)]
        
        (on-drained ch #(close predicates))

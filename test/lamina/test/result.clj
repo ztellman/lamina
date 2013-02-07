@@ -261,11 +261,11 @@
 (defn stress-test-result-channel [r-fn]
   (dotimes* [i 1e5]
     (let [r (r-fn)]
-      (invoke-once 0.1 (fn [] (success r i)))
+      (invoke-in 0.1 (fn [] (success r i)))
       (Thread/sleep 1)
       (is (= i @r)))
     (let [r (r-fn)]
-      (invoke-once 0.1 (fn [] (error r i false)))
+      (invoke-in 0.1 (fn [] (error r i false)))
       (Thread/sleep 1)
       (is (thrown? Exception @r)))))
 

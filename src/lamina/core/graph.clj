@@ -125,7 +125,7 @@
        ~@(when (contains? options :timeout)
            `((let [timeout# ~timeout]
                (when (and timeout# (instance? ResultChannel ~result-sym))
-                 (t/invoke-once timeout#
+                 (t/invoke-in timeout#
                    (fn []
                      ~(if on-timeout
                         `(r/success ~result-sym ~on-timeout)

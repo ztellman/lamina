@@ -474,7 +474,7 @@
 
 (defn check-idle [^AtomicLong last-message interval result]
   (let [mark (.get last-message)]
-    (t/invoke-once (- interval (- (System/currentTimeMillis) mark))
+    (t/invoke-in (- interval (- (System/currentTimeMillis) mark))
       (fn []
         (if (= mark (.get last-message))
           (r/success result true)

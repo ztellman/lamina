@@ -10,7 +10,7 @@
   (:use
     [clojure test]
     [lamina.test utils]
-    [lamina.time :only (invoke-once)])
+    [lamina.time :only (invoke-in)])
   (:require
     [lamina.core.queue :as q]
     [lamina.core.result :as r]))
@@ -132,7 +132,7 @@
 (defn stress-test-single-queue [q-fn]
   (let [q (q-fn)]
     (dotimes* [i 1e5]
-      (invoke-once 0.01 #(enqueue q i))
+      (invoke-in 0.01 #(enqueue q i))
       (Thread/yield)
       (is (= i @(receive q))))))
 
@@ -140,7 +140,7 @@
   (dotimes* [i 1e5]
     (let [q (q-fn)
           result (receive q)]
-      (invoke-once 0.1 #(q/close q))
+      (invoke-in 0.1 #(q/close q))
       (Thread/sleep 1)
       (is (thrown? Exception @result)))))
 

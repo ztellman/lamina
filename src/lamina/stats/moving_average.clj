@@ -42,8 +42,10 @@
       (if (= 0 cnt)
         0.0
         (if initialized?
-          (let [r rate]
-            (set! rate (double (+ r (* alpha (- r* r))))))
+          (let [r rate
+                rate* (double (+ r (* alpha (- r* r))))]
+            (set! rate rate*)
+            (* interval rate*))
           (do
             (set! initialized? true)
             (set! rate (double r*))

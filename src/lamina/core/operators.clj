@@ -395,47 +395,56 @@
 (defn periodically
   "Returns a channel.  Every 'period' milliseconds, 'f' is invoked with no arguments
    and the value is emitted as a message."
-  [period f]
-  (let [ch (channel* :description (str "periodically " (describe-fn f)))
-        cnt (atom 0)]
-    (t/invoke-repeatedly period
-      (fn [cancel-callback]
-        (try
-          (enqueue ch (f))
-          (finally
-            (when (closed? ch)
-              (cancel-callback))))))
-    ch))
+  ([period f]
+     (periodically period f t/default-task-queue))
+  ([period f task-queue]
+     (let [ch (channel* :description (str "periodically " (describe-fn f)))
+           cnt (atom 0)]
+       (t/invoke-repeatedly task-queue period
+         (fn [cancel-callback]
+           (try
+             (enqueue ch (f))
+             (finally
+               (when (closed? ch)
+                 (cancel-callback))))))
+       ch)))
 
 (defn sample-every
   "Takes a source channel, and returns a channel that emits the most recent message
    from the source channel every 'period' milliseconds."
-  [period ch]
-  (let [val (atom ::none)
-        ch* (mimic ch)]
-    (bridge-join ch ch* (str "sample-every " period)
-      #(reset! val %))
-    (siphon
-      (->> #(deref val) (periodically period) (remove* #(= ::none %)))
-      ch*)
-    ch*))
+  ([period ch]
+     (sample-every period t/default-task-queue ch))
+  ([period task-queue ch]
+     (let [val (atom ::none)
+           ch* (mimic ch)]
+       (bridge-join ch ch* (str "sample-every " period)
+         #(reset! val %))
+       (siphon
+         (->> (periodically period #(deref val) task-queue)
+           (remove* #(= ::none %)))
+         ch*)
+       ch*)))
 
 (defn partition-every
   "Takes a source channel, and returns a channel that repeatedly emits a collection
    of all messages from the source channel in the last 'period' milliseconds."
-  [period ch]
-  (let [q (ConcurrentLinkedQueue.)
-        drain (fn []
-                (loop [msgs []]
-                  (if (.isEmpty q)
-                    msgs
-                    (let [msg (.remove q)]
-                      (recur (conj msgs (if (identical? ::nil msg) nil msg)))))))
-        ch* (mimic ch)]
-    (bridge-join ch ch* (str "partition-every " period)
-      #(.add q (if (nil? %) ::nil %)))
-    (siphon (periodically period drain) ch*)
-    ch*))
+  ([period ch]
+     (partition-every period t/default-task-queue ch))
+  ([period task-queue ch]
+     (let [q (ConcurrentLinkedQueue.)
+           drain (fn []
+                   (loop [msgs []]
+                     (if (.isEmpty q)
+                       msgs
+                       (let [msg (.remove q)]
+                         (recur (conj msgs (if (identical? ::nil msg) nil msg)))))))
+           ch* (mimic ch)]
+       (bridge-join ch ch* (str "partition-every " period)
+         #(.add q (if (nil? %) ::nil %)))
+       (siphon
+         (periodically period drain task-queue)
+         ch*)
+       ch*)))
 
 ;;;
 
@@ -509,7 +518,6 @@
   (->> (apply zip-all channels)
     (map* #(apply f %))))
 
-;; todo: what happens when all the channels close?
 (defn merge-channels
   "something goes here"
   [& channels]
@@ -522,3 +530,18 @@
       (siphon ch ch*))
     ch*))
 
+;;;
+
+(defn defer-onto-queue [task-queue time-facet ch]
+  (let [ch* (channel)]
+    (receive-in-order ch
+      (fn [msg]
+        (let [r (r/result-channel)]
+          (t/invoke-at task-queue (time-facet msg)
+            (fn []
+              (try
+                (enqueue ch* msg)
+                (finally
+                  (r/success r :lamina/consumed)))))
+          r)))
+    ch*))

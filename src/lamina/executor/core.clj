@@ -10,7 +10,7 @@
   (:use
     [lamina.core.utils]
     [lamina.executor.utils]
-    [lamina.time :only (invoke-once)])
+    [lamina.time :only (invoke-in)])
   (:require
     [lamina.trace.probe :as pr]
     [lamina.core.pipeline :as p]
@@ -41,7 +41,7 @@
 (defn periodically-contract-pool-size [^ThreadPoolExecutor pool min-thread-count interval]
   (when-not (.isShutdown pool)
     (contract-pool-size pool min-thread-count)
-    (invoke-once
+    (invoke-in
       interval
       #(periodically-contract-pool-size pool min-thread-count interval))))
 
