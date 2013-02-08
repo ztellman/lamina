@@ -481,7 +481,7 @@
   [& distilled-timings]
   (let [root-timing (distilled-timing nil nil)]
     (->> distilled-timings
-      (partition 100)
+      (partition-all 100)
       (pmap #(doseq [t %] (merge-distilled-timing! root-timing t)))
       doall)
     (:sub-tasks root-timing)))
