@@ -24,7 +24,7 @@ or until 'timeout' milliseconds have elapsed.</pre></div><div class="public" id=
 be received by the other, and vice-versa.  Closing one channel will automatically
 close the other.</pre></div><div class="public" id="var-channel%3F"><h3>channel?</h3><div class="usage"><code>(channel? x)</code></div><pre class="doc">Returns true if 'x' is a channel.  This does not encompass result-channels.
 </pre></div><div class="public" id="var-close"><h3>close</h3><div class="usage"><code>(close channel)</code></div><pre class="doc">Closes the channel. Returns if successful, false if the channel is permanent, already closed,
-or in an error state.</pre></div><div class="public" id="var-close-on-idle"><h3>close-on-idle</h3><div class="usage"><code>(close-on-idle interval ch)</code></div><pre class="doc">something goes here
+or in an error state.</pre></div><div class="public" id="var-close-on-idle"><h3>close-on-idle</h3><div class="usage"><code>(close-on-idle interval ch)</code><code>(close-on-idle interval task-queue ch)</code></div><pre class="doc">something goes here
 </pre></div><div class="public" id="var-closed-channel"><h3>closed-channel</h3><div class="usage"><code>(closed-channel &amp; messages)</code></div><pre class="doc">Returns a closed channel containing the given messages.
 </pre></div><div class="public" id="var-closed-result"><h3>closed-result</h3><div class="usage"><code>(closed-result channel)</code></div><pre class="doc">Returns a result-channel that will emit a result when the channel is closed, or emit an error
 if the channel goes into an error state.</pre></div><div class="public" id="var-closed%3F"><h3>closed?</h3><div class="usage"><code>(closed? channel)</code></div><pre class="doc">Returns true if the channel is closed, false otherwise. 
@@ -61,7 +61,7 @@ if the channel goes into an error state.</pre></div><div class="public" id="var-
 </pre></div><div class="public" id="var-enqueue-and-close"><h3>enqueue-and-close</h3><div class="usage"><code>(enqueue-and-close ch &amp; messages)</code></div><pre class="doc">Enqueues the message or messages into the channel, and then closes the channel.
 </pre></div><div class="public" id="var-error"><h3>error</h3><div class="usage"><code>(error channel err)</code></div><pre class="doc">Puts the channel or result-channel into an error state.
 </pre></div><div class="public" id="var-error-result"><h3>error-result</h3><div class="usage"><code>(error-result error)</code><code>(error-result error listener)</code></div><pre class="doc">Returns a result already realized with an error.
-</pre></div><div class="public" id="var-expiring-result"><h3>expiring-result</h3><div class="usage"><code>(expiring-result interval)</code></div><pre class="doc">Returns a result-channel that will be realized as a 'lamina/timeout!' error if a value is not enqueued within
+</pre></div><div class="public" id="var-expiring-result"><h3>expiring-result</h3><div class="usage"><code>(expiring-result interval)</code><code>(expiring-result interval task-queue)</code></div><pre class="doc">Returns a result-channel that will be realized as a 'lamina/timeout!' error if a value is not enqueued within
 'interval' milliseconds.</pre></div><div class="public" id="var-filter*"><h3>filter*</h3><div class="usage"><code>(filter* f channel)</code></div><pre class="doc">A dual to filter.
 
 (filter* odd? (channel 1 2 3)) =&gt; [1 3]</pre></div><div class="public" id="var-force-close"><h3>force-close</h3><div class="usage"><code>(force-close channel)</code></div><pre class="doc">Closes the channel, even if it is permanent. Returns if successful, false if the channel is
@@ -73,7 +73,7 @@ If the forked channel is closed, the source channel is unaffected.  However, if 
 channel is closed all forked channels are closed.  Similar propagation rules apply to error
 states.</pre></div><div class="public" id="var-ground"><h3>ground</h3><div class="usage"><code>(ground ch)</code></div><pre class="doc">Ensures that messages will not accumulate in the channel's queue.
 </pre></div><div class="public" id="var-grounded-channel"><h3>grounded-channel</h3><div class="usage"><code>(grounded-channel)</code></div><pre class="doc">Returns a channel that cannot accumulate messages.
-</pre></div><div class="public" id="var-idle-result"><h3>idle-result</h3><div class="usage"><code>(idle-result interval ch)</code></div><pre class="doc">something goes here
+</pre></div><div class="public" id="var-idle-result"><h3>idle-result</h3><div class="usage"><code>(idle-result interval ch)</code><code>(idle-result interval task-queue ch)</code></div><pre class="doc">something goes here
 </pre></div><div class="public" id="var-join"><h3>join</h3><div class="usage"><code>(join src dst)</code><code>(join src dst &amp; rest)</code></div><pre class="doc">something goes here
 </pre></div><div class="public" id="var-join-%3E%3E"><h3>join-&gt;&gt;</h3><div class="usage"><code>(join-&gt;&gt; &amp; transforms+downstream-channel)</code></div><pre class="doc">A variant of sink-&gt;&gt; where the last argument is assumed to be a channel,
 and the transform chain is joined to it.
@@ -185,7 +185,7 @@ exists downstream.
 
 If the tap channel is closed, the source channel is unaffected.  However, if the source
 channel is closed all tap channels are closed.  Similar propagation rules apply to error
-states.</pre></div><div class="public" id="var-timed-result"><h3>timed-result</h3><div class="usage"><code>(timed-result interval)</code><code>(timed-result interval value)</code></div><pre class="doc">Returns a result-channel that will be realized as 'value' (defaulting to nil) in 'interval' milliseconds.
+states.</pre></div><div class="public" id="var-timed-result"><h3>timed-result</h3><div class="usage"><code>(timed-result interval)</code><code>(timed-result interval value)</code><code>(timed-result interval value task-queue)</code></div><pre class="doc">Returns a result-channel that will be realized as 'value' (defaulting to nil) in 'interval' milliseconds.
 </pre></div><div class="public" id="var-transactional%3F"><h3>transactional?</h3><div class="usage"><code>(transactional? channel)</code></div><pre class="doc">Returns true if the channel's queue is transactional, false otherwise.
 </pre></div><div class="public" id="var-transitions"><h3>transitions</h3><div class="usage"><code>(transitions ch)</code></div><pre class="doc">Emits messages only when they differ from the preceding message.
 </pre></div><div class="public" id="var-wait-for-message"><h3>wait-for-message</h3><div class="usage"><code>(wait-for-message ch)</code><code>(wait-for-message ch timeout)</code></div><pre class="doc">Blocks for the next message from the channel. If the timeout elapses without a message,
