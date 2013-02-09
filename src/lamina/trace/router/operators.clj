@@ -120,7 +120,7 @@
           ks (keys options)
           descs (vals options)]
       (assert (every? #(contains? % "operators") descs))
-      (->> (apply zip
+      (->> (zip
              (map
                (fn [{:strs [operators pattern] :as desc}]
                  (let [desc (assoc desc "__implicit" __implicit)]
@@ -176,16 +176,18 @@
                  (get-in desc ["__implicit" "period"])
                  1000)
         task-queue (get-in desc ["__implicit" "task-queue"] t/default-task-queue)]
+
     (assert facet)
+
     (distribute-aggregate
-      (getter facet)
-      (fn [k ch]
-        (let [ch (->> ch
-                   (close-on-idle expiration)
-                   (r/transform-trace-stream (dissoc desc "name")))]
-          (if-not periodic?
-            (partition-every period task-queue ch)
-            ch)))
+      {:facet (getter facet)
+       :generator (fn [k ch]
+                    (let [ch (->> ch
+                               (close-on-idle expiration)
+                               (r/transform-trace-stream (dissoc desc "name")))]
+                      (if-not periodic?
+                        (partition-every {:period period :task-queue task-queue} ch)
+                        ch)))}
       ch)))
 
 (defn merge-group-by [{:strs [options operators] :as desc} ch]
@@ -197,18 +199,19 @@
         task-queue (get-in desc ["__implicit" "task-queue"] t/default-task-queue)]
     (->> ch
       concat*
-      (distribute-aggregate first
-        (fn [k ch]
-          (let [ch (->> ch
-                     (close-on-idle expiration)
-                     (map* second))
-                ch (if-not periodic?
-                     (concat* ch)
-                     ch)
-                ch (r/transform-trace-stream (dissoc desc "name") ch)]
-            (if-not periodic?
-              (partition-every period task-queue ch)
-              ch)))))))
+      (distribute-aggregate
+        {:facet first
+         :generator (fn [k ch]
+                      (let [ch (->> ch
+                                 (close-on-idle expiration)
+                                 (map* second))
+                            ch (if-not periodic?
+                                 (concat* ch)
+                                 ch)
+                            ch (r/transform-trace-stream (dissoc desc "name") ch)]
+                        (if-not periodic?
+                          (partition-every {:period period :task-queue task-queue} ch)
+                          ch)))}))))
 
 (r/def-trace-operator group-by
   :periodic? true
@@ -289,8 +292,9 @@
   (let [period (or (get options "period")
                  (get options "0")
                  (get-in desc ["__implicit" "period"])
-                 1000)]
-    (partition-every period ch)))
+                 1000)
+        task-queue (get-in desc ["__implicit" "task-queue"] t/default-task-queue)]
+    (partition-every {:period period :task-queue task-queue} ch)))
 
 (r/def-trace-operator partition-every
   :periodic? true

@@ -46,7 +46,7 @@
 
 (deftest test-distribute-aggregate
   (let [ch (channel 1 2 1 2 3 1 1)
-        ch* (distribute-aggregate identity (fn [_ ch] ch) ch)]
+        ch* (distribute-aggregate {:facet identity, :generator (fn [_ ch] ch)} ch)]
     (is (= [{1 1, 2 2} {1 1, 2 2, 3 3} {1 1}] (channel->seq ch*)))))
 
 (defn run-split-test [operator channel-fn]

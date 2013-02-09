@@ -48,4 +48,4 @@
       (ExponentiallyDecayingSample. (int 1024) (double alpha) c)
       task-queue
       quantiles
-      (map #(double (/ quantiles 100)) quantiles))))
+      (map #(double (/ % 100)) quantiles))))

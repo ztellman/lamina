@@ -414,38 +414,65 @@
 (defn sample-every
   "Takes a source channel, and returns a channel that emits the most recent message
    from the source channel every 'period' milliseconds."
-  ([period ch]
-     (sample-every period t/default-task-queue ch))
-  ([period task-queue ch]
-     (let [val (atom ::none)
-           ch* (mimic ch)]
-       (bridge-join ch ch* (str "sample-every " period)
-         #(reset! val %))
-       (siphon
-         (->> (periodically period #(deref val) task-queue)
-           (remove* #(= ::none %)))
-         ch*)
-       ch*)))
+  [{:keys [period task-queue]
+    :or {task-queue t/default-task-queue}}
+   ch]
+  (let [val (atom ::none)
+        ch* (mimic ch)]
+    (bridge-join ch ch* "sample-every"
+      #(reset! val %))
+    (siphon
+      (->> (periodically period #(deref val) task-queue)
+        (remove* #(= ::none %)))
+      ch*)
+    ch*))
 
 (defn partition-every
   "Takes a source channel, and returns a channel that repeatedly emits a collection
    of all messages from the source channel in the last 'period' milliseconds."
-  ([period ch]
-     (partition-every period t/default-task-queue ch))
-  ([period task-queue ch]
-     (let [q (ConcurrentLinkedQueue.)
-           drain (fn []
-                   (loop [msgs []]
-                     (if (.isEmpty q)
-                       msgs
-                       (let [msg (.remove q)]
-                         (recur (conj msgs (if (identical? ::nil msg) nil msg)))))))
-           ch* (mimic ch)]
-       (bridge-join ch ch* (str "partition-every " period)
-         #(.add q (if (nil? %) ::nil %)))
-       (siphon
-         (periodically period drain task-queue)
-         ch*)
+  [{:keys [period task-queue]
+    :or {task-queue t/default-task-queue}}
+   ch]
+  (let [q (ConcurrentLinkedQueue.)
+        drain (fn []
+                (loop [msgs []]
+                  (if (.isEmpty q)
+                    msgs
+                    (let [msg (.remove q)]
+                      (recur (conj msgs (if (identical? ::nil msg) nil msg)))))))
+        ch* (mimic ch)]
+    (bridge-join ch ch* "partition-every"
+      #(.add q (if (nil? %) ::nil %)))
+    (siphon
+      (periodically period drain task-queue)
+      ch*)
+    ch*))
+
+(defn reduce-every
+  ([{:keys [period reducer task-queue initial-value]
+     :or {task-queue t/default-task-queue}
+     :as options}
+    ch]
+     (let [lock (l/asymmetric-lock)
+           ch* (mimic ch)
+           f (if (contains? options :initial-value)
+               #(reduce* reducer initial-value %)
+               #(reduce* reducer %))
+           sink (atom (channel))
+           result (atom (f @sink))]
+
+       (bridge-join ch ch* "reduce-every"
+         #(l/with-lock lock
+            (enqueue @sink %)))
+
+       (periodically period
+         #(l/with-exclusive-lock lock
+            (close @sink)
+            (reset! sink (channel))
+            (enqueue ch* @@result)
+            (reset! result (f @sink)))
+         task-queue)
+
        ch*)))
 
 ;;;
@@ -458,7 +485,7 @@
 
 (defn zip-all
   "something goes here"
-  [& channels]
+  [channels]
   (let [cnt (count channels)
         ^objects ary (object-array cnt)
         ^BitSet bitset (create-bitset cnt)
@@ -484,40 +511,55 @@
 
 (defn zip
   "something goes here"
-  [& channels]
-  (let [cnt (count channels)
-        lock (l/lock)
-        ^objects ary (object-array cnt)
-        bitset (atom (create-bitset cnt))
-        result (atom (r/result-channel))
-        ch* (channel)]
-    (doseq [[idx ch] (map vector (range cnt) channels)] ;; todo: typehint with 'long'
-      (bridge-siphon ch ch* "zip"
-        (fn [msg]
-          (let [curr-result @result]
-            (if-let [ary* (l/with-exclusive-lock lock
-                            (aset ary idx msg)
-                            (let [^BitSet curr-bitset @bitset]
-                              (.set curr-bitset (int idx) false)
-                              (when (.isEmpty curr-bitset)
-                                (reset! bitset (create-bitset cnt))
-                                (reset! result (r/result-channel))
-                                (let [ary* (object-array cnt)]
-                                  (System/arraycopy ary 0 ary* 0 cnt)
-                                  ary*))))]
+  ([channels]
+     (zip false channels))
+  ([most-frequent? channels]
+     (let [cnt (count channels)
+           lock (l/lock)
+           ^objects ary (object-array cnt)
+           bitset (atom (create-bitset cnt))
+           result (atom (r/result-channel))
+           ch* (channel)
+           copy-and-reset (fn []
+                            (reset! bitset (create-bitset cnt))
+                            (reset! result (r/result-channel))
+                            (let [ary* (object-array cnt)]
+                              (System/arraycopy ary 0 ary* 0 cnt)
+                              ary*))]
+       (doseq [[idx ch] (map vector (range cnt) channels)] ;; todo: typehint with 'long'
+         (bridge-siphon ch ch* "zip"
+           (fn [msg]
+             (let [curr-result @result]
+               (if-let [ary* (l/with-exclusive-lock lock
+                               (let [^BitSet curr-bitset @bitset]
+                                 (if (and most-frequent? (not (.get curr-bitset (int idx))))
 
-              (p/run-pipeline nil
-                {:error-handler (fn [_])
-                 :result curr-result}
-                (fn [_] (enqueue ch* (seq ary*))))
+                                   ;; copy the current array, and set the value for the next one
+                                   (let [result (copy-and-reset)]
+                                     (.set curr-bitset (int idx) false)
+                                     (aset ary idx msg)
+                                     result)
 
-              curr-result)))))
-    ch*))
+                                   ;; check if we've zeroed out the array
+                                   (do
+                                     (aset ary idx msg)
+                                     (when (do
+                                             (.set curr-bitset (int idx) false)
+                                             (.isEmpty curr-bitset))
+                                       (copy-and-reset))))))]
+
+                 (p/run-pipeline nil
+                   {:error-handler (fn [_])
+                    :result curr-result}
+                   (fn [_] (enqueue ch* (seq ary*))))
+
+                 curr-result)))))
+       ch*)))
 
 (defn combine-latest
   "something goes here"
   [f & channels]
-  (->> (apply zip-all channels)
+  (->> (zip-all channels)
     (map* #(apply f %))))
 
 (defn merge-channels
@@ -534,7 +576,9 @@
 
 ;;;
 
-(defn defer-onto-queue [task-queue time-facet ch]
+(defn defer-onto-queue
+  "something goes here"
+  [task-queue time-facet ch]
   (let [ch* (channel)]
     (receive-in-order ch
       (fn [msg]

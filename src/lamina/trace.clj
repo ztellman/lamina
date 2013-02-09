@@ -9,8 +9,9 @@
 (ns lamina.trace
   (:use
     [potemkin]
-    [lamina.core.utils :only (enqueue)])
+    [lamina.core])
   (:require
+    [lamina.stats :as stats]
     [lamina.trace.router :as r]
     [lamina.trace.context :as ctx]
     [lamina.trace.instrument :as i]
@@ -29,6 +30,36 @@
 (import-fn t/format-timing)
 (import-macro u/time*)
 (import-macro u/with-instrumentation)
+(import-fn t/add-sub-timing)
+(import-fn t/add-to-last-sub-timing)
+
+(defn tracing?
+  "Returns true when called inside an active function trace scope, false otherwise."
+  []
+  (boolean (lamina.core.context/timer)))
+
+(defn analyze-timings
+  "Aggregates timings, and periodically emits statistical information about them."
+  [{:keys [period window task-queue quantiles] :as options} ch]
+  (->> ch
+    (remove* (fn [_] (tracing?)))
+    (map* distill-timing)
+    (distribute-aggregate
+      {:facet :task
+       :period period
+       :task-queue task-queue
+       :generator (fn [task ch]
+                    (map*
+                      #(zipmap [:sub-tasks :quantiles :calls :max-duration :total-duration] %)
+                      (let [durations (->> ch (map* :durations) concat*)]
+                        (zip true
+                          [(->> ch (map* :sub-tasks) concat* (analyze-timings options))
+                           (->> durations (stats/moving-quantiles (assoc options :window period)))
+                           (->> durations (stats/rate options))
+                           (->> durations (reduce-every (assoc options :reducer (partial max 0))))
+                           (->> durations (stats/sum options))]))))})))
+
+;;;
 
 (import-fn pr/on-enabled-changed)
 (import-fn pr/on-new-probe)
@@ -41,11 +72,6 @@
 (import-fn pr/select-probes)
 (import-fn pr/reset-probes)
 (import-fn pr/probe-names)
-
-(defn tracing?
-  "Returns true when called inside an active trace scope, false otherwise."
-  []
-  (boolean (lamina.core.context/timer)))
 
 (defmacro trace*
   "A variant of trace that allows the probe name to be resolved at runtime."
@@ -74,9 +100,6 @@
         (pr-str probe) "' cannot be resolved to a static probe. "
         "This will work, but may cause performance issues. Use trace* to hide this warning.")))
   `(trace* ~probe ~@body))
-
-(import-fn t/add-sub-trace)
-(import-fn t/add-to-last-sub-trace)
 
 ;;;
 

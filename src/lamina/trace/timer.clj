@@ -52,11 +52,11 @@
     (add-sub-task [_ _] )
     (add-to-last-sub-task [_ _])))
 
-(defn trace-wrapper [trace]
+(defn timing-wrapper [t]
   (let [sub-tasks (ConcurrentLinkedQueue.)]
     (reify ITimed
       (timing [_ start]
-        (update-in trace [:sub-tasks]
+        (update-in t [:sub-tasks]
           #(map
              (fn [t]
                (if (satisfies? ITimed t)
@@ -66,14 +66,14 @@
       (add-sub-task [_ timing]
         (.add ^ConcurrentLinkedQueue sub-tasks timing)))))
 
-(defn add-sub-trace [trace]
+(defn add-sub-timing [timing]
   (if-let [timer (context/timer)]
-    (add-sub-task timer (trace-wrapper trace))
+    (add-sub-task timer (timing-wrapper timing))
     false))
 
-(defn add-to-last-sub-trace [trace]
+(defn add-to-last-sub-timing [timing]
   (if-let [timer (context/timer)]
-    (boolean (add-to-last-sub-task timer (trace-wrapper trace)))
+    (boolean (add-to-last-sub-task timer (timing-wrapper timing)))
     false))
 
 ;;;
@@ -467,24 +467,28 @@
 
    This data structure can be merged using merge-distilled-timings."
   [timing]
-  (let [^DistilledTiming timing* (distilled-timing
-                                   (or (:task timing) (:name timing))
-                                   (:context timing)
-                                   (or (:durations timing) [(:duration timing)]))]
-    (doseq [t (:sub-tasks timing)]
-      (add-sub-timing! timing* (distill-timing t)))
-    timing*))
+  (if (instance? DistilledTiming timing)
+    timing
+    (let [^DistilledTiming timing* (distilled-timing
+                                     (or (:task timing) (:name timing))
+                                     (:context timing)
+                                     (or (:durations timing)
+                                       (if-let [d (:duration timing)]
+                                         [d]
+                                         [])))]
+      (doseq [t (:sub-tasks timing)]
+        (add-sub-timing! timing* (distill-timing t)))
+      timing*)))
 
 (defn merge-distilled-timings
   "Returns a list of one or distilled timings, where :durations have been concatenated together for
    identical tasks."
   [& distilled-timings]
-  (let [root-timing (distilled-timing nil nil)]
-    (->> distilled-timings
-      (partition-all 100)
-      (pmap #(doseq [t %] (merge-distilled-timing! root-timing t)))
-      doall)
-    (:sub-tasks root-timing)))
+  (when-not (empty? distilled-timings)
+    (let [root-timing (distilled-timing nil nil)]
+      (doseq [t distilled-timings]
+        (merge-distilled-timing! root-timing t))
+      (:sub-tasks root-timing))))
 
 ;;;
 

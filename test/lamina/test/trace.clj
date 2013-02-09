@@ -136,12 +136,12 @@
 
 ;;;
 
-(deftest test-add-sub-trace
+(deftest test-add-sub-timing
   (is (= [{1 2, :sub-tasks [{:sub-tasks [], 3 4}]}]
         (:sub-tasks
           (with-instrumentation
-            (add-sub-trace {1 2})
-            (add-to-last-sub-trace {3 4}))))))
+            (add-sub-timing {1 2})
+            (add-to-last-sub-timing {3 4}))))))
 
 ;;;
 
