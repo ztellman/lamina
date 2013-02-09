@@ -13,6 +13,7 @@
     [clojure.walk :only (postwalk)]
     [lamina.trace.probe :only (select-probes)])
   (:require
+    [lamina.time :as time]
     [lamina.cache :as cache]
     [lamina.trace.router
      [core :as c]
@@ -32,10 +33,14 @@
 (defn parse-descriptor [x & {:as options}]
   (let [descriptor (if (string? x)
                      (stringify-keys (p/parse-stream x))
-                     x)]
-    (if-let [period (:period options)]
-      (assoc-in descriptor ["__implicit" "period"] period)
-      descriptor)))
+                     x)
+        descriptor (if-let [period (:period options)]
+                     (assoc-in descriptor ["__implicit" "period"] period)
+                     descriptor)
+        descriptor (if-let [task-queue (:task-queue options)]
+                     (assoc-in descriptor ["__implicit" "task-queue"] task-queue)
+                     descriptor)]
+    descriptor))
 
 (defn query-stream
   "something goes here"
@@ -44,7 +49,42 @@
     (apply parse-descriptor transform-descriptor options)
     ch))
 
+(defn query-seq
+  "something goes here"
+  [transform-descriptor s &
+   {:keys [timestamp
+           payload
+           period]
+    :or {payload identity}
+    :as options}]
+  (assert timestamp)
+  (let [start (timestamp (first s))
+        q (time/non-realtime-task-queue start false)
+        ch (channel)
+        ch* (apply query-stream transform-descriptor ch
+              (apply concat
+                (assoc options :task-queue q)))]
+    (future
+
+      (loop [s s, current-time start]
+        (if (empty? s)
+          (when period
+            (time/advance-until q (+ current-time (* 2 period))))
+          (let [t (first s)]
+            (time/advance-until q (timestamp t))
+            (enqueue ch (payload t))
+            (recur (rest s) (timestamp t)))))
+
+      (close ch)
+      (close ch*))
+
+    (->> ch*
+      (map* #(hash-map :timestamp (time/now q) :value %))
+      channel->lazy-seq)))
+
 ;;;
+
+(import-macro c/def-trace-operator)
 
 (defn trace-router
   "something goes here"

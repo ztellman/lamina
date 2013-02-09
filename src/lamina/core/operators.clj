@@ -406,7 +406,7 @@
   ([period f]
      (periodically period f t/default-task-queue))
   ([period f task-queue]
-     (let [ch (channel* :description (str "periodically " (describe-fn f)))
+     (let [ch (channel* :description "periodically")
            cnt (atom 0)]
        (t/invoke-repeatedly task-queue period
          (fn [cancel-callback]

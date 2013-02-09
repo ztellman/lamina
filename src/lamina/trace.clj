@@ -9,7 +9,8 @@
 (ns lamina.trace
   (:use
     [potemkin]
-    [lamina.core])
+    [lamina.core]
+    [clojure.walk :only [keywordize-keys]])
   (:require
     [lamina.time :as time]
     [lamina.stats :as stats]
@@ -34,6 +35,8 @@
 (import-fn t/add-sub-timing)
 (import-fn t/add-to-last-sub-timing)
 
+(import-macro r/def-trace-operator)
+
 (defn tracing?
   "Returns true when called inside an active function trace scope, false otherwise."
   []
@@ -54,14 +57,21 @@
        :task-queue task-queue
        :generator (fn [task ch]
                     (map*
-                      #(zipmap [:sub-tasks :quantiles :calls :max-duration :total-duration] %)
+                      #(zipmap [:sub-tasks :quantiles :calls #_:max-duration :total-duration] %)
                       (let [durations (->> ch (map* :durations) concat*)]
                         (zip
                           [(->> ch (map* :sub-tasks) concat* (analyze-timings options))
                            (->> durations (stats/moving-quantiles (assoc options :window period)))
                            (->> durations (stats/rate options))
-                           (->> durations (reduce-every (assoc options :reducer (partial max 0))))
+                           #_(->> durations (reduce-every (assoc options :reducer (partial max 0))))
                            (->> durations (stats/sum options))]))))})))
+
+(def-trace-operator analyze-timings
+  :periodic? true
+  :distribute? false
+  :transform
+  (fn [{:strs [options __implicit]} ch]
+    (analyze-timings (keywordize-keys (merge options __implicit)) ch)))
 
 ;;;
 
@@ -108,6 +118,8 @@
 ;;;
 
 (import-fn r/query-stream)
+(import-fn r/query-seq)
+
 (import-fn r/trace-router)
 (import-fn r/local-trace-router)
 (import-fn r/aggregating-trace-router)

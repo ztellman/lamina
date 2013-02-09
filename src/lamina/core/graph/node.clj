@@ -259,7 +259,7 @@
     (if (and grounded? (= 0 (.downstream-count state)))
       :lamina/grounded
       (let [msg (transform-message this msg transform?)]
-        (case msg
+        (condp identical? msg
 
           ::error
           :lamina/error!
@@ -310,7 +310,7 @@
                           (let [^Node node nxt
                                 msg (transform-message node msg true)]
                             
-                            (case msg
+                            (condp identical? msg
                               
                               ::error
                               :lamina/error!
