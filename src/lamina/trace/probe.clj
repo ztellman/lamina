@@ -17,6 +17,8 @@
     [lamina.core.result :as r]
     [clojure.tools.logging :as log])
   (:import
+    [lamina.core.utils
+     IChannelMarker]
     [java.io
      Writer]
     [java.util.concurrent
@@ -50,6 +52,8 @@
         (c enabled?)
         (catch Exception e
           (log/error e "Error in on-enabled-changed callback.")))))
+
+  IChannelMarker
   c/IChannel
   (receiver-node [_]
     (c/receiver-node channel))

@@ -19,6 +19,8 @@
     [clojure.string :as str]
     [clojure.tools.logging :as log])
   (:import
+    [lamina.core.utils
+     IChannelMarker]
     [lamina.core.lock
      AsymmetricLock]
     [lamina.core.graph.node
@@ -59,6 +61,7 @@
   (enqueue [_ msg]
     (g/propagate receiver msg true))
 
+  IChannelMarker
   IChannel
   (receiver-node [_]
     receiver)
@@ -106,6 +109,7 @@
   (enqueue [_ msg]
     (g/propagate (receiver-node receiver) msg true))
 
+  IChannelMarker
   IChannel
   (receiver-node [_]
     (receiver-node receiver))
@@ -180,7 +184,7 @@
 (defn channel?
   "Returns true if 'x' is a channel.  This does not encompass result-channels."
   [x]
-  (satisfies? IChannel x))
+  (instance? IChannelMarker x))
 
 ;;;
 

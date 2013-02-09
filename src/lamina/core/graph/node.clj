@@ -287,9 +287,7 @@
                 (enqueue-and-release lock state msg true)
 
                 (::split ::open)
-                (case (.size edges)
-                  0
-                  (enqueue-and-release lock state msg (not grounded?))
+                (condp = (.size edges)
 
                   1
                   (let [edge (.get edges 0)]
@@ -349,6 +347,9 @@
                                             (catch Exception e
                                               (error this e false)
                                               :lamina/error!))))))))))))))
+
+                  0
+                  (enqueue-and-release lock state msg (not grounded?))
 
                   ;; more than one node
                   (do

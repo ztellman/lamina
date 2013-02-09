@@ -37,6 +37,8 @@
 
 ;;;
 
+(definterface IChannelMarker)
+
 (defprotocol+ IEnqueue
   (enqueue [_ msg]))
 
