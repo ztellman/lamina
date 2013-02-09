@@ -9,8 +9,7 @@
 (ns lamina.core.channel
   (:use
     [potemkin]
-    [lamina.core.utils]
-    [clojure.set :only [rename-keys]])
+    [lamina.core.utils])
   (:require
     [lamina.core.graph :as g]
     [lamina.core.queue :as q]
@@ -395,81 +394,6 @@
    (remove* even? (channel 2 3 4)) => [3]"
   [f channel]
   (filter* (complement f) channel))
-
-(defn distributor
-  "Returns a channel.
-
-   Messages enqueued into this channel are split into multiple streams, grouped by
-   (facet msg). When a new facet-value is encountered, (generator facet ch)
-   is called, allowing messages with that facet-value to be handled appropriately.
-
-   If a facet channel is closed, it will be removed from the distributor, and
-   a new channel will be generated when another message of that type is enqueued.
-   This allows the use of (close-on-idle ch ...), if facet-values will change over
-   time.
-
-   Given messages with the form {:type :foo, :value 1}, to print the mean values of all
-   types:
-
-   (distributor
-     {:facet     :type
-      :generator (fn [facet-value ch]
-                   (siphon
-                     (->> ch (map* :value) moving-average)
-                     (sink #(println \"average for\" facet-value \"is\" %))))})"
-  [{:keys [facet generator]}]
-  (let [receiver (g/node identity)
-        propagator (g/distributing-propagator facet
-                     (fn [id]
-                       (let [ch (channel* :description (pr-str id))]
-                         (generator id ch)
-                         (receiver-node ch))))]
-    (g/join receiver propagator)
-    (Channel. receiver receiver nil)))
-
-(defn aggregate
-  "something goes here"
-  [{:keys [facet]} ch]
-  (let [ch* (mimic ch)
-        lock (l/lock)
-        aggregator (atom (ConcurrentHashMap.))]
-    (bridge-join ch ch* "aggregate"
-      (fn [msg]
-        (let [id (facet msg)
-              id* (if (nil? id)
-                    ::nil
-                    id)]
-          (when-let [msg (l/with-exclusive-lock lock
-                           (let [^ConcurrentHashMap m @aggregator]
-                             (when (.putIfAbsent m id* msg)
-                               (reset! aggregator
-                                 (doto (ConcurrentHashMap.)
-                                   (.put id* msg)))
-                               m)))]
-            (let [m (-> (into {} msg)
-                        (rename-keys {::nil nil}))]
-              (enqueue ch* m))))))
-    ch*))
-
-(defn distribute-aggregate
-  "something goes here"
-  [{:keys [facet generator]} ch]
-  (let [ch* (mimic ch)
-        aggr (aggregate {:facet :facet} ch*)
-        dist (distributor
-               {:facet facet
-                :generator (fn [facet-value ch]
-                             (siphon
-                               (->> ch
-                                 (generator facet-value)
-                                 (map* #(hash-map :facet facet-value, :value %)))
-                               ch*))})]
-    (join ch dist)
-    (on-error aggr #(error dist % false))
-    (on-closed aggr #(close dist))
-    (map*
-      #(zipmap (keys %) (map :value (vals %)))
-      aggr)))
 
 ;;;
 

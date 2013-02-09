@@ -258,6 +258,13 @@
 
 ;;;
 
+(deftest test-distribute-aggregate
+  (let [ch (channel 1 3 2 1 1 2 3)
+        ch* (distribute-aggregate {:facet identity, :generator (fn [_ ch] ch)} ch)]
+    (is (= [{1 1} {1 1, 2 2, 3 3} {1 1, 2 2, 3 3}] (channel->seq ch*)))))
+
+;;;
+
 (deftest ^:stress stress-test-partition
   (dotimes* [i 1e5]
     (let [s (seq (range 10))]

@@ -53,10 +53,6 @@
    closed-result
    drained-result
    close-on-idle
-   
-   distributor
-   aggregate
-   distribute-aggregate
 
    map*
    filter*
@@ -95,7 +91,11 @@
    partition-every
    reduce-every
 
-   defer-onto-queue]
+   defer-onto-queue
+
+   distributor
+   aggregate
+   distribute-aggregate]
 
   [lamina.core.named
 

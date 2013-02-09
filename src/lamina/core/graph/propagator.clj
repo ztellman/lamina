@@ -90,26 +90,26 @@
    ^AsymmetricLock lock
    ^AtomicBoolean closed?
    ^AtomicBoolean transactional?
-   ^ConcurrentHashMap downstream]
+   ^ConcurrentHashMap downstream-map]
   IDescribed
   (description [_] "distributor")
   IError
   (error [_ err force?]
-    (doseq [n (close-and-clear lock closed? downstream)]
+    (doseq [n (close-and-clear lock closed? downstream-map)]
       (error n err force?)))
   IPropagator
   (close [_ force?]
-    (doseq [n (close-and-clear lock closed? downstream)]
+    (doseq [n (close-and-clear lock closed? downstream-map)]
       (close n force?)))
   (transactional [_]
     (let [downstream
           (l/with-exclusive-lock
             (when (.compareAndSet transactional? false true)
-              (vals downstream)))]
+              (vals downstream-map)))]
       (doseq [n downstream]
         (transactional n))))
   (downstream [_]
-    (map #(edge nil %) (vals downstream)))
+    (map #(edge nil %) (vals downstream-map)))
   (propagate [this msg _]
     (try
       (let [id (facet msg)
@@ -118,7 +118,7 @@
                   id)]
         (if-let [n (l/with-lock lock
                      (when-not (.get closed?)
-                       (if-let [n (.get downstream id*)]
+                       (if-let [n (.get downstream-map id*)]
                          n
                          (let [n (generator id)]
                            
@@ -127,12 +127,12 @@
                              (transactional n))
                            
                            ;; check if another channel's already slotted in
-                           (or (.putIfAbsent downstream id* n)
+                           (or (.putIfAbsent downstream-map id* n)
                              (do
                                ;; if not, hook into the callbacks
                                (r/subscribe (n/closed-result n)
                                  (r/result-callback
-                                   (fn [_] (.remove downstream id*))
+                                   (fn [_] (.remove downstream-map id*))
                                    (fn [err] (error this err false))))
                                n))))))]
           (propagate n msg true)
