@@ -284,6 +284,11 @@
   [channel callback]
   (g/on-error (emitter-node channel) callback))
 
+(defn error-value
+  "Returns the error value of the channel, returning 'default-value' if it's not an error state."
+  [channel default-value]
+  (g/error-value (emitter-node channel) default-value))
+
 (defn closed-result
   "Returns a result-channel that will emit a result when the channel is closed, or emit an error
    if the channel goes into an error state."

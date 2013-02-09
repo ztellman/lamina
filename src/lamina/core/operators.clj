@@ -667,6 +667,9 @@
             (enqueue ch* (post-process msg))))))
 
 
+    ;; todo: this logic can be made more sophisticated, differentiating between
+    ;; the first lapse and subsequent lapses, for instance
+
     ;; flush the aggregator if we haven't seen any messages for an entire period
     (when (and period flush?)
       

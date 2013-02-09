@@ -211,6 +211,14 @@
      (join src dst)
      (apply join dst rest)))
 
+(defn error-value
+  "Returns the error-value of the channel or async-result if it's in an error state, and 'default-value'
+   otherwise"
+  [x default-value]
+  (if (async-result? x)
+    (r/error-value x default-value)
+    (ch/error-value x default-value)))
+
 (defn channel-pair
   "Returns a pair of channels, where all messages enqueued into one channel can
    be received by the other, and vice-versa.  Closing one channel will automatically
