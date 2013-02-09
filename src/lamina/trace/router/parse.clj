@@ -42,7 +42,7 @@
        (let [s (if (string? x)
                 x
                 (.pattern ^Pattern x))
-             p (Pattern/compile (str "^" s))]
+             p (Pattern/compile (str "^(?:" s ")"))]
          (fn [^String s]
            (when-let [match (first (re-seq p s))]
              [(parser match) (.substring s (count match))]))))))
