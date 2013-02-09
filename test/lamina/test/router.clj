@@ -24,6 +24,11 @@
     (drop-while zero?)
     first))
 
+(defn next-non-empty-msg [ch]
+  (->> (repeatedly #(next-msg ch))
+    (drop-while empty?)
+    first))
+
 (defn close-all [& chs]
   (doseq [c chs]
     (close c)))
@@ -91,19 +96,22 @@
         (post-enqueue-fn))
     
       (is* (= {:a [:x :x], :b [:z :y], :c [:y]}
-             (let [m (next-msg foo-grouping)]
+             (let [m (next-non-empty-msg foo-grouping)]
                
                (zipmap (keys m) (map #(map :bar %) (vals m))))))
       (is* (= {:a 2, :b 2, :c 1}
-            (next-msg foo-rate)))
+            (next-non-empty-msg foo-rate)))
       (is* (= {:x 2, :y 2, :z 1}
-            (next-msg bar-rate) (next-msg bar-rate*) (next-msg bar-rate**)))
+             (next-non-empty-msg bar-rate)
+             (next-non-empty-msg bar-rate*)
+             (next-non-empty-msg bar-rate**)))
       (is* (= {:c {:y 1}, :b {:y 1, :z 1}, :a {:x 2}}
-            (next-msg foo-bar-rate)))
+            (next-non-empty-msg foo-bar-rate)))
       (is* (= {[:a :x] 2, [:b :z] 1, [:c :y] 1, [:b :y] 1}
-             (next-msg foo-bar-rate*)))
+             (next-non-empty-msg foo-bar-rate*)))
       (is* (= {:x 2}
-             (next-msg filtered-group-by) (next-msg filtered-group-by*)))
+             (next-non-empty-msg filtered-group-by)
+             (next-non-empty-msg filtered-group-by*)))
 
       (finally
         (close-all foo-grouping foo-rate bar-rate bar-rate* bar-rate** foo-bar-rate foo-bar-rate* filtered-group-by filtered-group-by*)))))

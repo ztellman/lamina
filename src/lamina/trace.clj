@@ -11,6 +11,7 @@
     [potemkin]
     [lamina.core])
   (:require
+    [lamina.time :as time]
     [lamina.stats :as stats]
     [lamina.trace.router :as r]
     [lamina.trace.context :as ctx]
@@ -40,7 +41,10 @@
 
 (defn analyze-timings
   "Aggregates timings, and periodically emits statistical information about them."
-  [{:keys [period window task-queue quantiles] :as options} ch]
+  [{:keys [period window task-queue quantiles]
+    :or {task-queue time/default-task-queue}
+    :as options}
+   ch]
   (->> ch
     (remove* (fn [_] (tracing?)))
     (map* distill-timing)
@@ -52,7 +56,7 @@
                     (map*
                       #(zipmap [:sub-tasks :quantiles :calls :max-duration :total-duration] %)
                       (let [durations (->> ch (map* :durations) concat*)]
-                        (zip true
+                        (zip
                           [(->> ch (map* :sub-tasks) concat* (analyze-timings options))
                            (->> durations (stats/moving-quantiles (assoc options :window period)))
                            (->> durations (stats/rate options))

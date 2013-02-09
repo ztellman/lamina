@@ -397,31 +397,43 @@
 
 ;;;
 
-(defn check-idle [^AtomicLong last-message interval result]
+(defn check-idle [^AtomicLong last-message interval result task-queue]
   (let [mark (.get last-message)]
-    (t/invoke-in (- interval (- (System/currentTimeMillis) mark))
+    (t/invoke-in task-queue (- interval (- (System/currentTimeMillis) mark))
       (fn []
         (if (= mark (.get last-message))
           (r/success result true)
-          (check-idle last-message interval result))))))
+          (check-idle last-message interval result task-queue))))))
 
 (defn idle-result
   "something goes here"
-  [interval ch]
-  (let [last-message (AtomicLong. (System/currentTimeMillis))
-        result (r/result-channel)]
-    (receive-all ch (fn [_] (.set last-message (System/currentTimeMillis))))
-    (check-idle last-message interval result)
-    result))
+  ([interval ch]
+     (idle-result interval t/default-task-queue ch))
+  ([interval task-queue ch]
+     (let [last-message (AtomicLong. (System/currentTimeMillis))
+           result (r/result-channel)
+           callback (fn [_] (.set last-message (System/currentTimeMillis)))]
+
+       (receive-all ch callback)
+       (r/subscribe result
+         (r/result-callback
+           (fn [_] (cancel-callback ch callback))
+           (fn [_] (cancel-callback ch callback))))
+    
+       (check-idle last-message interval result task-queue)
+
+       result)))
 
 (defn close-on-idle
   "something goes here"
-  [interval ch]
-  (r/subscribe (idle-result interval ch)
-    (r/result-callback
-      (fn [_] (close ch))
-      (fn [_])))
-  ch)
+  ([interval ch]
+     (close-on-idle interval t/default-task-queue ch))
+  ([interval task-queue ch]
+     (r/subscribe (idle-result interval task-queue ch)
+       (r/result-callback
+         (fn [_] (close ch))
+         (fn [_])))
+     ch))
 
 ;;;
 

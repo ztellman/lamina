@@ -641,7 +641,8 @@
    ch]
   (let [ch* (mimic ch)
         lock (l/lock)
-        aggregator (atom (ConcurrentHashMap.))]
+        aggregator (atom (ConcurrentHashMap.))
+        post-process #(-> (into {} %) (rename-keys {::nil nil}))]
     (bridge-join ch ch* "aggregate"
       (fn [msg]
         (let [id (facet msg)
@@ -663,15 +664,34 @@
                                        (reset! aggregator
                                          (ConcurrentHashMap.))))
                                m)))]
-            (let [m (-> (into {} msg)
-                      (rename-keys {::nil nil}))]
-              (enqueue ch* m))))))
+            (enqueue ch* (post-process msg))))))
 
-    (when period
-      (siphon
-        (->> (periodically period task-queue (constantly nil))
-          (filter* (fn [_] (.isEmpty ^ConcurrentHashMap @aggregator))))
-        ch*))
+
+    ;; flush the aggregator if we haven't seen any messages for an entire period
+    (when (and period flush?)
+      
+      (let [ch (fork ch)]
+        (p/run-pipeline true
+          (fn [initial?]
+
+            ;; if we're just starting out or we have some pending messages, give
+            ;; ourselves some more breathing room
+            (idle-result
+              (* period
+                (if (and (not initial?) (flush? nil))
+                  1
+                  1.5))
+              task-queue
+              ch))
+          
+          (fn [_]
+            (let [msg (l/with-exclusive-lock lock
+                        (let [m @aggregator]
+                          (reset! aggregator (ConcurrentHashMap.))
+                          m))]
+              (enqueue ch* (post-process msg)))
+            (when-not (closed? ch)
+              (p/restart false))))))
     
     ch*))
 
@@ -694,7 +714,7 @@
                {:facet :facet
                 :task-queue task-queue
                 :period period
-                :flush? #(= (.size ^ConcurrentHashMap %) (facet-count))}
+                :flush? #(= (count %) (facet-count))}
                ch*)]
     (join ch dist)
     (on-error aggr #(error dist % false))

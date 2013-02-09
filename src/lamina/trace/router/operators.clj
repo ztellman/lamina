@@ -187,7 +187,9 @@
                                (r/transform-trace-stream (dissoc desc "name")))]
                       (if-not periodic?
                         (partition-every {:period period :task-queue task-queue} ch)
-                        ch)))}
+                        ch)))
+       :period period
+       :task-queue task-queue}
       ch)))
 
 (defn merge-group-by [{:strs [options operators] :as desc} ch]
@@ -211,7 +213,9 @@
                             ch (r/transform-trace-stream (dissoc desc "name") ch)]
                         (if-not periodic?
                           (partition-every {:period period :task-queue task-queue} ch)
-                          ch)))}))))
+                          ch)))
+         :task-queue task-queue
+         :period period}))))
 
 (r/def-trace-operator group-by
   :periodic? true

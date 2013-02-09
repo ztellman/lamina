@@ -513,20 +513,26 @@
 (defn expiring-result
   "Returns a result-channel that will be realized as a 'lamina/timeout!' error if a value is not enqueued within
    'interval' milliseconds."
-  [interval]
-  (let [result (result-channel)]
-    (when interval
-      (t/invoke-in interval #(error result :lamina/timeout! false)))
-    result))
+  ([interval]
+     (expiring-result interval t/default-task-queue))
+  ([interval task-queue]
+     (let [result (result-channel)]
+       (when interval
+         (t/invoke-in task-queue interval
+           #(error result :lamina/timeout! false)))
+       result)))
 
 (defn timed-result
   "Returns a result-channel that will be realized as 'value' (defaulting to nil) in 'interval' milliseconds."
   ([interval]
      (timed-result interval nil))
   ([interval value]
+     (timed-result interval value t/default-task-queue))
+  ([interval value task-queue]
      (let [result (result-channel)]
        (when interval
-         (t/invoke-in interval #(success result value)))
+         (t/invoke-in task-queue interval
+           #(success result value)))
        result)))
 
 (defn merge-results
