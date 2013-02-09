@@ -12,7 +12,7 @@ The map will be of quantile onto quantile value, so for a uniform distribution o
   {50 500, 75 750, 95 950, 99 990, 99.9 999}
 
 By default, the above quantiles will be used, these can be specified as a sequence of quantiles
-of the form [50 98 99.9 99.99].</pre></div><div class="public" id="var-outliers"><h3>outliers</h3><div class="usage"><code>(outliers facet ch)</code><code>(outliers facet {:keys [window variance-predicate task-queue], :or {window (t/minutes 5), variance-predicate (fn* [p1__13255#] (&lt; 3 (abs (double p1__13255#)))), task-queue t/default-task-queue}} ch)</code></div><pre class="doc">Returns a channel that will emit outliers from the source channel, as measured by the standard
+of the form [50 98 99.9 99.99].</pre></div><div class="public" id="var-outliers"><h3>outliers</h3><div class="usage"><code>(outliers facet ch)</code><code>(outliers facet {:keys [window variance-predicate task-queue], :or {window (t/minutes 5), variance-predicate (fn* [p1__13259#] (&lt; 3 (abs (double p1__13259#)))), task-queue t/default-task-queue}} ch)</code></div><pre class="doc">Returns a channel that will emit outliers from the source channel, as measured by the standard
 deviations from the mean value of (facet msg).  Outlier status is determined by
 'variance-predicate', which is given the standard deviations from the mean, and returns true
 or false.  By default, it will return true for any value where the absolute value is greater
