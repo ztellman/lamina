@@ -25,7 +25,7 @@
                     lamina.api
                     lamina.time]
           :output-dir "autodoc"}
-  :jvm-opts ["-server" "-XX:+UseConcMarkSweepGC" "-Xmx8g" "-XX:NewSize=1g"]
+  :jvm-opts ["-server" "-XX:+UseConcMarkSweepGC" "-Xmx2g" "-XX:NewSize=1g"]
   :repositories {"sonatype-oss-public"
                  "https://oss.sonatype.org/content/groups/public/"}
   :test-selectors {:default #(not (some #{:wiki :benchmark :stress}
