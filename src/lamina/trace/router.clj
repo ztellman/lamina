@@ -39,13 +39,33 @@
 (defn query-stream
   "something goes here"
   [transform-descriptor ch &
-   {:keys [task-queue]
-    :or {task-queue (time/task-queue)}
+   {:keys [task-queue
+           timestamp
+           payload
+           period
+           stream-generator]
     :as options}]
-  (time/with-task-queue task-queue
-    (c/transform-trace-stream
-      (apply parse-descriptor transform-descriptor (apply concat options))
-      ch)))
+  (let [ch (if timestamp
+             (defer-onto-queue task-queue timestamp ch)
+             ch)
+        ch (if payload
+             (map* payload ch)
+             ch)
+        f (if (ifn? transform-descriptor)
+            #(transform-descriptor ch)
+            #(c/transform-trace-stream
+               (apply parse-descriptor transform-descriptor (apply concat options))
+               ch))
+        f #(with-bindings (merge {}
+                            (when stream-generator {#'c/*stream-generator* stream-generator}))
+             (f))
+        f (if period
+            #(time/with-period period (f))
+            f)
+        f (if task-queue
+            #(time/with-task-queue task-queue (f))
+            f)]
+    (f)))
 
 (defn query-seq
   "something goes here"
@@ -56,29 +76,46 @@
     :or {payload identity}
     :as options}]
   (assert timestamp)
-  (let [start (timestamp (first s))
-        q (time/non-realtime-task-queue start false)
+  (let [q (time/non-realtime-task-queue)
         ch (channel)
-        ch* (apply query-stream transform-descriptor ch
-              (apply concat
-                (assoc options :task-queue q)))]
-    (future
+        ch* (query-stream transform-descriptor ch
+              :task-queue q
+              :period period)]
 
-      (loop [s s, current-time start]
-        (if (empty? s)
-          (when period
-            (time/advance-until q (+ current-time (* 2 period))))
-          (let [t (first s)]
-            (time/advance-until q (timestamp t))
-            (enqueue ch (payload t))
-            (recur (rest s) (timestamp t)))))
+    ;; set up consumption of the incoming seq
+    (let [enqueue-next
+          (fn enqueue-next [s]
+            (if-let [x (first s)]
+              (time/invoke-at q (timestamp x)
+                (with-meta
+                  (fn []
+                    (enqueue ch x)
+                    (enqueue-next (rest s)))
+                  {:priority Integer/MAX_VALUE}))
+              (time/invoke-at q (inc (time/now q))
+                (with-meta
+                  #(close ch)
+                  {:priority -1}))))]
 
-      (close ch)
-      (close ch*))
+      (enqueue-next s))
 
-    (->> ch*
-      (map* #(hash-map :timestamp (time/now q) :value %))
-      channel->lazy-seq)))
+    ;; set up production of the outgoing seq
+    (let [advance-until-message
+          (fn []
+            (let [latch (atom false)
+                  result (run-pipeline
+                           (read-channel* ch* :on-drained ::drained)
+                           (fn [val]
+                             (reset! latch true)
+                             val))]
+              (loop []
+                (time/advance q)
+                (if-not @latch
+                  (recur)
+                  @result))))]
+      (->> (repeatedly advance-until-message)
+        (map #(hash-map :timestamp (time/now q) :value %))
+        (take-while #(not= ::drained (:value %)))))))
 
 ;;;
 
@@ -124,10 +161,12 @@
       (subscribe- [this topic args]
         (let [descriptor (apply parse-descriptor topic args)
               options (apply hash-map args)
-              period (or (:period options) (get descriptor "period"))]
+              period (or (:period options)
+                       (get descriptor "period")
+                       (time/period))]
           (time/with-task-queue task-queue
             (binding [c/*stream-generator* (or c/*stream-generator* #(cache/subscribe this %))]
-              (with-bindings (if period {#'c/*period* period} {})
+              (time/with-period period
                 (cache/subscribe router descriptor)))))))))
 
 (def
@@ -150,7 +189,9 @@
       (subscribe- [this topic args]
         (let [options (apply hash-map args)
               {:strs [operators] :as descriptor} (apply parse-descriptor topic args)
-              period (or (options :period) (get descriptor "period"))
+              period (or (options :period)
+                       (get descriptor "period")
+                       (time/period))
               distributable (assoc descriptor
                               "operators" (c/distributable-chain operators)
                               "period" period)
@@ -158,6 +199,6 @@
                                   "endpoint" distributable 
                                   "operators" (c/non-distributable-chain operators))]
           (binding [c/*stream-generator* (or c/*stream-generator* #(cache/subscribe this %))]
-            (with-bindings (if period {#'c/*period* period} {})
+            (time/with-period period
               (cache/subscribe router non-distributable))))))))
 

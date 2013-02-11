@@ -70,8 +70,8 @@
   :periodic? true
   :distribute? false
   :transform
-  (fn [{:strs [options __implicit]} ch]
-    (analyze-timings (keywordize-keys (merge options __implicit)) ch)))
+  (fn [{:strs [options]} ch]
+    (analyze-timings (keywordize-keys options) ch)))
 
 ;;;
 

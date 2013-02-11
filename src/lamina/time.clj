@@ -130,3 +130,16 @@
    non-realtime-task-queue
    advance
    advance-until])
+
+(def ^{:dynamic true :private true} *period* 1000)
+
+(defn period
+  "Returns the current default period for recurring actions."
+  []
+  *period*)
+
+(defmacro with-period
+  "Sets the default period within the inner context."
+  [period & body]
+  `(binding [lamina.time/*period* ~period]
+     ~@body))

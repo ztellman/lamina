@@ -96,16 +96,15 @@
   :distribute? false
 
   :transform
-  (fn [{:strs [options __implicit]} ch]
+  (fn [{:strs [options]} ch]
     (let [descs (vals options)]
       (assert (every? #(contains? % "operators") descs))
       (apply merge-channels
         (map
           (fn [{:strs [operators pattern] :as desc}]
-            (let [desc (assoc desc "__implicit" __implicit)]
-              (if pattern
-                (r/generate-stream desc)
-                (r/transform-trace-stream desc (fork ch)))))
+            (if pattern
+              (r/generate-stream desc)
+              (r/transform-trace-stream desc (fork ch))))
           descs)))))
 
 (r/def-trace-operator zip
@@ -113,19 +112,17 @@
   :distribute? false
 
   :transform
-  (fn [{:strs [options __implicit]} ch]
-    (let [period r/*period*
-          options options
+  (fn [{:strs [options]} ch]
+    (let [options options
           ks (keys options)
           descs (vals options)]
       (assert (every? #(contains? % "operators") descs))
       (->> (zip
              (map
                (fn [{:strs [operators pattern] :as desc}]
-                 (let [desc (assoc desc "__implicit" __implicit)]
-                   (if pattern
-                     (r/generate-stream desc)
-                     (r/transform-trace-stream desc (fork ch)))))
+                 (if pattern
+                   (r/generate-stream desc)
+                   (r/transform-trace-stream desc (fork ch))))
                descs))
         (map* #(zipmap ks %))))))
 
@@ -170,7 +167,7 @@
                 (get options "0"))
         periodic? (r/periodic-chain? operators)
         period (or (get options "period")
-                 r/*period*)
+                 (t/period))
         expiration (get options "expiration" (max (t/minutes 1) (* 5 period)))]
 
     (assert facet)
@@ -190,7 +187,7 @@
 (defn merge-group-by [{:strs [options operators] :as desc} ch]
   (let [periodic? (r/periodic-chain? operators)
         period (or (get options "period")
-                 r/*period*)
+                 (t/period))
         expiration (get options "expiration" (max (t/minutes 1) (* 5 period)))]
     (->> ch
       concat*
@@ -218,12 +215,8 @@
 
 ;;;
 
-(defn normalize-options [{:strs [options __implicit] :as desc}]
-  (keywordize
-    (merge
-      {"period" r/*period*}
-      __implicit
-      options)))
+(defn normalize-options [{:strs [options] :as desc}]
+  (keywordize options))
 
 (defn sum-op [desc ch]
   (lamina.stats/sum (normalize-options desc) ch))
@@ -280,14 +273,14 @@
   (fn [{:strs [options] :as desc} ch]
     (let [period (or (get options "period")
                    (get options "0")
-                   r/*period*)]
+                   (t/period))]
       (sample-every period ch))))
 
 (defn partition-every-op
   [{:strs [options] :as desc} ch]
   (let [period (or (get options "period")
                  (get options "0")
-                 r/*period*)]
+                 (t/period))]
     (partition-every {:period period} ch)))
 
 (r/def-trace-operator partition-every

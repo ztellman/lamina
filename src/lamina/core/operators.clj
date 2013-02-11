@@ -437,7 +437,8 @@
   "Takes a source channel, and returns a channel that repeatedly emits a collection
    of all messages from the source channel in the last 'period' milliseconds."
   [{:keys [period task-queue]
-    :or {task-queue (t/task-queue)}}
+    :or {task-queue (t/task-queue)
+         period (t/period)}}
    ch]
   (let [q (ConcurrentLinkedQueue.)
         drain (fn []
@@ -456,7 +457,8 @@
 
 (defn reduce-every
   ([{:keys [period reducer task-queue initial-value]
-     :or {task-queue (t/task-queue)}
+     :or {task-queue (t/task-queue)
+          period (t/period)}
      :as options}
     ch]
      (let [lock (l/asymmetric-lock)
@@ -590,11 +592,13 @@
       (fn [msg]
         (let [r (r/result-channel)]
           (t/invoke-at task-queue (time-facet msg)
-            (fn []
-              (try
-                (enqueue ch* msg)
-                (finally
-                  (r/success r :lamina/consumed)))))
+            (with-meta
+              (fn []
+                (try
+                  (enqueue ch* msg)
+                  (finally
+                    (r/success r :lamina/consumed))))
+              {:priority Integer/MAX_VALUE}))
           r)))
     ch*))
 
@@ -638,7 +642,8 @@
 (defn aggregate
   "something goes here"
   [{:keys [facet flush? task-queue period]
-    :or {task-queue (t/task-queue)}}
+    :or {task-queue (t/task-queue)
+         period (t/period)}}
    ch]
   (let [ch* (mimic ch)
         lock (l/lock)
@@ -702,7 +707,8 @@
 (defn distribute-aggregate
   "something goes here"
   [{:keys [facet generator period task-queue]
-    :or {task-queue (t/task-queue)}}
+    :or {task-queue (t/task-queue)
+         period (t/period)}}
    ch]
   (let [ch* (mimic ch)
         dist (distributor

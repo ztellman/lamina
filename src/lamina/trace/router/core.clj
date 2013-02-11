@@ -21,8 +21,6 @@
 
 (def ^{:dynamic true} *stream-generator* nil)
 
-(def ^{:dynamic true} *period* 1000)
-
 (defn generate-stream [descriptor]
   (*stream-generator* descriptor))
 
@@ -190,7 +188,7 @@
     boolean))
 
 (defn transform-trace-stream
-  ([{:strs [name operators stage __implicit]
+  ([{:strs [name operators stage]
      :or {stage "transform"}
      :as desc}
     ch]
@@ -205,7 +203,6 @@
            
          (not (empty? operators))
          (->> operators
-           (map #(assoc % "__implicit" __implicit))
            (reduce #(transform-trace-stream %2 %1) ch))
            
          :else

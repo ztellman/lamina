@@ -14,8 +14,7 @@
     (run-pipeline r
       {:error-handler (fn [ex] )}
       #(do
-         (.write out ^String (t/format-timing %))
-         (.write out "\n")
+         (.write out (str (t/format-timing %) "\n"))
          (.flush out)))))
 
 (defn capture-timings

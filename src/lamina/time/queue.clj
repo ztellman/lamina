@@ -88,7 +88,9 @@
   ([timestamp f]
      (invoke-at (task-queue) timestamp f))
   ([task-queue timestamp f]
-     (invoke-in- task-queue (- timestamp (now task-queue)) f)))
+     (invoke-in- task-queue
+       (unchecked-subtract (long timestamp) (long (now task-queue)))
+       f)))
 
 (defn invoke-repeatedly
   "Repeatedly invokes a function every 'period' milliseconds, but ensures that the function cannot
@@ -127,7 +129,12 @@
     (let [^TaskTuple o o
           c (compare timestamp (.timestamp o))]
       (if (zero? c)
-        (compare (hash f) (hash (.f o)))
+        (let [c (compare
+                  (or (-> f meta :priority) 0)
+                  (or (-> (.f o) meta :priority) 0))]
+          (if (zero? c)
+            (compare (hash f) (hash (.f o)))
+            (- c)))
         c))))
 
 (defn non-realtime-task-queue
@@ -164,4 +171,7 @@
                  (when (<= (.timestamp task) timestamp)
                    (advance this)
                    (recur))))))))))
+
+;;;
+
 

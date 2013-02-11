@@ -31,7 +31,7 @@
      (sum nil ch))
   ([{:keys [period
             task-queue]
-     :or {period 1000
+     :or {period (t/period)
           task-queue (t/task-queue)}}
     ch]
      (let [ch* (channel)
@@ -56,7 +56,7 @@
      (rate nil ch))
   ([{:keys [period
             task-queue]
-     :or {period 1000
+     :or {period (t/period)
           task-queue  (t/task-queue)}
      :as options}
     ch]
@@ -74,7 +74,7 @@
   ([{:keys [period
             window
             task-queue]
-     :or {period (t/seconds 5)
+     :or {period (t/period)
           window (t/minutes 5)
           task-queue (t/task-queue)}}
     ch]
@@ -112,7 +112,7 @@
             quantiles
             task-queue]
      :or {quantiles [50 75 95 99 99.9]
-          period (t/seconds 5)
+          period (t/period)
           task-queue (t/task-queue)
           window (t/minutes 5)}}
     ch]
@@ -137,7 +137,7 @@
      (variance nil ch))
   ([{:keys [period
             task-queue]
-     :or {period (t/seconds 5)
+     :or {period (t/period)
           task-queue (t/task-queue)}}
     ch]
      (let [vr (atom (var/create-variance))
