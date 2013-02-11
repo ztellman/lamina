@@ -33,10 +33,7 @@
 (defn parse-descriptor [x & {:as options}]
   (let [descriptor (if (string? x)
                      (stringify-keys (p/parse-stream x))
-                     x)
-        descriptor (if-let [period (:period options)]
-                     (assoc-in descriptor ["__implicit" "period"] period)
-                     descriptor)]
+                     x)]
     descriptor))
 
 (defn query-stream
@@ -125,12 +122,13 @@
       (inner-cache [_]
         (cache/inner-cache router))
       (subscribe- [this topic args]
-        (let [options (apply hash-map args)
-              period (:period options)]
+        (let [descriptor (apply parse-descriptor topic args)
+              options (apply hash-map args)
+              period (or (:period options) (get descriptor "period"))]
           (time/with-task-queue task-queue
             (binding [c/*stream-generator* (or c/*stream-generator* #(cache/subscribe this %))]
-              (cache/subscribe router
-                (apply parse-descriptor topic args)))))))))
+              (with-bindings (if period {#'c/*period* period} {})
+                (cache/subscribe router descriptor)))))))))
 
 (def
   ^{:doc "something goes here"}
@@ -151,13 +149,15 @@
         (cache/inner-cache router))
       (subscribe- [this topic args]
         (let [options (apply hash-map args)
-              {:strs [operators] :as topic} (apply parse-descriptor topic args)
-              period (options :period)
-              distributable (assoc topic
-                              "operators" (c/distributable-chain operators))
-              non-distributable (assoc topic
-                                  "endpoint" distributable
+              {:strs [operators] :as descriptor} (apply parse-descriptor topic args)
+              period (or (options :period) (get descriptor "period"))
+              distributable (assoc descriptor
+                              "operators" (c/distributable-chain operators)
+                              "period" period)
+              non-distributable (assoc descriptor
+                                  "endpoint" distributable 
                                   "operators" (c/non-distributable-chain operators))]
           (binding [c/*stream-generator* (or c/*stream-generator* #(cache/subscribe this %))]
-            (cache/subscribe router non-distributable)))))))
+            (with-bindings (if period {#'c/*period* period} {})
+              (cache/subscribe router non-distributable))))))))
 

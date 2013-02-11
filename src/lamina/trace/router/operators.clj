@@ -114,7 +114,7 @@
 
   :transform
   (fn [{:strs [options __implicit]} ch]
-    (let [period (get __implicit "period")
+    (let [period r/*period*
           options options
           ks (keys options)
           descs (vals options)]
@@ -166,14 +166,12 @@
 ;;; group-by
 
 (defn group-by-op [{:strs [options operators] :as desc} ch]
-  (let [facet (or
-                (get options "facet")
+  (let [facet (or (get options "facet")
                 (get options "0"))
         periodic? (r/periodic-chain? operators)
         period (or (get options "period")
-                 (get-in desc ["__implicit" "period"])
-                 1000)
-        expiration (get options "expiration" (* 5 period))]
+                 r/*period*)
+        expiration (get options "expiration" (max (t/minutes 1) (* 5 period)))]
 
     (assert facet)
 
@@ -192,9 +190,8 @@
 (defn merge-group-by [{:strs [options operators] :as desc} ch]
   (let [periodic? (r/periodic-chain? operators)
         period (or (get options "period")
-                 (get-in desc ["__implicit" "period"])
-                 1000)
-        expiration (get options "expiration" (* 5 period))]
+                 r/*period*)
+        expiration (get options "expiration" (max (t/minutes 1) (* 5 period)))]
     (->> ch
       concat*
       (distribute-aggregate
@@ -224,6 +221,7 @@
 (defn normalize-options [{:strs [options __implicit] :as desc}]
   (keywordize
     (merge
+      {"period" r/*period*}
       __implicit
       options)))
 
@@ -282,16 +280,14 @@
   (fn [{:strs [options] :as desc} ch]
     (let [period (or (get options "period")
                    (get options "0")
-                   (get-in desc ["__implicit" "period"])
-                   1000)]
+                   r/*period*)]
       (sample-every period ch))))
 
 (defn partition-every-op
   [{:strs [options] :as desc} ch]
   (let [period (or (get options "period")
                  (get options "0")
-                 (get-in desc ["__implicit" "period"])
-                 1000)]
+                 r/*period*)]
     (partition-every {:period period} ch)))
 
 (r/def-trace-operator partition-every

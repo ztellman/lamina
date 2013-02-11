@@ -21,6 +21,8 @@
 
 (def ^{:dynamic true} *stream-generator* nil)
 
+(def ^{:dynamic true} *period* 1000)
+
 (defn generate-stream [descriptor]
   (*stream-generator* descriptor))
 
