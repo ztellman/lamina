@@ -604,7 +604,7 @@
   "Returns a channel.
 
    Messages enqueued into this channel are split into multiple streams, grouped by
-   (facet msg). When a new facet-value is encountered, (generator facet ch)
+   (facet msg). When a new facet-value is encountered, (initializer facet ch)
    is called, allowing messages with that facet-value to be handled appropriately.
 
    If a facet channel is closed, it will be removed from the distributor, and
@@ -616,23 +616,24 @@
    types:
 
    (distributor
-     {:facet     :type
-      :generator (fn [facet-value ch]
-                   (siphon
-                     (->> ch (map* :value) moving-average)
-                     (sink #(println \"average for\" facet-value \"is\" %))))})"
-  [{:keys [facet generator]}]
+     {:facet       :type
+      :initializer (fn [facet-value ch]
+                     (siphon
+                       (->> ch (map* :value) moving-average)
+                       (sink #(println \"average for\" facet-value \"is\" %))))})"
+  [{:keys [facet initializer]}]
   (let [receiver (g/node identity)
         propagator (g/distributing-propagator facet
                      (fn [id]
                        (let [ch (channel* :description (pr-str id))]
-                         (generator id ch)
+                         (initializer id ch)
                          (receiver-node ch))))]
 
     (g/join receiver propagator)
 
     (Channel. receiver receiver
-      {::facet-count #(.size ^ConcurrentHashMap (.downstream-map ^DistributingPropagator propagator))})))
+      {::facets #(keys (.downstream-map ^DistributingPropagator propagator))
+       ::facet-count #(.size ^ConcurrentHashMap (.downstream-map ^DistributingPropagator propagator))})))
 
 (defn aggregate
   "something goes here"
@@ -706,12 +707,12 @@
   (let [ch* (mimic ch)
         dist (distributor
                {:facet facet
-                :generator (fn [facet-value ch]
-                             (siphon
-                               (->> ch
-                                 (generator facet-value)
-                                 (map* #(hash-map :facet facet-value, :value %)))
-                               ch*))})
+                :initializer (fn [facet-value ch]
+                               (siphon
+                                 (->> ch
+                                   (generator facet-value)
+                                   (map* #(hash-map :facet facet-value, :value %)))
+                                 ch*))})
         facet-count (-> dist meta ::facet-count)
         aggr (aggregate
                {:facet :facet

@@ -57,7 +57,7 @@
   ([{:keys [period
             task-queue]
      :or {period 1000
-          task-queue (t/task-queue)}
+          task-queue  (t/task-queue)}
      :as options}
     ch]
      (->> ch

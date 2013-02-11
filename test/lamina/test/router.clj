@@ -17,7 +17,7 @@
     [lamina.time :as t]))
 
 (defn next-msg [ch]
-  (-> ch read-channel (wait-for-result 10000)))
+  (-> ch read-channel (wait-for-result 12345)))
 
 (defn next-non-zero-msg [ch]
   (->> (repeatedly #(next-msg ch))
@@ -84,7 +84,7 @@
         foo-bar-rate*      (subscribe-fn ".group-by([foo bar]).rate()")
         filtered-group-by  (subscribe-fn ".where(foo = a).group-by(bar).rate()")
         filtered-group-by* (subscribe-fn ".where(foo ~= a).group-by(bar).rate()")
-        ;; filtered-group-by  (subscribe-fn ".group-by(foo).rate().where(_ > 1)")
+        ;filtered-group-by  (subscribe-fn ".group-by(foo).rate().where(_ > 1)")
         val (fn [foo bar] {:foo foo, :bar bar})]
     
     (try
@@ -100,13 +100,13 @@
                
                (zipmap (keys m) (map #(map :bar %) (vals m))))))
       (is* (= {:a 2, :b 2, :c 1}
-            (next-non-empty-msg foo-rate)))
+             (next-non-empty-msg foo-rate)))
       (is* (= {:x 2, :y 2, :z 1}
              (next-non-empty-msg bar-rate)
              (next-non-empty-msg bar-rate*)
              (next-non-empty-msg bar-rate**)))
       (is* (= {:c {:y 1}, :b {:y 1, :z 1}, :a {:x 2}}
-            (next-non-empty-msg foo-bar-rate)))
+             (next-non-empty-msg foo-bar-rate)))
       (is* (= {[:a :x] 2, [:b :z] 1, [:c :y] 1, [:b :y] 1}
              (next-non-empty-msg foo-bar-rate*)))
       (is* (= {:x 2}
@@ -114,7 +114,8 @@
              (next-non-empty-msg filtered-group-by*)))
 
       (finally
-        (close-all foo-grouping foo-rate bar-rate bar-rate* bar-rate** foo-bar-rate foo-bar-rate* filtered-group-by filtered-group-by*)))))
+        (close-all foo-grouping foo-rate bar-rate bar-rate* bar-rate** foo-bar-rate foo-bar-rate* filtered-group-by filtered-group-by*
+          )))))
 
 (defn run-merge-streams-test [subscribe-fn enqueue-fn post-enqueue-fn]
   (let [merged-sum (subscribe-fn ".merge(., &abc).x.sum()")]

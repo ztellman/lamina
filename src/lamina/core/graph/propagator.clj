@@ -142,13 +142,16 @@
         (error this e false)))))
 
 (defn distributing-propagator [facet generator]
-  (DistributingPropagator.
-    facet
-    generator
-    (l/asymmetric-lock)
-    (AtomicBoolean. false)
-    (AtomicBoolean. false)
-    (ConcurrentHashMap.)))
+  (let [bindings (get-thread-bindings)]
+    (DistributingPropagator.
+      facet
+      (fn [& args]
+        (with-bindings bindings
+          (apply generator args)))
+      (l/asymmetric-lock)
+      (AtomicBoolean. false)
+      (AtomicBoolean. false)
+      (ConcurrentHashMap.))))
 
 ;;;
 

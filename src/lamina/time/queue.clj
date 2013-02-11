@@ -74,7 +74,7 @@
   "Executes the body within a context where 'q' is the task-queue."
   [q & body]
   `(binding [lamina.time.queue/*task-queue* ~q]
-     ~@body)) 
+     ~@body))
 
 (defn invoke-in
   "Delays invocation of a function by 'delay' milliseconds."

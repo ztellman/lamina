@@ -36,18 +36,19 @@
                      x)
         descriptor (if-let [period (:period options)]
                      (assoc-in descriptor ["__implicit" "period"] period)
-                     descriptor)
-        descriptor (if-let [task-queue (:task-queue options)]
-                     (assoc-in descriptor ["__implicit" "task-queue"] task-queue)
                      descriptor)]
     descriptor))
 
 (defn query-stream
   "something goes here"
-  [transform-descriptor ch & options]
-  (c/transform-trace-stream
-    (apply parse-descriptor transform-descriptor options)
-    ch))
+  [transform-descriptor ch &
+   {:keys [task-queue]
+    :or {task-queue (time/task-queue)}
+    :as options}]
+  (time/with-task-queue task-queue
+    (c/transform-trace-stream
+      (apply parse-descriptor transform-descriptor (apply concat options))
+      ch)))
 
 (defn query-seq
   "something goes here"
@@ -95,10 +96,9 @@
            timestamp
            payload
            task-queue]
-    :or {payload identity}
+    :or {payload identity
+         task-queue (time/task-queue)}
     :as options}]
-
-  (when timestamp (assert task-queue))
 
   (let [generator (if timestamp
                     #(->> %
@@ -127,11 +127,10 @@
       (subscribe- [this topic args]
         (let [options (apply hash-map args)
               period (:period options)]
-          (binding [c/*task-queue* task-queue
-                    c/*stream-generator* (or c/*stream-generator* #(cache/subscribe this %))]
-
-            (cache/subscribe router
-              (apply parse-descriptor topic args))))))))
+          (time/with-task-queue task-queue
+            (binding [c/*stream-generator* (or c/*stream-generator* #(cache/subscribe this %))]
+              (cache/subscribe router
+                (apply parse-descriptor topic args)))))))))
 
 (def
   ^{:doc "something goes here"}

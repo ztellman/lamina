@@ -11,6 +11,7 @@
     [lamina.cache :only (subscribe)]
     [potemkin :only (defprotocol+)])
   (:require
+    [lamina.time :as t]
     [lamina.trace.context])
   (:import
     [java.util.concurrent
@@ -19,8 +20,6 @@
 ;;;
 
 (def ^{:dynamic true} *stream-generator* nil)
-
-(def ^{:dynamic true} *task-queue* nil)
 
 (defn generate-stream [descriptor]
   (*stream-generator* descriptor))
@@ -55,10 +54,7 @@
   (aggregate [_ desc ch]))
 
 (defn populate-desc [operator desc]
-  (update-in desc ["__implicit"]
-    #(merge %
-       (when-let [q *task-queue*]
-         {"task-queue" *task-queue*}))))
+  desc)
 
 (defmacro def-trace-operator [name & {:as args}]
   (let [{:keys [transform
