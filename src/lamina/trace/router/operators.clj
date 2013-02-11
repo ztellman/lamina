@@ -175,7 +175,7 @@
         period (or (get options "period")
                  (get-in desc ["__implicit" "period"])
                  1000)
-        task-queue (get-in desc ["__implicit" "task-queue"] t/default-task-queue)]
+        task-queue (get-in desc ["__implicit" "task-queue"] (t/task-queue))]
 
     (assert facet)
 
@@ -198,7 +198,7 @@
         period (or (get options "period")
                  (get-in desc ["__implicit" "period"])
                  1000)
-        task-queue (get-in desc ["__implicit" "task-queue"] t/default-task-queue)]
+        task-queue (get-in desc ["__implicit" "task-queue"] (t/task-queue))]
     (->> ch
       concat*
       (distribute-aggregate
@@ -297,7 +297,7 @@
                  (get options "0")
                  (get-in desc ["__implicit" "period"])
                  1000)
-        task-queue (get-in desc ["__implicit" "task-queue"] t/default-task-queue)]
+        task-queue (get-in desc ["__implicit" "task-queue"] (t/task-queue))]
     (partition-every {:period period :task-queue task-queue} ch)))
 
 (r/def-trace-operator partition-every

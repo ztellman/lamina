@@ -45,7 +45,7 @@
 (defn analyze-timings
   "Aggregates timings, and periodically emits statistical information about them."
   [{:keys [period window task-queue quantiles]
-    :or {task-queue time/default-task-queue}
+    :or {task-queue (time/task-queue)}
     :as options}
    ch]
   (->> ch

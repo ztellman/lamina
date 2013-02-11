@@ -32,7 +32,7 @@
   ([{:keys [period
             task-queue]
      :or {period 1000
-          task-queue t/default-task-queue}}
+          task-queue (t/task-queue)}}
     ch]
      (let [ch* (channel)
            cnt (AtomicLong. 0)
@@ -57,7 +57,7 @@
   ([{:keys [period
             task-queue]
      :or {period 1000
-          task-queue t/default-task-queue}
+          task-queue (t/task-queue)}
      :as options}
     ch]
      (->> ch
@@ -76,7 +76,7 @@
             task-queue]
      :or {period (t/seconds 5)
           window (t/minutes 5)
-          task-queue t/default-task-queue}}
+          task-queue (t/task-queue)}}
     ch]
      (let [avg (avg/moving-average period window)
            ch* (channel)
@@ -113,7 +113,7 @@
             task-queue]
      :or {quantiles [50 75 95 99 99.9]
           period (t/seconds 5)
-          task-queue t/default-task-queue
+          task-queue (t/task-queue)
           window (t/minutes 5)}}
     ch]
      (let [ch* (channel)
@@ -138,7 +138,7 @@
   ([{:keys [period
             task-queue]
      :or {period (t/seconds 5)
-          task-queue t/default-task-queue}}
+          task-queue (t/task-queue)}}
     ch]
      (let [vr (atom (var/create-variance))
            ch* (channel)
@@ -185,7 +185,7 @@
             task-queue]
      :or {window (t/minutes 5)
           variance-predicate #(< 3 (abs (double %)))
-          task-queue t/default-task-queue}}
+          task-queue (t/task-queue)}}
     ch]
      (let [avg (avg/moving-average (t/seconds 5) window)
            vr (atom (var/create-variance))

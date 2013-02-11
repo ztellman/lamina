@@ -514,7 +514,7 @@
   "Returns a result-channel that will be realized as a 'lamina/timeout!' error if a value is not enqueued within
    'interval' milliseconds."
   ([interval]
-     (expiring-result interval t/default-task-queue))
+     (expiring-result interval (t/task-queue)))
   ([interval task-queue]
      (let [result (result-channel)]
        (when interval
@@ -527,7 +527,7 @@
   ([interval]
      (timed-result interval nil))
   ([interval value]
-     (timed-result interval value t/default-task-queue))
+     (timed-result interval value (t/task-queue)))
   ([interval value task-queue]
      (let [result (result-channel)]
        (when interval

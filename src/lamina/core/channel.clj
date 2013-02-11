@@ -417,7 +417,7 @@
 (defn idle-result
   "something goes here"
   ([interval ch]
-     (idle-result interval t/default-task-queue ch))
+     (idle-result interval (t/task-queue) ch))
   ([interval task-queue ch]
      (let [last-message (AtomicLong. (System/currentTimeMillis))
            result (r/result-channel)
@@ -436,7 +436,7 @@
 (defn close-on-idle
   "something goes here"
   ([interval ch]
-     (close-on-idle interval t/default-task-queue ch))
+     (close-on-idle interval (t/task-queue) ch))
   ([interval task-queue ch]
      (r/subscribe (idle-result interval task-queue ch)
        (r/result-callback

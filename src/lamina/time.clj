@@ -125,7 +125,8 @@
    invoke-at
    invoke-repeatedly
 
-   default-task-queue
+   with-task-queue  
+   task-queue
    non-realtime-task-queue
    advance
    advance-until])

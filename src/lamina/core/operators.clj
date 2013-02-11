@@ -404,7 +404,7 @@
   "Returns a channel.  Every 'period' milliseconds, 'f' is invoked with no arguments
    and the value is emitted as a message."
   ([period f]
-     (periodically period f t/default-task-queue))
+     (periodically period f (t/task-queue)))
   ([period f task-queue]
      (let [ch (channel* :description "periodically")
            cnt (atom 0)]
@@ -421,7 +421,7 @@
   "Takes a source channel, and returns a channel that emits the most recent message
    from the source channel every 'period' milliseconds."
   [{:keys [period task-queue]
-    :or {task-queue t/default-task-queue}}
+    :or {task-queue (t/task-queue)}}
    ch]
   (let [val (atom ::none)
         ch* (mimic ch)]
@@ -437,7 +437,7 @@
   "Takes a source channel, and returns a channel that repeatedly emits a collection
    of all messages from the source channel in the last 'period' milliseconds."
   [{:keys [period task-queue]
-    :or {task-queue t/default-task-queue}}
+    :or {task-queue (t/task-queue)}}
    ch]
   (let [q (ConcurrentLinkedQueue.)
         drain (fn []
@@ -456,7 +456,7 @@
 
 (defn reduce-every
   ([{:keys [period reducer task-queue initial-value]
-     :or {task-queue t/default-task-queue}
+     :or {task-queue (t/task-queue)}
      :as options}
     ch]
      (let [lock (l/asymmetric-lock)
@@ -637,7 +637,7 @@
 (defn aggregate
   "something goes here"
   [{:keys [facet flush? task-queue period]
-    :or {task-queue t/default-task-queue}}
+    :or {task-queue (t/task-queue)}}
    ch]
   (let [ch* (mimic ch)
         lock (l/lock)
@@ -701,7 +701,7 @@
 (defn distribute-aggregate
   "something goes here"
   [{:keys [facet generator period task-queue]
-    :or {task-queue t/default-task-queue}}
+    :or {task-queue (t/task-queue)}}
    ch]
   (let [ch* (mimic ch)
         dist (distributor
