@@ -63,17 +63,30 @@
       (now [_]
         (System/currentTimeMillis)))))
 
+(def ^{:dynamic true} *task-queue* default-task-queue)
+
+(defn task-queue
+  "Returns the current task queue. Defaults to a real-time task queue."
+  []
+  *task-queue*)
+
+(defmacro with-task-queue
+  "Executes the body within a context where 'q' is the task-queue."
+  [q & body]
+  `(binding [lamina.time.queue/*task-queue* ~q]
+     ~@body)) 
+
 (defn invoke-in
   "Delays invocation of a function by 'delay' milliseconds."
   ([delay f]
-     (invoke-in default-task-queue delay f))
+     (invoke-in (task-queue) delay f))
   ([task-queue delay f]
      (invoke-in- task-queue delay f)))
 
 (defn invoke-at
   "Delays invocation of a function until 'timestamp'."
   ([timestamp f]
-     (invoke-at default-task-queue timestamp f))
+     (invoke-at (task-queue) timestamp f))
   ([task-queue timestamp f]
      (invoke-in- task-queue (- timestamp (now task-queue)) f)))
 
@@ -84,7 +97,7 @@
    The function will be given a single parameter, which is a callback that can be invoked to cancel
    future invocations."
   ([period f]
-     (invoke-repeatedly default-task-queue period f))
+     (invoke-repeatedly (task-queue) period f))
   ([task-queue period f]
      (let [target-time (atom (+ (now task-queue) period))
            latch (atom false)
