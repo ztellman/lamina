@@ -62,12 +62,13 @@
                       (let [durations (->> ch (map* :durations) concat*)]
                         (zip
                           [(->> ch (map* :sub-tasks) concat* (analyze-timings options))
-                           (->> durations fork (stats/moving-quantiles (assoc options :window (or window period))))
-                           (->> durations fork (stats/rate options))
-                           (->> durations fork (stats/rate options) (reductions* +) (sample-every options))
-                           #_(->> durations fork (reduce-every (assoc options :reducer (partial max 0))))
-                           (->> durations fork (stats/sum options))
-                           (->> durations fork (reductions* +) (sample-every options))]))))})))
+                           (->> durations (stats/moving-quantiles (assoc options :window (or window period))))
+                           (->> durations (stats/rate options))
+                           (->> durations (stats/rate options) (reductions* +) (sample-every options))
+                           #_(->> durations (reduce-every (assoc options :reducer (partial max 0))))
+                           (->> durations (stats/sum options))
+                           (->> durations (reductions* +) (sample-every options))]
+                          ))))})))
 
 (def-trace-operator analyze-timings
   :periodic? true

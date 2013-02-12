@@ -673,36 +673,6 @@
                                m)))]
             (enqueue ch* (post-process msg))))))
 
-
-    ;; todo: this logic can be made more sophisticated, differentiating between
-    ;; the first lapse and subsequent lapses, for instance
-
-    ;; flush the aggregator if we haven't seen any messages for an entire period
-    (when (and period flush?)
-      
-      (let [ch (fork ch)]
-        (p/run-pipeline true
-          (fn [initial?]
-
-            ;; if we're just starting out or we have some pending messages, give
-            ;; ourselves some more breathing room
-            (idle-result
-              (* period
-                (if (and (not initial?) (flush? nil))
-                  1
-                  1.5))
-              task-queue
-              ch))
-          
-          (fn [_]
-            (let [msg (l/with-exclusive-lock lock
-                        (let [m @aggregator]
-                          (reset! aggregator (ConcurrentHashMap.))
-                          m))]
-              (enqueue ch* (post-process msg)))
-            (when-not (closed? ch)
-              (p/restart false))))))
-    
     ch*))
 
 (defn distribute-aggregate
@@ -733,7 +703,22 @@
     (on-closed aggr #(close dist))
     (on-closed ch #(close aggr))
     (on-error ch #(error aggr % false))
-    
-    (map*
-      #(zipmap (keys %) (map :value (vals %)))
-      aggr)))
+
+    (let [out (map*
+                #(zipmap (keys %) (map :value (vals %)))
+                aggr)
+
+          latch (atom true)]
+
+      ;; emit nil if no messages have come in yet
+      (p/run-pipeline (read-channel* ch :on-drained nil)
+        (fn [_]
+          (reset! latch false)))
+
+      (t/invoke-repeatedly task-queue period
+        (fn [cancel]
+          (if @latch
+            (enqueue out nil)
+            (cancel))))
+
+      out)))
