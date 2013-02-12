@@ -421,7 +421,8 @@
   "Takes a source channel, and returns a channel that emits the most recent message
    from the source channel every 'period' milliseconds."
   [{:keys [period task-queue]
-    :or {task-queue (t/task-queue)}}
+    :or {task-queue (t/task-queue)
+         period (t/period)}}
    ch]
   (let [val (atom ::none)
         ch* (mimic ch)]

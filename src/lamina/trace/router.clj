@@ -85,7 +85,8 @@
     :or {payload identity}
     :as options}]
   (assert timestamp)
-  (let [q (time/non-realtime-task-queue)
+  (let [start (-> s first timestamp)
+        q (time/non-realtime-task-queue start false)
         ch (channel)
 
         enqueue-next
