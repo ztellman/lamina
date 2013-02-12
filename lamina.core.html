@@ -142,7 +142,7 @@ when the source channel has been drained.
 
 (remove* even? (channel 2 3 4)) =&gt; [3]</pre></div><div class="public" id="var-result-channel"><h3>result-channel</h3><div class="usage"><code>(result-channel)</code><code>(result-channel listener)</code></div><pre class="doc">Returns a result-channel, representing an unrealized value or error.
 </pre></div><div class="public" id="var-run-pipeline"><h3>run-pipeline</h3><div class="usage"><code>(run-pipeline value &amp; opts+stages)</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-sample-every"><h3>sample-every</h3><div class="usage"><code>(sample-every {:keys [period task-queue], :or {task-queue (t/task-queue)}} ch)</code></div><pre class="doc">Takes a source channel, and returns a channel that emits the most recent message
+</pre></div><div class="public" id="var-sample-every"><h3>sample-every</h3><div class="usage"><code>(sample-every {:keys [period task-queue], :or {task-queue (t/task-queue), period (t/period)}} ch)</code></div><pre class="doc">Takes a source channel, and returns a channel that emits the most recent message
 from the source channel every 'period' milliseconds.</pre></div><div class="public" id="var-sink"><h3>sink</h3><div class="usage"><code>(sink callback)</code></div><pre class="doc">Creates a channel which will forward all messages to 'callback'.
 </pre></div><div class="public" id="var-sink-%3E%3E"><h3>sink-&gt;&gt;</h3><div class="usage"><code>(sink-&gt;&gt; &amp; transforms+callback)</code></div><pre class="doc">Creates a channel, pipes it through the -&gt;&gt; operator, and sends the
 resulting stream into the callback. This can be useful when defining
