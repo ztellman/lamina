@@ -535,7 +535,7 @@
                               (System/arraycopy ary 0 ary* 0 cnt)
                               ary*))]
        (doseq [[idx ch] (map vector (range cnt) channels)] ;; todo: typehint with 'long'
-         (bridge-siphon ch ch* "zip"
+         (bridge-join ch ch* "zip"
            (fn [msg]
              (let [curr-result @result]
                (if-let [ary* (l/with-exclusive-lock lock
@@ -726,9 +726,13 @@
                 :period period
                 :flush? #(= (count %) (facet-count))}
                ch*)]
+
     (join ch dist)
     (on-error aggr #(error dist % false))
     (on-closed aggr #(close dist))
+    (on-closed ch #(close aggr))
+    (on-error ch #(error aggr % false))
+    
     (map*
       #(zipmap (keys %) (map :value (vals %)))
       aggr)))

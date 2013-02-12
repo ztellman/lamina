@@ -80,9 +80,9 @@
 (defn close-and-clear [lock ^AtomicBoolean closed? ^ConcurrentHashMap downstream]
   (l/with-exclusive-lock lock
     (.set closed? true)
-    (let [channels (vals downstream)]
+    (let [channel-thunks (vals downstream)]
       (.clear ^ConcurrentHashMap downstream)
-      channels)))
+      (map deref channel-thunks))))
 
 (deftype+ DistributingPropagator
   [facet
@@ -118,23 +118,26 @@
                   id)]
         (if-let [n (l/with-lock lock
                      (when-not (.get closed?)
-                       (if-let [n (.get downstream-map id*)]
-                         n
-                         (let [n (generator id)]
-                           
-                           ;; make it transactional, if necessary
-                           (when (.get transactional?)
-                             (transactional n))
+                       (if-let [thunk (.get downstream-map id*)]
+                         @thunk
+                         (let [thunk (delay (generator id))]
                            
                            ;; check if another channel's already slotted in
-                           (or (.putIfAbsent downstream-map id* n)
-                             (do
-                               ;; if not, hook into the callbacks
-                               (r/subscribe (n/closed-result n)
-                                 (r/result-callback
-                                   (fn [_] (.remove downstream-map id*))
-                                   (fn [err] (error this err false))))
-                               n))))))]
+                           @(or (.putIfAbsent downstream-map id* thunk)
+
+                              ;; if not, do initial setup
+                              (let [n @thunk]
+
+                                (when (.get transactional?)
+                                  (transactional n))
+                                
+                                (r/subscribe (n/closed-result n)
+                                  (r/result-callback
+                                    (fn [_] (.remove downstream-map id*))
+                                    (fn [err] (error this err false))))
+
+                                thunk))))))]
+          
           (propagate n msg true)
           :lamina/closed!))
       (catch Exception e

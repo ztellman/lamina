@@ -44,12 +44,19 @@
            payload
            period
            stream-generator]
+    :or {payload identity}
     :as options}]
-  (let [ch (if timestamp
-             (defer-onto-queue task-queue timestamp ch)
-             ch)
-        ch (if payload
-             (map* payload ch)
+  (let [stream-generator (if timestamp
+                           #(->> %
+                              stream-generator
+                              (map* identity)
+                              (defer-onto-queue task-queue timestamp)
+                              (map* payload))
+                           stream-generator)
+        ch (if timestamp
+             (->> ch
+               (defer-onto-queue task-queue timestamp)
+               (map* payload))
              ch)
         f (if (ifn? transform-descriptor)
             #(transform-descriptor ch)
@@ -57,7 +64,8 @@
                (apply parse-descriptor transform-descriptor (apply concat options))
                ch))
         f #(with-bindings (merge {}
-                            (when stream-generator {#'c/*stream-generator* stream-generator}))
+                            (when stream-generator
+                              {#'c/*stream-generator* stream-generator}))
              (f))
         f (if period
             #(time/with-period period (f))
@@ -72,45 +80,54 @@
   [transform-descriptor s &
    {:keys [timestamp
            payload
-           period]
+           period
+           seq-generator]
     :or {payload identity}
     :as options}]
   (assert timestamp)
   (let [q (time/non-realtime-task-queue)
         ch (channel)
-        ch* (query-stream transform-descriptor ch
-              :task-queue q
-              :period period)]
+
+        enqueue-next
+        (fn enqueue-next [s ch]
+          (if-let [x (first s)]
+            (time/invoke-at q (timestamp x)
+              (with-meta
+                (fn []
+                  (enqueue ch x)
+                  (enqueue-next (rest s) ch))
+                {:priority Integer/MAX_VALUE}))
+            (time/invoke-at q (inc (time/now q))
+              (with-meta
+                #(close ch)
+                {:priority -1}))))
+
+        ch*
+        (query-stream transform-descriptor ch
+          :task-queue q
+          :period period
+          :stream-generator (when seq-generator
+                              (fn [descriptor]
+                                (let [ch (channel)]
+                                  (enqueue-next
+                                    (seq-generator descriptor)
+                                    ch)
+                                  ch))))]
 
     ;; set up consumption of the incoming seq
-    (let [enqueue-next
-          (fn enqueue-next [s]
-            (if-let [x (first s)]
-              (time/invoke-at q (timestamp x)
-                (with-meta
-                  (fn []
-                    (enqueue ch x)
-                    (enqueue-next (rest s)))
-                  {:priority Integer/MAX_VALUE}))
-              (time/invoke-at q (inc (time/now q))
-                (with-meta
-                  #(close ch)
-                  {:priority -1}))))]
-
-      (enqueue-next s))
+    (enqueue-next s ch)
 
     ;; set up production of the outgoing seq
     (let [advance-until-message
           (fn []
-            (let [latch (atom false)
+            (let [latch (atom true)
                   result (run-pipeline
                            (read-channel* ch* :on-drained ::drained)
                            (fn [val]
-                             (reset! latch true)
+                             (reset! latch false)
                              val))]
               (loop []
-                (time/advance q)
-                (if-not @latch
+                (if (and (time/advance q) @latch)
                   (recur)
                   @result))))]
       (->> (repeatedly advance-until-message)

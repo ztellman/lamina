@@ -487,7 +487,7 @@
   (when-not (empty? distilled-timings)
     (let [root-timing (distilled-timing nil nil)]
       (doseq [t distilled-timings]
-        (merge-distilled-timing! root-timing t))
+        (add-sub-timing! root-timing t))
       (:sub-tasks root-timing))))
 
 ;;;

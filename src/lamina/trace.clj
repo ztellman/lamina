@@ -45,11 +45,11 @@
 (defn analyze-timings
   "Aggregates timings, and periodically emits statistical information about them."
   [{:keys [period window task-queue quantiles]
-    :or {task-queue (time/task-queue)}
+    :or {task-queue (time/task-queue)
+         period (time/period)}
     :as options}
    ch]
   (->> ch
-    (remove* (fn [_] (tracing?)))
     (map* distill-timing)
     (distribute-aggregate
       {:facet :task
@@ -61,7 +61,7 @@
                       (let [durations (->> ch (map* :durations) concat*)]
                         (zip
                           [(->> ch (map* :sub-tasks) concat* (analyze-timings options))
-                           (->> durations (stats/moving-quantiles (assoc options :window period)))
+                           (->> durations (stats/moving-quantiles (assoc options :window (or window period))))
                            (->> durations (stats/rate options))
                            #_(->> durations (reduce-every (assoc options :reducer (partial max 0))))
                            (->> durations (stats/sum options))]))))})))
