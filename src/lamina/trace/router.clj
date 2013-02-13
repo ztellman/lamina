@@ -132,8 +132,8 @@
                   (recur)
                   @result))))]
       (->> (repeatedly advance-until-message)
-        (map #(hash-map :timestamp (time/now q) :value %))
-        (take-while #(not= ::drained (:value %)))))))
+        (take-while #(not= ::drained %))
+        (map #(hash-map :timestamp (time/now q) :value %))))))
 
 ;;;
 

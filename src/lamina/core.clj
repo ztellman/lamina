@@ -89,7 +89,6 @@
    periodically
    sample-every
    partition-every
-   reduce-every
 
    defer-onto-queue
 

@@ -22,7 +22,7 @@
 
 (defn gen-frame [name]
   (delay
-    (let [frame (JFrame. name)
+    (let [frame (JFrame. ^String name)
           image-icon (ImageIcon.)]
       (doto frame
         (.add (-> image-icon JLabel. JScrollPane.))
@@ -50,9 +50,13 @@
 
 ;;;
 
+(def escapable-characters "|{}\"")
+
 (defn escape-string [s]
-  (-> s
-    (str/replace "\"" "\\\"")))
+  (reduce
+    #(str/replace %1 (str %2) (str "\\" %2))
+    s
+    escapable-characters))
 
 (defn format-options-value [v]
   (cond

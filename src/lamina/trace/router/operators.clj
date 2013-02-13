@@ -114,17 +114,19 @@
   :transform
   (fn [{:strs [options]} ch]
     (let [options options
-          ks (keys options)
+          ks (map keyword (keys options))
           descs (vals options)]
       (assert (every? #(contains? % "operators") descs))
-      (->> (zip
-             (map
-               (fn [{:strs [operators pattern] :as desc}]
-                 (if pattern
-                   (r/generate-stream desc)
-                   (r/transform-trace-stream desc (fork ch))))
-               descs))
-        (map* #(zipmap ks %))))))
+      (let [ch* (->> descs
+                  (map
+                    (fn [{:strs [operators pattern] :as desc}]
+                      (if pattern
+                        (r/generate-stream desc)
+                        (r/transform-trace-stream desc (fork ch)))))
+                  zip
+                  (map* #(zipmap ks %)))]
+        (ground ch)
+        ch*))))
 
 ;;; where
 
@@ -168,7 +170,7 @@
         periodic? (r/periodic-chain? operators)
         period (or (get options "period")
                  (t/period))
-        expiration (get options "expiration" (max (t/minutes 1) (* 5 period)))]
+        expiration (get options "expiration" (max (t/minutes 1) (* 10 period)))]
 
     (assert facet)
 
@@ -188,7 +190,7 @@
   (let [periodic? (r/periodic-chain? operators)
         period (or (get options "period")
                  (t/period))
-        expiration (get options "expiration" (max (t/minutes 1) (* 5 period)))]
+        expiration (get options "expiration" (max (t/minutes 1) (* 10 period)))]
     (->> ch
       concat*
       (distribute-aggregate

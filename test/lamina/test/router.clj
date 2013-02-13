@@ -10,9 +10,9 @@
   (:use
     [clojure.test]
     [lamina.trace.router]
-    [lamina.core]
+    [lamina core viz]
     [lamina.cache :only (get-or-create subscribe)]
-    [lamina.trace :only (trace select-probes)])
+    [lamina.trace :only (trace select-probes probe-channel)])
   (:require
     [lamina.time :as t]))
 
@@ -45,9 +45,9 @@
         filtered-sum*    (subscribe-fn ".where(x.y > 1).x.y.sum()")
         filtered-sum**   (subscribe-fn ".x.where(y = 4).y.sum()")
         filtered-sum***  (subscribe-fn ".x.y.where(_ < 4).sum()")
-        avg              (subscribe-fn ".x.y.moving-average(period: 75)") ;; todo: add :immediate? flag
+        avg              (subscribe-fn ".x.y.moving-average(period: 75ms)") ;; todo: add :immediate? flag
         rate             (subscribe-fn ".rate()")
-        sum-avg          (subscribe-fn ".x.y.sum(period: 100).moving-average(period: 75)")
+        sum-avg          (subscribe-fn ".x.y.sum(period: 0.1s).moving-average(period: 75000us)")
         lookup           (subscribe-fn ".x.y")
         merge-sum        (subscribe-fn ".merge(.x.y, .x.y).sum()")
         ]
@@ -82,8 +82,8 @@
         bar-rate**         (subscribe-fn ".select(bar).group-by(bar).bar.rate()")
         foo-bar-rate       (subscribe-fn ".group-by(foo).select(bar).group-by(bar).rate()")
         foo-bar-rate*      (subscribe-fn ".group-by([foo bar]).rate()")
-        filtered-group-by  (subscribe-fn ".where(foo = a).group-by(bar).rate()")
-        filtered-group-by* (subscribe-fn ".where(foo ~= a).group-by(bar).rate()")
+        filtered-group-by  (subscribe-fn ".where(foo = 'a').group-by(bar).rate()")
+        filtered-group-by* (subscribe-fn ".where(foo ~= 'a').group-by(bar).rate()")
         ;filtered-group-by  (subscribe-fn ".group-by(foo).rate().where(_ > 1)")
         val (fn [foo bar] {:foo foo, :bar bar})]
     
@@ -118,20 +118,25 @@
           )))))
 
 (defn run-merge-streams-test [subscribe-fn enqueue-fn post-enqueue-fn]
-  (let [merged-sum (subscribe-fn ".merge(., &abc).x.sum()")]
+  (let [merged-sum (subscribe-fn ".merge(., &abc).x.sum()")
+        zipped-sum (subscribe-fn ".zip(a: .group-by(foo).x.sum(),
+                                       b: &abc.group-by(foo).x.sum())")]
 
     (try
 
       (doseq [x (range 1 5)]
-        (enqueue-fn {:x x :y (* 2 x)}))
+        (enqueue-fn {:foo :bar, :x x :y (* 2 x)}))
 
       (when post-enqueue-fn
         (post-enqueue-fn))
 
       (is* (= 20 (next-msg merged-sum)))
 
+      ;; todo: this is staggered in the split-router case
+      #_(is* (= {:a {:bar 10}, :b {:bar 10}} (next-msg zipped-sum) (next-msg zipped-sum)))
+
       (finally
-        (close-all merged-sum)))))
+        (close-all merged-sum zipped-sum)))))
 
 (deftest test-operators
   (let [ch (channel)

@@ -456,34 +456,6 @@
       ch*)
     ch*))
 
-(defn reduce-every
-  ([{:keys [period reducer task-queue initial-value]
-     :or {task-queue (t/task-queue)
-          period (t/period)}
-     :as options}
-    ch]
-     (let [lock (l/asymmetric-lock)
-           ch* (mimic ch)
-           f (if (contains? options :initial-value)
-               #(reduce* reducer initial-value %)
-               #(reduce* reducer %))
-           sink (atom (channel))
-           result (atom (f @sink))]
-
-       (bridge-join ch ch* "reduce-every"
-         #(l/with-lock lock
-            (enqueue @sink %)))
-
-       (periodically period
-         #(l/with-exclusive-lock lock
-            (close @sink)
-            (reset! sink (channel))
-            (enqueue ch* @@result)
-            (reset! result (f @sink)))
-         task-queue)
-
-       ch*)))
-
 ;;;
 
 (defn create-bitset [n] ;; todo: typehint with 'long'
@@ -528,7 +500,7 @@
            ^objects ary (object-array cnt)
            bitset (atom (create-bitset cnt))
            result (atom (r/result-channel))
-           ch* (channel)
+           ch* (channel* :description "zip")
            copy-and-reset (fn []
                             (reset! bitset (create-bitset cnt))
                             (reset! result (r/result-channel))
@@ -536,7 +508,7 @@
                               (System/arraycopy ary 0 ary* 0 cnt)
                               ary*))]
        (doseq [[idx ch] (map vector (range cnt) channels)] ;; todo: typehint with 'long'
-         (bridge-join ch ch* "zip"
+         (bridge-join ch ch* ""
            (fn [msg]
              (let [curr-result @result]
                (if-let [ary* (l/with-exclusive-lock lock

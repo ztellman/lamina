@@ -109,7 +109,7 @@
       (doseq [n downstream]
         (transactional n))))
   (downstream [_]
-    (map #(edge nil %) (vals downstream-map)))
+    (map #(edge nil @%) (vals downstream-map)))
   (propagate [this msg _]
     (try
       (let [id (facet msg)

@@ -51,23 +51,20 @@
    ch]
   (->> ch
     (map* distill-timing)
-    (close-on-idle (time/hours 1))
+    (close-on-idle (max (* 10 period) (time/hours 1)))
     (distribute-aggregate
       {:facet :task
        :period period
        :task-queue task-queue
        :generator (fn [task ch]
                     (map*
-                      #(zipmap [:sub-tasks :quantiles :calls :total-calls #_:max-duration :duration :total-duration] %)
+                      #(zipmap [:sub-tasks :duration-quantiles :calls :total-duration] %)
                       (let [durations (->> ch (map* :durations) concat*)]
                         (zip
                           [(->> ch (map* :sub-tasks) concat* (analyze-timings options))
                            (->> durations (stats/moving-quantiles (assoc options :window (or window period))))
-                           (->> durations (stats/rate options))
-                           (->> durations (stats/rate options) (reductions* +) (sample-every options))
-                           #_(->> durations (reduce-every (assoc options :reducer (partial max 0))))
-                           (->> durations (stats/sum options))
-                           (->> durations (reductions* +) (sample-every options))]
+                           (->> durations (stats/rate options) (reductions* +))
+                           (->> durations (stats/sum options) (reductions* +))]
                           ))))})))
 
 (def-trace-operator analyze-timings

@@ -8,6 +8,7 @@
 
 (ns lamina.trace.router.parse
   (:require
+    [lamina.time :as t]
     [clojure.string :as str])
   (:import
     [java.util.regex Pattern]))
@@ -139,6 +140,22 @@
 (declare inner-stream)
 (declare transform)
 
+(def interval->fn
+  {"d" t/days
+   "h" t/hours
+   "m" t/minutes
+   "s" t/seconds
+   "ms" t/milliseconds
+   "us" t/microseconds
+   "ns" t/nanoseconds})
+
+(defn parse-time-interval [s]
+  (let [num (re-find #"^[0-9\.]+" s)
+        interval (re-find #"d|h|ms|m|s|us|ns" s)]
+    ((interval->fn interval)
+     (read-string num))))
+
+(deftoken time-unit #"d|h|s|ms|m|us|ns")
 (deftoken transform-prefix #"\.")
 (deftoken stream-prefix #"&")
 (deftoken pattern #"[a-zA-Z0-9:_\-\*]*")
@@ -146,10 +163,15 @@
 (deftoken comparison #"<|>|=|~=")
 (deftoken field #"[_a-zA-Z][a-zA-Z0-9\-_\.]*")
 (deftoken number #"[0-9\.]+" read-string)
-(deftoken string #"[a-zA-Z0-9\-\*_]")
+(deftoken string #"'[a-zA-Z0-9\-\*_ ]+'" #(.substring ^String % 1 (dec (count %))))
 (deftoken whitespace #"[ \t,]*")
 (deftoken empty-token #"")
 (deftoken colon #"[ \t]*:[ \t]*")
+
+(def time-interval
+  (token
+    (chain number time-unit)
+    #(parse-time-interval (apply str %))))
 
 (def relationship
   (chain
@@ -171,7 +193,7 @@
     (fn [[[a b]]]
       (vec (list* a b)))))
 
-(let [t (delay (one-of tuple pair relationship transform field number inner-stream))]
+(let [t (delay (one-of tuple pair relationship transform field time-interval number inner-stream))]
   (defn param [s]
     (@t s)))
 
@@ -226,16 +248,6 @@
         {:name name
          :options (apply merge {} (collapse-options options))}))))
 
-(def transform
-  (token
-    (second*
-      transform-prefix
-      (many operator))
-    (fn [operators]
-      {:operators operators})))
-
-;;;
-
 (defn collapse-group-bys [s]
   (let [pre (take-while #(not= "group-by" (:name %)) s)]
     (if (= pre s)
@@ -245,6 +257,16 @@
         (let [s (drop (count pre) s)]
           [(assoc (first s)
              :operators (collapse-group-bys (rest s)))])))))
+
+(def transform
+  (token
+    (second*
+      transform-prefix
+      (many operator))
+    (fn [operators]
+      {:operators (collapse-group-bys operators)})))
+
+;;;
 
 (def stream
   (token
