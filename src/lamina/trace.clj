@@ -12,6 +12,7 @@
     [lamina.core]
     [clojure.walk :only [keywordize-keys]])
   (:require
+    [lamina.cache :as c]
     [lamina.time :as time]
     [lamina.stats :as stats]
     [lamina.trace.router :as r]
@@ -34,6 +35,8 @@
 (import-macro u/with-instrumentation)
 (import-fn t/add-sub-timing)
 (import-fn t/add-to-last-sub-timing)
+
+(import-fn c/subscribe)
 
 (import-macro r/def-trace-operator)
 

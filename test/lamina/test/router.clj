@@ -11,8 +11,8 @@
     [clojure.test]
     [lamina.trace.router]
     [lamina core viz]
-    [lamina.cache :only (get-or-create subscribe)]
-    [lamina.trace :only (trace select-probes probe-channel)])
+    [lamina.cache :only (get-or-create)]
+    [lamina.trace :only (subscribe trace select-probes probe-channel)])
   (:require
     [lamina.time :as t]))
 
@@ -140,12 +140,12 @@
 
 (deftest test-operators
   (let [ch (channel)
-        sub #(query-stream % ch :period 100)
+        sub #(query-stream % ch {:period 100})
         enq #(enqueue ch %)]
     (run-basic-operator-test sub enq nil)
     (close ch))
   (let [ch (channel)
-        sub #(query-stream % ch :period 100)
+        sub #(query-stream % ch {:period 100})
         enq #(enqueue ch %)]
     (run-group-by-test sub enq nil)
     (close ch))
@@ -159,7 +159,7 @@
                   :task-queue q
                   :payload :value
                   :timestamp :timestamp})
-        sub #(subscribe router (str "abc" %) :period 1e5)
+        sub #(subscribe router (str "abc" %) {:period 1e5})
         enq #(trace :abc {:timestamp 0, :value %})]
     (run-basic-operator-test sub enq #(t/advance-until q 2e5))
     (run-group-by-test sub enq #(t/advance-until q 5e5))
@@ -167,7 +167,7 @@
     (println)))
 
 (deftest test-local-router
-  (let [sub #(subscribe local-trace-router (str "abc" %) :period 100)
+  (let [sub #(subscribe local-trace-router (str "abc" %) {:period 100})
         enq #(trace :abc %)]
     (run-basic-operator-test sub enq nil)
     (run-group-by-test sub enq nil)
@@ -176,7 +176,7 @@
 
 (deftest test-split-router
   (let [router (aggregating-trace-router local-trace-router)
-        sub #(subscribe router (str "abc" %) :period 100)
+        sub #(subscribe router (str "abc" %) {:period 100})
         enq #(trace :abc %)]
     (run-basic-operator-test sub enq nil)
     (run-group-by-test sub enq nil)

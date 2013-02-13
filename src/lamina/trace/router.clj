@@ -30,7 +30,7 @@
         x))
     x))
 
-(defn parse-descriptor [x & {:as options}]
+(defn parse-descriptor [x {:as options}]
   (let [descriptor (if (string? x)
                      (stringify-keys (p/parse-stream x))
                      x)]
@@ -38,7 +38,7 @@
 
 (defn query-stream
   "something goes here"
-  [transform-descriptor ch &
+  [transform-descriptor ch
    {:keys [task-queue
            timestamp
            payload
@@ -61,7 +61,7 @@
         f (if (ifn? transform-descriptor)
             #(transform-descriptor ch)
             #(c/transform-trace-stream
-               (apply parse-descriptor transform-descriptor (apply concat options))
+               (parse-descriptor transform-descriptor options)
                ch))
         f #(with-bindings (merge {}
                             (when stream-generator
@@ -77,7 +77,7 @@
 
 (defn query-seq
   "something goes here"
-  [transform-descriptor s &
+  [transform-descriptor s
    {:keys [timestamp
            payload
            period
@@ -176,16 +176,15 @@
     (reify cache/IRouter
       (inner-cache [_]
         (cache/inner-cache router))
-      (subscribe- [this topic args]
-        (let [descriptor (apply parse-descriptor topic args)
-              options (apply hash-map args)
+      (subscribe [this topic options]
+        (let [descriptor (parse-descriptor topic options)
               period (or (:period options)
                        (get descriptor "period")
                        (time/period))]
           (time/with-task-queue task-queue
-            (binding [c/*stream-generator* (or c/*stream-generator* #(cache/subscribe this %))]
+            (binding [c/*stream-generator* (or c/*stream-generator* #(cache/subscribe this % options))]
               (time/with-period period
-                (cache/subscribe router descriptor)))))))))
+                (cache/subscribe router descriptor options)))))))))
 
 (def
   ^{:doc "something goes here"}
@@ -200,13 +199,12 @@
   (let [router (trace-router
                  {:generator
                   (fn [{:strs [endpoint]}]
-                    (cache/subscribe endpoint-router endpoint))})]
+                    (cache/subscribe endpoint-router endpoint {}))})]
     (reify cache/IRouter
       (inner-cache [_]
         (cache/inner-cache router))
-      (subscribe- [this topic args]
-        (let [options (apply hash-map args)
-              {:strs [operators] :as descriptor} (apply parse-descriptor topic args)
+      (subscribe [this topic options]
+        (let [{:strs [operators] :as descriptor} (parse-descriptor topic options)
               period (or (options :period)
                        (get descriptor "period")
                        (time/period))
@@ -216,7 +214,7 @@
               non-distributable (assoc descriptor
                                   "endpoint" distributable 
                                   "operators" (c/non-distributable-chain operators))]
-          (binding [c/*stream-generator* (or c/*stream-generator* #(cache/subscribe this %))]
+          (binding [c/*stream-generator* (or c/*stream-generator* #(cache/subscribe this % options))]
             (time/with-period period
-              (cache/subscribe router non-distributable))))))))
+              (cache/subscribe router non-distributable options))))))))
 

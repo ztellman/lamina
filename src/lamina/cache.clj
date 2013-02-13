@@ -161,10 +161,7 @@
 
 (defprotocol+ IRouter
   (inner-cache [_])
-  (subscribe- [_ descriptor args]))
-
-(defn subscribe [router topic & args]
-  (subscribe- router topic args))
+  (subscribe [_ descriptor options]))
 
 (defn router
   "Like a cache, except that it doesn't assume exclusive control of the generated channels.
@@ -215,6 +212,6 @@
       (reify IRouter
         (inner-cache [_]
           cache)
-        (subscribe- [_ topic args]
+        (subscribe [_ topic options]
           (let [ch (get-or-create cache topic nil)]
             (siphon ch (channel)))))))
