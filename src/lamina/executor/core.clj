@@ -10,7 +10,7 @@
   (:use
     [lamina.core.utils]
     [lamina.executor.utils]
-    [lamina.time :only (invoke-in)])
+    [lamina.time :only (invoke-in invoke-repeatedly)])
   (:require
     [lamina.trace.probe :as pr]
     [lamina.core.pipeline :as p]
@@ -74,18 +74,27 @@
                   (newThread [_ f]
                     (doto
                       (Thread. f)
-                      (.setName (str nm "-" (swap! cnt inc)))))))]
+                      (.setName (str nm "-" (swap! cnt inc)))))))
+        stats (fn []
+                {:completed-tasks (.getCompletedTaskCount pool)
+                 :pending-tasks (- (.getTaskCount pool) (.getCompletedTaskCount pool))
+                 :active-threads (.getActiveCount pool)
+                 :num-threads (.getPoolSize pool)})
+        stats-channel (pr/probe-channel [nm :stats])]
 
     (periodically-contract-pool-size pool min-thread-count idle-timeout)
+    
+    (invoke-repeatedly 1000
+      (fn [cancel]
+        (if (.isShutdown pool)
+          (cancel)
+          (enqueue stats-channel (stats)))))
 
     (reify
 
       clojure.lang.IDeref
       (deref [_]
-        {:completed-tasks (.getCompletedTaskCount pool)
-         :pending-tasks (- (.getTaskCount pool) (.getCompletedTaskCount pool))
-         :active-threads (.getActiveCount pool)
-         :num-threads (.getPoolSize pool)})
+        (stats))
 
       IExecutor
       (trace-return [_ val]

@@ -247,7 +247,11 @@
   :distribute? false
   
   (:transform :pre-aggregate) rate-op
-  :aggregate sum-op)
+  :aggregate
+  (fn [desc ch]
+    (->> ch
+      (sum-op desc)
+      (map* long))))
 
 (r/def-trace-operator moving-average
   :periodic? true

@@ -67,7 +67,7 @@
   (are [expected-values inputs]
     (= expected-values (run-stats-test sum inputs (t/seconds 1) nil))
 
-    [55 5050 2] [(range 11) (range 101) [2]]
+    [55.0 5050.0 2.0] [(range 11) (range 101) [2]]
 
     ;; todo: more tests?
     

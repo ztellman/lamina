@@ -60,12 +60,12 @@
       (when post-enqueue-fn
         (post-enqueue-fn))
 
-      (is* (= 10 (next-msg sum) (next-msg sum*)))
-      (is* (= 20 (next-msg merge-sum)))
+      (is* (= 10.0 (next-msg sum) (next-msg sum*)))
+      (is* (= 20.0 (next-msg merge-sum)))
       
-      (is* (= 9 (next-msg filtered-sum*)))
-      (is* (= 4 (next-msg filtered-sum**)))
-      (is* (= 6 (next-msg filtered-sum***)))
+      (is* (= 9.0 (next-msg filtered-sum*)))
+      (is* (= 4.0 (next-msg filtered-sum**)))
+      (is* (= 6.0 (next-msg filtered-sum***)))
       (is* (= 4 (next-msg rate)))
       (is* (= 2.5 (next-msg avg)))
       (is* (= 10.0 (next-msg sum-avg)))
@@ -130,7 +130,7 @@
       (when post-enqueue-fn
         (post-enqueue-fn))
 
-      (is* (= 20 (next-msg merged-sum)))
+      (is* (= 20.0 (next-msg merged-sum)))
 
       ;; todo: this is staggered in the split-router case
       #_(is* (= {:a {:bar 10}, :b {:bar 10}} (next-msg zipped-sum) (next-msg zipped-sum)))

@@ -41,11 +41,21 @@
        (bridge-join ch ch* "sum"
          (fn [n]
 
-           (.addAndGet cnt (long n))
+           (loop []
+             (let [current (.get cnt)
+                   val (Double/longBitsToDouble (long current))]
+               (when-not (.compareAndSet cnt current
+                           (Double/doubleToRawLongBits
+                             (+ (double val) (double n))))
+                 (recur))))
 
            (when (.compareAndSet latch false true)
              (siphon
-               (periodically period #(.getAndSet cnt 0) task-queue)
+               (periodically period
+                 #(Double/longBitsToDouble
+                    (.getAndSet cnt
+                      (Double/doubleToRawLongBits 0)))
+                 task-queue)
                ch*))))
        ch*)))
 
@@ -60,9 +70,19 @@
           task-queue  (t/task-queue)}
      :as options}
     ch]
-     (->> ch
-       (map* (constantly 1))
-       (sum options))))
+     (let [ch* (channel)
+           cnt (AtomicLong. 0)
+           latch (AtomicBoolean. false)]
+       
+       (bridge-join ch ch* "sum"
+         (fn [n]
+           (.incrementAndGet cnt)
+           
+           (when (.compareAndSet latch false true)
+             (siphon
+               (periodically period #(.getAndSet cnt 0) task-queue)
+               ch*))))
+       ch*)))
 
 (defn moving-average
   "Returns a channel that will periodically emit the moving average over all messages emitted by

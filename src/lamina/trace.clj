@@ -12,6 +12,7 @@
     [lamina.core]
     [clojure.walk :only [keywordize-keys]])
   (:require
+    [clojure.tools.logging :as log]
     [lamina.cache :as c]
     [lamina.time :as time]
     [lamina.stats :as stats]
