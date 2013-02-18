@@ -281,8 +281,8 @@
                     (enqueue-and-release lock state msg false)
                     
                     ;; walk the chain of nodes until there's a split
-                    (loop [^Edge edge edge, msg msg]
-                      (let [nxt (.next edge)]
+                    (loop [edge edge, msg msg]
+                      (let [nxt (.next ^Edge edge)]
                         (if-not (node? nxt)
                           
                           ;; if it's not a normal node, forward the message
@@ -345,9 +345,10 @@
                     ;; send message to all nodes
                     (try
                       (let [s (downstream this)
-                            result (propagate (.next ^Edge (first s)) msg true)]
-                        (doseq [^Edge e (rest s)]
-                          (propagate (.next e) msg true))
+                            edge (first s)
+                            result (propagate (.next ^Edge edge) msg true)]
+                        (doseq [e (rest s)]
+                          (propagate (.next ^Edge e) msg true))
                         result)
                       (catch Exception e
                         (error this e false)
