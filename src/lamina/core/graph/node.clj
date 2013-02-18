@@ -271,27 +271,11 @@
             ;; acquire the lock before we look at the state
             (l/acquire lock)
             (let [state state]
-              (case (.mode state)
+              (cond-case (.mode state)
 
-                (::drained ::closed)
-                (do
-                  (l/release lock)
-                  :lamina/closed!)
-
-                ::error
-                (do
-                  (l/release lock)
-                  :lamina/error!)
-
-                ::consumed
-                (enqueue-and-release lock state msg true)
-
-                (::split ::open)
-                (case (.size edges)
-
-                  0
-                  (enqueue-and-release lock state msg (not grounded?))
-
+                (::open ::split)
+                (condp = (.size edges)
+                  
                   1
                   (let [edge (.get edges 0)]
                     (enqueue-and-release lock state msg false)
@@ -322,7 +306,21 @@
                               (do
                                 (l/acquire (.lock node))
                                 (let [^NodeState state (.state node)]
-                                  (case (.mode state)
+                                  (cond-case (.mode state)
+
+                                    (::open ::split)
+                                    (let [^CopyOnWriteArrayList edges (.edges node)]
+                                      (if (= 1 (.size edges))
+                                        (let [edge (.get edges 0)]
+                                          (enqueue-and-release (.lock node) state msg false)
+                                          (recur edge msg))
+                                        (do
+                                          (l/release (.lock node))
+                                          (try
+                                            (propagate node msg false)
+                                            (catch Exception e
+                                              (error this e false)
+                                              :lamina/error!)))))
 
                                     (::drained ::closed)
                                     (do
@@ -335,21 +333,10 @@
                                       :lamina/error!)
 
                                     ::consumed
-                                    (enqueue-and-release (.lock node) state msg true)
+                                    (enqueue-and-release (.lock node) state msg true))))))))))
 
-                                    (::split ::open)
-                                    (let [^CopyOnWriteArrayList edges (.edges node)]
-                                      (if (= 1 (.size edges))
-                                        (let [edge (.get edges 0)]
-                                          (enqueue-and-release (.lock node) state msg false)
-                                          (recur edge msg))
-                                        (do
-                                          (l/release (.lock node))
-                                          (try
-                                            (propagate node msg false)
-                                            (catch Exception e
-                                              (error this e false)
-                                              :lamina/error!))))))))))))))
+                  0
+                  (enqueue-and-release lock state msg (not grounded?))
 
                   ;; more than one node
                   (do
@@ -364,7 +351,20 @@
                         result)
                       (catch Exception e
                         (error this e false)
-                        :lamina/error!)))))))))))
+                        :lamina/error!))))
+
+                (::drained ::closed)
+                (do
+                  (l/release lock)
+                  :lamina/closed!)
+
+                ::error
+                (do
+                  (l/release lock)
+                  :lamina/error!)
+
+                ::consumed
+                (enqueue-and-release lock state msg true))))))))
 
   ;;
   (transactional [this]

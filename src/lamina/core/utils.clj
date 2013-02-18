@@ -78,6 +78,22 @@
        ~@body
        ~@(->> class->clause vals (remove nil?)))))
 
+(defmacro cond-case [value & cases]
+  (unify-gensyms
+    `(let [val## ~value]
+       (cond
+         ~@(->> cases
+             (partition 2)
+             (map
+               (fn [[vals expr]]
+                 `(~(if (sequential? vals)
+                      `(or ~@(map (fn [x] `(identical? val## ~x)) vals))
+                      `(identical? val## ~vals))
+                   ~expr)))
+             (apply concat))
+         :else
+         (throw (IllegalArgumentException. (str "no matching clause for " (pr-str val##))))))))
+
 ;;;
 
 (defn predicate-operator [predicate]
