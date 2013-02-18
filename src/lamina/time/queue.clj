@@ -29,20 +29,20 @@
 
 ;;;
 
-(let [queue-factory (thread-factory (constantly "lamina-scheduler-queue"))
-      task-queue    (ScheduledThreadPoolExecutor. 1 ^ThreadFactory queue-factory)
-
-      cnt (atom 0)
-      task-factory (thread-factory #(str "lamina-scheduler-" (swap! cnt inc)))
-      task-executor (ThreadPoolExecutor.
-                      (int (num-cores))
-                      Integer/MAX_VALUE
-                      (long 60)
-                      TimeUnit/SECONDS
-                      (LinkedBlockingQueue.)
-                      ^ThreadFactory task-factory)]
-
-  (def default-task-queue
+(defonce default-task-queue
+  (let [queue-factory (thread-factory (constantly "lamina-scheduler-queue"))
+        task-queue    (ScheduledThreadPoolExecutor. 1 ^ThreadFactory queue-factory)
+        
+        cnt (atom 0)
+        task-factory (thread-factory #(str "lamina-scheduler-" (swap! cnt inc)))
+        task-executor (ThreadPoolExecutor.
+                        (int (num-cores))
+                        Integer/MAX_VALUE
+                        (long 60)
+                        TimeUnit/SECONDS
+                        (LinkedBlockingQueue.)
+                        ^ThreadFactory task-factory)]
+    
     (reify
       ITaskQueue
       (invoke-in- [_ delay f]

@@ -29,60 +29,34 @@
    It is assumed that all numbers emitted by the source channel are integral values."
   ([ch]
      (sum nil ch))
-  ([{:keys [period
-            task-queue]
-     :or {period (t/period)
-          task-queue (t/task-queue)}}
-    ch]
-     (let [ch* (channel)
-           cnt (AtomicLong. 0)
-           latch (AtomicBoolean. false)]
-       
-       (bridge-join ch ch* "sum"
-         (fn [n]
+  ([{:keys [period task-queue] :as options} ch]
+     (let [cnt (AtomicLong. 0)]
 
-           (loop []
-             (let [current (.get cnt)
-                   val (Double/longBitsToDouble (long current))]
-               (when-not (.compareAndSet cnt current
-                           (Double/doubleToRawLongBits
-                             (+ (double val) (double n))))
-                 (recur))))
-
-           (when (.compareAndSet latch false true)
-             (siphon
-               (periodically period
-                 #(Double/longBitsToDouble
-                    (.getAndSet cnt
-                      (Double/doubleToRawLongBits 0)))
-                 task-queue)
-               ch*))))
-       ch*)))
+       (bridge-accumulate ch (mimic ch) "sum"
+         (merge options
+           {:accumulator (fn [n]
+                           (loop []
+                             (let [current (.get cnt)
+                                   val (Double/longBitsToDouble (long current))]
+                               (when-not (.compareAndSet cnt current
+                                           (Double/doubleToRawLongBits
+                                             (+ (double val) (double n))))
+                                 (recur)))))
+            :emitter #(Double/longBitsToDouble
+                        (.getAndSet cnt
+                          (Double/doubleToRawLongBits 0)))})))))
 
 (defn rate
   "Returns a channel that will periodically emit the number of messages emitted by the source
    channel over the last 'period' milliseconds, with a default of 1000."
   ([ch]
      (rate nil ch))
-  ([{:keys [period
-            task-queue]
-     :or {period (t/period)
-          task-queue  (t/task-queue)}
-     :as options}
-    ch]
-     (let [ch* (channel)
-           cnt (AtomicLong. 0)
-           latch (AtomicBoolean. false)]
-       
-       (bridge-join ch ch* "sum"
-         (fn [n]
-           (.incrementAndGet cnt)
-           
-           (when (.compareAndSet latch false true)
-             (siphon
-               (periodically period #(.getAndSet cnt 0) task-queue)
-               ch*))))
-       ch*)))
+  ([{:keys [period task-queue] :as options} ch]
+     (let [cnt (AtomicLong. 0)]
+       (bridge-accumulate ch (mimic ch) "rate"
+         (merge options
+           {:accumulator (fn [_] (.incrementAndGet cnt))
+            :emitter (fn [] (.getAndSet cnt 0))})))))
 
 (defn moving-average
   "Returns a channel that will periodically emit the moving average over all messages emitted by
@@ -91,27 +65,15 @@
    last five minutes."
   ([ch]
      (moving-average nil ch))
-  ([{:keys [period
-            window
-            task-queue]
-     :or {period (t/period)
-          window (t/minutes 5)
-          task-queue (t/task-queue)}}
+  ([{:keys [period window task-queue]
+     :or {window (t/minutes 5)}
+     :as options}
     ch]
-     (let [avg (avg/moving-average period window)
-           ch* (channel)
-           latch (AtomicBoolean. false)]
-       
-       (bridge-join ch ch* "moving-average"
-         (fn [n]
-
-           (update avg (long n))
-
-           (when (.compareAndSet latch false true)
-             (siphon
-               (periodically period #(deref avg) task-queue)
-               ch*))))
-       ch*)))
+     (let [avg (avg/moving-average period window)]
+       (bridge-accumulate ch (mimic ch) "moving-average"
+         (merge options
+           {:accumulator #(update avg %)
+            :emitter #(deref avg)})))))
 
 (defn moving-quantiles
   "Returns a channel that will periodically emit a map of quantile values every 'period'
@@ -132,45 +94,28 @@
             quantiles
             task-queue]
      :or {quantiles [50 75 95 99 99.9]
-          period (t/period)
-          task-queue (t/task-queue)
-          window (t/minutes 5)}}
+          window (t/minutes 5)}
+     :as options}
     ch]
-     (let [ch* (channel)
-           latch (AtomicBoolean. false)
-           quantiles (qnt/moving-quantiles task-queue window quantiles)]
-       (bridge-join ch ch* "moving-quantiles"
-         (fn [n]
-
-           (update quantiles (long n))
-
-           (when (.compareAndSet latch false true)
-             (siphon
-               (periodically period #(deref quantiles) task-queue)
-               ch*))))
-       ch*)))
+     (let [quantiles (qnt/moving-quantiles task-queue window quantiles)]
+       (bridge-accumulate ch (mimic ch) "moving-quantiles"
+         (merge options
+           {:accumulator #(update quantiles %)
+            :emitter #(deref quantiles)})))))
 
 (defn variance
   "Returns a channel that will periodically emit the variance of all values emitted by the source
    channel every 'period' milliseconds."
   ([ch]
      (variance nil ch))
-  ([{:keys [period
-            task-queue]
-     :or {period (t/period)
-          task-queue (t/task-queue)}}
+  ([{:keys [period task-queue]
+     :as options}
     ch]
-     (let [vr (atom (var/create-variance))
-           ch* (channel)
-           latch (AtomicBoolean. false)]
-       (bridge-join ch ch* "variance"
-         (fn [n]
-           (swap! vr update (long n))
-           (when (.compareAndSet latch false true)
-             (siphon
-               (periodically period #(var/variance @vr) task-queue)
-               ch*))))
-       ch*)))
+     (let [vr (atom (var/create-variance))]
+       (bridge-accumulate ch (mimic ch) "variance"
+         (merge options
+           {:accumulator #(swap! vr update %)
+            :emitter #(var/variance @vr)})))))
 
 (defn- abs [x]
   (Math/abs (double x)))

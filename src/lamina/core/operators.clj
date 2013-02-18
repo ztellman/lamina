@@ -12,6 +12,7 @@
     [lamina.core utils channel threads]
     [clojure.set :only [rename-keys]])
   (:require
+    [lamina.core.graph.propagator :as dist]
     [lamina.executor.core :as ex]
     [lamina.core.graph :as g]
     [lamina.core.lock :as l]
@@ -34,6 +35,7 @@
     [java.util.concurrent.atomic
      AtomicReferenceArray
      AtomicReference
+     AtomicBoolean
      AtomicLong]
     [java.math
      BigInteger])) 
@@ -417,44 +419,64 @@
                  (cancel-callback))))))
        ch)))
 
+(defn bridge-accumulate
+  "something goes here"
+  [src dst description
+   {:keys [period task-queue accumulator emitter]
+    :or {task-queue (t/task-queue)
+         period (t/period)}}]
+
+  ;; todo: this is far from ideal
+  (let [begin-latch (AtomicBoolean. false)
+        end-latch (AtomicBoolean. false)]
+    (bridge-siphon src dst description
+      (fn [msg]
+        (try
+          (accumulator msg)
+          (finally
+            (when (.compareAndSet begin-latch false true)
+              (siphon
+                (periodically period
+                  (fn []
+                    (if (.get end-latch)
+                      (close dst)
+                      (try
+                        (emitter)
+                        (finally
+                          (when (closed? src)
+                            (.set end-latch true))))))
+                  task-queue)
+                dst))))))
+    dst))
+
 (defn sample-every
   "Takes a source channel, and returns a channel that emits the most recent message
    from the source channel every 'period' milliseconds."
-  [{:keys [period task-queue]
-    :or {task-queue (t/task-queue)
-         period (t/period)}}
-   ch]
-  (let [val (atom ::none)
-        ch* (mimic ch)]
-    (bridge-join ch ch* "sample-every"
-      #(reset! val %))
-    (siphon
-      (->> (periodically period #(deref val) task-queue)
-        (remove* #(= ::none %)))
-      ch*)
-    ch*))
+  [{:keys [period task-queue] :as options} ch]
+  (let [val (atom nil)]
+    (bridge-accumulate ch (mimic ch) "sample-every"
+      (merge options
+        {:accumulator #(reset! val %)
+         :emitter #(deref val)}))))
 
 (defn partition-every
   "Takes a source channel, and returns a channel that repeatedly emits a collection
    of all messages from the source channel in the last 'period' milliseconds."
-  [{:keys [period task-queue]
-    :or {task-queue (t/task-queue)
-         period (t/period)}}
-   ch]
-  (let [q (ConcurrentLinkedQueue.)
-        drain (fn []
-                (loop [msgs []]
-                  (if (.isEmpty q)
-                    msgs
-                    (let [msg (.remove q)]
-                      (recur (conj msgs (if (identical? ::nil msg) nil msg)))))))
-        ch* (mimic ch)]
-    (bridge-join ch ch* "partition-every"
-      #(.add q (if (nil? %) ::nil %)))
-    (siphon
-      (periodically period drain task-queue)
-      ch*)
-    ch*))
+  [{:keys [period task-queue] :as options} ch]
+  (let [q (ConcurrentLinkedQueue.)]
+    (bridge-accumulate ch (mimic ch) "partition-every"
+      (merge options
+        {:accumulator #(.add q (if (nil? %) ::nil %))
+         :emitter (fn []
+                    (let [cnt (count q)
+                          ary (object-array cnt)]
+                      (dotimes [i cnt]
+                        (let [msg (.remove q)]
+                          (aset ^objects ary i
+                            (if (identical? ::nil msg)
+                              nil
+                              msg))))
+                      (seq ary)))}))))
 
 ;;;
 
@@ -598,19 +620,29 @@
                      (siphon
                        (->> ch (map* :value) moving-average)
                        (sink #(println \"average for\" facet-value \"is\" %))))})"
-  [{:keys [facet initializer]}]
+  [{:keys [facet initializer on-clearance]}]
   (let [receiver (g/node identity)
+        watch-channel (atom (fn [_]))
         propagator (g/distributing-propagator facet
                      (fn [id]
                        (let [ch (channel* :description (pr-str id))]
-                         (initializer id ch)
+                         (@watch-channel (initializer id ch))
                          (receiver-node ch))))]
 
-    (g/join receiver propagator)
+    (when on-clearance
+      (let [facet-count (AtomicLong. 0)]
+        (reset! watch-channel
+          (fn [ch]
+            (.incrementAndGet facet-count)
+            (on-closed ch
+              (fn []
+                (when (and (zero? (.decrementAndGet facet-count))
+                        (g/closed? receiver))
+                  (on-clearance))))))))
 
-    (Channel. receiver receiver
-      {::facets #(keys (.downstream-map ^DistributingPropagator propagator))
-       ::facet-count #(.size ^ConcurrentHashMap (.downstream-map ^DistributingPropagator propagator))})))
+    (g/join receiver propagator)
+    
+    (Channel. receiver receiver {::propagator propagator})))
 
 (defn aggregate
   "something goes here"
@@ -622,7 +654,8 @@
         lock (l/lock)
         aggregator (atom (ConcurrentHashMap.))
         post-process #(-> (into {} %) (rename-keys {::nil nil}))]
-    (bridge-join ch ch* "aggregate"
+
+    (bridge-siphon ch ch* "aggregate"
       (fn [msg]
         (let [id (facet msg)
               id* (if (nil? id)
@@ -645,6 +678,13 @@
                                m)))]
             (enqueue ch* (post-process msg))))))
 
+    (on-closed ch
+      (fn []
+        (let [msg (post-process @aggregator)]
+          (when-not (empty? msg)
+            (enqueue ch* msg)))
+        (close ch*)))
+
     ch*))
 
 (defn distribute-aggregate
@@ -654,30 +694,33 @@
          period (t/period)}}
    ch]
   (let [ch* (mimic ch)
+        on-clearance (atom nil)
         dist (distributor
                {:facet facet
+                :on-clearance (fn [] (@on-clearance))
                 :initializer (fn [facet-value ch]
-                               (siphon
-                                 (->> ch
-                                   (generator facet-value)
-                                   (map* #(hash-map :facet facet-value, :value %)))
-                                 ch*))})
-        facet-count (-> dist meta ::facet-count)
+                               (let [generated (->> ch
+                                                 (generator facet-value)
+                                                 (map* #(vector facet-value %)))]
+                                 (siphon generated ch*)
+                                 generated))})
+        dist-propagator (-> dist meta ::propagator)
         aggr (aggregate
-               {:facet :facet
+               {:facet first
                 :task-queue task-queue
                 :period period
-                :flush? #(= (count %) (facet-count))}
+                :flush? #(and
+                           (= (count %) (count dist-propagator))
+                           (= (keys %) (dist/facets dist-propagator)))}
                ch*)]
 
     (join ch dist)
     (on-error aggr #(error dist % false))
     (on-closed aggr #(close dist))
-    (on-closed ch #(close aggr))
-    (on-error ch #(error aggr % false))
+    (reset! on-clearance #(close ch*))
 
     (let [out (map*
-                #(zipmap (keys %) (map :value (vals %)))
+                #(zipmap (keys %) (map second (vals %)))
                 aggr)
 
           latch (atom true)]

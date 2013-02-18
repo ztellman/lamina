@@ -84,6 +84,10 @@
       (.clear ^ConcurrentHashMap downstream)
       (map deref channel-thunks))))
 
+(defprotocol+ IDistributingPropagator
+  (close-all-facets [_ force?])
+  (facets [_]))
+
 (deftype+ DistributingPropagator
   [facet
    generator
@@ -91,6 +95,14 @@
    ^AtomicBoolean closed?
    ^AtomicBoolean transactional?
    ^ConcurrentHashMap downstream-map]
+  clojure.lang.Counted
+  (count [_] (.size downstream-map))
+  IDistributingPropagator
+  (close-all-facets [_ force?]
+    (doseq [n (vals downstream-map)]
+      (close @n force?)))
+  (facets [_]
+    (keys downstream-map))
   IDescribed
   (description [_] "distributor")
   IError

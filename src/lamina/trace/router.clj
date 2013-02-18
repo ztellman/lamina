@@ -105,15 +105,15 @@
 
         ch*
         (query-stream transform-descriptor ch
-          :task-queue q
-          :period period
-          :stream-generator (when seq-generator
-                              (fn [descriptor]
-                                (let [ch (channel)]
-                                  (enqueue-next
-                                    (seq-generator descriptor)
-                                    ch)
-                                  ch))))]
+          {:task-queue q
+           :period period
+           :stream-generator (when seq-generator
+                               (fn [descriptor]
+                                 (let [ch (channel)]
+                                   (enqueue-next
+                                     (seq-generator descriptor)
+                                     ch)
+                                   ch)))})]
 
     ;; set up consumption of the incoming seq
     (enqueue-next s ch)

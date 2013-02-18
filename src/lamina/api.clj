@@ -22,5 +22,6 @@
 
   [lamina.core.operators
 
+   bridge-accumulate
    bridge-in-order])
 
