@@ -34,7 +34,7 @@ if the channel goes into an error state.</pre></div><div class="public" id="var-
 
 (concat* (channel [1 2] [2 3])) =&gt; [1 2 3 4]</pre></div><div class="public" id="var-defer-onto-queue"><h3>defer-onto-queue</h3><div class="usage"><code>(defer-onto-queue task-queue time-facet ch)</code></div><pre class="doc">something goes here
 </pre></div><div class="public" id="var-distribute-aggregate"><h3>distribute-aggregate</h3><div class="usage"><code>(distribute-aggregate {:keys [facet generator period task-queue], :or {task-queue (t/task-queue), period (t/period)}} ch)</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-distributor"><h3>distributor</h3><div class="usage"><code>(distributor {:keys [facet initializer]})</code></div><pre class="doc">Returns a channel.
+</pre></div><div class="public" id="var-distributor"><h3>distributor</h3><div class="usage"><code>(distributor {:keys [facet initializer on-clearance]})</code></div><pre class="doc">Returns a channel.
 
 Messages enqueued into this channel are split into multiple streams, grouped by
 (facet msg). When a new facet-value is encountered, (initializer facet ch)
@@ -109,7 +109,7 @@ This often can and should be replaced by a pipeline.</pre></div><div class="publ
 
 (partition* 2 (channel 1 2 3)) =&gt; [[1 2]]</pre></div><div class="public" id="var-partition-all*"><h3>partition-all*</h3><div class="usage"><code>(partition-all* n ch)</code><code>(partition-all* n step ch)</code></div><pre class="doc">A dual to partition-all.
 
-(partition-all* 2 (closed-channel 1 2 3)) =&gt; [[1 2] [3]]</pre></div><div class="public" id="var-partition-every"><h3>partition-every</h3><div class="usage"><code>(partition-every {:keys [period task-queue], :or {task-queue (t/task-queue), period (t/period)}} ch)</code></div><pre class="doc">Takes a source channel, and returns a channel that repeatedly emits a collection
+(partition-all* 2 (closed-channel 1 2 3)) =&gt; [[1 2] [3]]</pre></div><div class="public" id="var-partition-every"><h3>partition-every</h3><div class="usage"><code>(partition-every {:keys [period task-queue], :as options} ch)</code></div><pre class="doc">Takes a source channel, and returns a channel that repeatedly emits a collection
 of all messages from the source channel in the last 'period' milliseconds.</pre></div><div class="public" id="var-periodically"><h3>periodically</h3><div class="usage"><code>(periodically period f)</code><code>(periodically period f task-queue)</code></div><pre class="doc">Returns a channel.  Every 'period' milliseconds, 'f' is invoked with no arguments
 and the value is emitted as a message.</pre></div><div class="public" id="var-permanent-channel"><h3>permanent-channel</h3><div class="usage"><code>(permanent-channel &amp; messages)</code></div><pre class="doc">Returns a channel which cannot be closed or put into an error state.
 </pre></div><div class="public" id="var-pipeline"><h3>pipeline</h3><div class="usage"><code>(pipeline &amp; opts+stages)</code></div><pre class="doc">something goes here
@@ -142,7 +142,7 @@ when the source channel has been drained.
 
 (remove* even? (channel 2 3 4)) =&gt; [3]</pre></div><div class="public" id="var-result-channel"><h3>result-channel</h3><div class="usage"><code>(result-channel)</code><code>(result-channel listener)</code></div><pre class="doc">Returns a result-channel, representing an unrealized value or error.
 </pre></div><div class="public" id="var-run-pipeline"><h3>run-pipeline</h3><div class="usage"><code>(run-pipeline value &amp; opts+stages)</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-sample-every"><h3>sample-every</h3><div class="usage"><code>(sample-every {:keys [period task-queue], :or {task-queue (t/task-queue), period (t/period)}} ch)</code></div><pre class="doc">Takes a source channel, and returns a channel that emits the most recent message
+</pre></div><div class="public" id="var-sample-every"><h3>sample-every</h3><div class="usage"><code>(sample-every {:keys [period task-queue], :as options} ch)</code></div><pre class="doc">Takes a source channel, and returns a channel that emits the most recent message
 from the source channel every 'period' milliseconds.</pre></div><div class="public" id="var-sink"><h3>sink</h3><div class="usage"><code>(sink callback)</code></div><pre class="doc">Creates a channel which will forward all messages to 'callback'.
 </pre></div><div class="public" id="var-sink-%3E%3E"><h3>sink-&gt;&gt;</h3><div class="usage"><code>(sink-&gt;&gt; &amp; transforms+callback)</code></div><pre class="doc">Creates a channel, pipes it through the -&gt;&gt; operator, and sends the
 resulting stream into the callback. This can be useful when defining
