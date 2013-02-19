@@ -280,7 +280,7 @@
     (let [period (or (get options "period")
                    (get options "0")
                    (t/period))]
-      (sample-every period ch))))
+      (sample-every {:period period} ch))))
 
 (defn partition-every-op
   [{:strs [options] :as desc} ch]

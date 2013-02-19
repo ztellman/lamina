@@ -66,7 +66,8 @@
   ([ch]
      (moving-average nil ch))
   ([{:keys [period window task-queue]
-     :or {window (t/minutes 5)}
+     :or {window (t/minutes 5)
+          period (t/period)}
      :as options}
     ch]
      (let [avg (avg/moving-average period window)]
