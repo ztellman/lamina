@@ -86,20 +86,19 @@
            :generator (fn [task ch]
                         (map*
                           #(zipmap ks %)
-                          (let [durations (->> ch (map* :durations) concat*)]
-                            (zip
-                              (list*
+                          (zip
+                            (list*
                                 
-                                ;; sub-tasks
-                                (->> ch
-                                  (map*
-                                    (fn [{:keys [sub-tasks] :as trace}]
-                                      (map #(assoc % :parent trace) sub-tasks)))
-                                  concat*
-                                  (analyze-timings options))
+                              ;; sub-tasks
+                              (->> ch
+                                (map*
+                                  (fn [{:keys [sub-tasks] :as trace}]
+                                    (map #(assoc % :parent trace) sub-tasks)))
+                                concat*
+                                (analyze-timings options))
                                 
-                                ;; everything else
-                                (map #(% ch) (vals analyses)))))))})))))
+                              ;; everything else
+                              (map #(% ch) (vals analyses))))))})))))
 
 (def-trace-operator analyze-timings
   :periodic? true
