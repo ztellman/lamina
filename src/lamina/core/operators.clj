@@ -409,14 +409,19 @@
      (periodically period f (t/task-queue)))
   ([period f task-queue]
      (let [ch (channel* :description "periodically")
-           cnt (atom 0)]
+           cnt (atom 0)
+           latch (-> f meta :close-latch)
+           priority (or (-> f meta :priority) 0)]
        (t/invoke-repeatedly task-queue period
-         (fn [cancel-callback]
-           (try
-             (enqueue ch (f))
-             (finally
-               (when (closed? ch)
-                 (cancel-callback))))))
+         (with-meta
+           (fn [cancel-callback]
+             (try
+               (enqueue ch (f))
+               (finally
+                 (when (or (and latch @latch) (closed? ch))
+                   (close ch)
+                   (cancel-callback)))))
+           {:priority priority}))
        ch)))
 
 (defn bridge-accumulate
@@ -428,23 +433,23 @@
 
   ;; todo: this is far from ideal
   (let [begin-latch (AtomicBoolean. false)
-        end-latch (AtomicBoolean. false)]
+        close-latch (atom false)]
     (bridge-siphon src dst description
       (fn [msg]
         (try
           (accumulator msg)
           (finally
             (when (.compareAndSet begin-latch false true)
-              (siphon
+              (join
                 (periodically period
-                  (fn []
-                    (if (.get end-latch)
-                      (close dst)
+                  (with-meta
+                    (fn []
                       (try
                         (emitter)
                         (finally
                           (when (closed? src)
-                            (.set end-latch true))))))
+                            (reset! close-latch true)))))
+                    {:close-latch close-latch})
                   task-queue)
                 dst))))))
     dst))

@@ -94,6 +94,7 @@
             quantiles
             task-queue]
      :or {quantiles [50 75 95 99 99.9]
+          task-queue (t/task-queue)
           window (t/minutes 5)}
      :as options}
     ch]

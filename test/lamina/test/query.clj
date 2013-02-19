@@ -36,7 +36,6 @@
               {:timestamp :value
                :period 100})]
 
-    ;; todo: this should be 100, if we're being picky
-    (is (= [{:timestamp 200, :value {:foo 20}}] val))))
+    (is (= [{:timestamp 100, :value {:foo 20}}] val))))
 
 

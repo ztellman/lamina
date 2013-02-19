@@ -48,30 +48,58 @@
 
 (defn analyze-timings
   "Aggregates timings, and periodically emits statistical information about them."
-  [{:keys [period window task-queue expiration quantiles]
-    :or {task-queue (time/task-queue)
-         period (time/period)}
-    :as options}
+  [{:keys [period expiration analyses window] :as options}
    ch]
   (let [ch (if expiration
              (close-on-idle expiration ch)
-             ch)]
+             ch)
+        analyses (merge
+                   {:duration-quantiles
+                    #(->> %
+                       (map* :durations)
+                       concat*
+                       (stats/moving-quantiles
+                         (merge options
+                           (when window {:window window}))))
+
+                    :calls
+                    #(->> %
+                       (map* :durations)
+                       concat*
+                       (stats/rate options)
+                       (reductions* +))
+
+                    :total-duration
+                    #(->> %
+                       (map* :durations)
+                       concat*
+                       (stats/sum options)
+                       (reductions* +))}
+                   analyses)
+        ks (list* :sub-tasks (keys analyses))]
     (->> ch
       (map* distill-timing)
       (distribute-aggregate
-        {:facet :task
-         :period period
-         :task-queue task-queue
-         :generator (fn [task ch]
-                      (map*
-                        #(zipmap [:sub-tasks :duration-quantiles :calls :total-duration] %)
-                        (let [durations (->> ch (map* :durations) concat*)]
-                          (zip
-                            [(->> ch (map* :sub-tasks) concat* (analyze-timings options))
-                             (->> durations (stats/moving-quantiles (assoc options :window (or window period))))
-                             (->> durations (stats/rate options) (reductions* +))
-                             (->> durations (stats/sum options) (reductions* +))]
-                            ))))}))))
+        (merge
+          options
+          {:facet :task
+           :generator (fn [task ch]
+                        (map*
+                          #(zipmap ks %)
+                          (let [durations (->> ch (map* :durations) concat*)]
+                            (zip
+                              (list*
+                                
+                                ;; sub-tasks
+                                (->> ch
+                                  (map*
+                                    (fn [{:keys [sub-tasks] :as trace}]
+                                      (map #(assoc % :parent trace) sub-tasks)))
+                                  concat*
+                                  (analyze-timings options))
+                                
+                                ;; everything else
+                                (map #(% ch) (vals analyses)))))))})))))
 
 (def-trace-operator analyze-timings
   :periodic? true
