@@ -148,10 +148,12 @@
 (defn benchmark-active-probe [description probe]
   (let [nm (gensym "name")
         p (probe-channel [nm probe])
-        f (instrument + {:name nm})]
-    (receive-all p (fn [_]))
+        f (instrument + {:name nm})
+        callback (fn [x] )]
+    (receive-all p callback)
     (bench description
-      (f 1 1))))
+      (f 1 1))
+    (cancel-callback p callback)))
 
 (deftest ^:benchmark benchmark-instrument
   (bench "baseline addition"

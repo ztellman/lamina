@@ -35,14 +35,17 @@
           (f latch))
         (.await latch)))))
 
+(deftest ^:stress stress-test-task
+  )
+
 (deftest ^:benchmark benchmark-executor
-  (let [^Executor x (Executors/newSingleThreadExecutor)]
+  #_(let [^Executor x (Executors/newSingleThreadExecutor)]
     (bench "baseline executor countdown"
       (let [latch (CountDownLatch. (int n))]
         (dotimes [_ n]
           (.execute x #(.countDown latch)))
         (.await latch))))
-  (let [x (executor {:name "test" :max-thread-count 1})
+  (let [x (executor {:name "test" :max-thread-count 1 :min-thread-count 1})
         f (instrument #(.countDown ^CountDownLatch %)
             {:executor x
              :name :foo})]
@@ -51,5 +54,18 @@
         (dotimes [_ n]
           (f latch))
         (.await latch))))
-  (benchmark-active-probe "executor countdown with return probe" :return)
-  (benchmark-active-probe "executor countdown with enter probe" :enter))
+
+  #_(bench "parallel task countdown"
+    (let [latch (CountDownLatch. (int n))]
+      (dotimes [_ n]
+        (task (.countDown latch)))
+      (.await latch)))
+
+  #_(bench "serial task countdown"
+    (let [latch (CountDownLatch. (int n))]
+      (dotimes [_ n]
+        @(task (.countDown latch)))
+      (.await latch)))
+  
+  #_(benchmark-active-probe "executor countdown with return probe" :return)
+  #_(benchmark-active-probe "executor countdown with enter probe" :enter))

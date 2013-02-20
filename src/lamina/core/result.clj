@@ -287,7 +287,7 @@
              clojure.lang.IBlockingDeref
              (deref [this# timeout-ms# timeout-val#]
                (let [r# (result-channel)]
-                 (t/invoke-in r# timeout-ms# #(success r# timeout-val#))
+                 (t/invoke-in timeout-ms# #(success r# timeout-val#))
                  (subscribe this#
                    (result-callback
                      #(success r# %)

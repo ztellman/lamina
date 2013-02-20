@@ -97,6 +97,10 @@
         (stats))
 
       IExecutor
+      (probe-enabled? [_]
+        (or
+          (pr/probe-enabled? return-probe)
+          (pr/probe-enabled? error-probe)))
       (trace-return [_ val]
         (when (pr/probe-enabled? return-probe)
           (enqueue return-probe val)))
@@ -136,9 +140,9 @@
                         (when (r/async-result? result)
                           (t/mark-waiting timer))
                         result))
-                    (fn [x]
-                      (when timer (t/mark-return timer x)) 
-                      x))
+                    (fn [result]
+                      (when timer (t/mark-return timer result)) 
+                      result))
 
                   ;; mark completion so we don't try to interrupt another task,
                   ;; and reset interrupt status
@@ -150,7 +154,7 @@
           (.execute pool f)
           result)))))
 
-(def
+(defonce
   ^{:doc "A default executor with an unbounded maximum thread count."}
   default-executor (executor
                      {:name "lamina-default-executor"

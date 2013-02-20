@@ -177,7 +177,10 @@
    start-stage
    implicit?
    enqueue-error?]
-  (let [enabled? (and return-probe (p/probe-enabled? return-probe))
+  (let [enabled? (or
+                   (and return-probe (p/probe-enabled? return-probe))
+                   (ex/probe-enabled? executor)
+                   (and error-probe (p/probe-enabled? error-probe)))
         parent (when (or enabled? implicit?)
                  (context/timer))]
     (if (or enabled? parent)
@@ -289,7 +292,9 @@
    start-stage
    implicit?
    enqueue-error?]
-  (let [enabled? (and return-probe (p/probe-enabled? return-probe))
+  (let [enabled? (or
+                   (and return-probe (p/probe-enabled? return-probe))
+                   (and error-probe (p/probe-enabled? error-probe)))
         parent (when (or enabled? implicit?)
                  (context/timer))]
     (if (or enabled? parent)
@@ -324,7 +329,8 @@
              enqueue-error?]
       :or {implicit? false
            enqueue-error? true
-           start-stage -1}}]
+           start-stage -1}
+      :as options}]
   `(timer-
      ~capture
      ~name

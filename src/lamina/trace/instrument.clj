@@ -21,56 +21,62 @@
 (defmethod print-method Enter [x writer]
   (print-method (into {} x) writer))
 
-(defmacro instrument-task-body
-  [nm capture executor enter-probe return-probe implicit? with-bindings? timeout invoke args]
+;;;
+
+(defmacro expand-multi-arities [instrument-macro f options-map]
+  `(fn
+     ([]
+        (~instrument-macro ~options-map (~f) [])) 
+     ([a#]
+        (~instrument-macro ~options-map (~f a#) [a#]))
+     ([a# b#]
+        (~instrument-macro ~options-map (~f a# b#) [a# b#]))
+     ([a# b# c#]
+        (~instrument-macro ~options-map (~f a# b# c#) [a# b# c#]))
+     ([a# b# c# d#]
+        (~instrument-macro ~options-map (~f a# b# c# d#) [a# b# c# d#]))
+     ([a# b# c# d# e#]
+        (~instrument-macro ~options-map (~f a# b# c# d# e#) [a# b# c# d# e#]))
+     ([a# b# c# d# e# ~'& rest#]
+        (~instrument-macro ~options-map (apply ~f a# b# c# d# e# rest#) (list* a# b# c# d# e# rest#)))))
+
+(defmacro task-fn-body
+  [{:keys [nm
+           capture
+           executor
+           enter-probe
+           error-probe
+           return-probe
+           implicit?
+           with-bindings?
+           timeout]}
+   invoke
+   args]
   `(do
      (when (probe-enabled? ~enter-probe)
        (enqueue ~enter-probe (Enter. ~nm (System/currentTimeMillis) ~args)))
-     (let [timer# (t/enqueued-timer
+     (let [executor# ~executor
+           timer# (t/enqueued-timer
                     ~executor
                     :capture ~capture
                     :name ~nm
                     :args ~args
+                    :error-probe ~error-probe
                     :return-probe ~return-probe
                     :implicit? ~implicit?)]
-       (ex/execute ~executor timer#
-         (~(if with-bindings? `bound-fn `fn) [] ~invoke)
+       (ex/execute executor# timer#
+         (~(if with-bindings? `lamina.core.utils/fast-bound-fn `fn) [] ~invoke)
          ~(when timeout `(when ~timeout (~timeout ~args)))))))
 
-(defn instrument-task
-  [f {:keys [executor capture timeout implicit? with-bindings?]
-      :as options
-      :or {implicit? true
-           capture :in-out
-           with-bindings? false}}]
-  (let [nm (name (:name options))
-        enter-probe (probe-channel [nm :enter])
-        return-probe (probe-channel [nm :return])
-        error-probe (probe-channel [nm :error])]
-    (fn
-      ([]
-         (instrument-task-body nm capture executor enter-probe return-probe implicit? with-bindings? timeout
-           (f) [])) 
-      ([a]
-         (instrument-task-body nm capture executor enter-probe return-probe implicit? with-bindings? timeout
-           (f a) [a]))
-      ([a b]
-         (instrument-task-body nm capture executor enter-probe return-probe implicit? with-bindings? timeout
-           (f a b) [a b]))
-      ([a b c]
-         (instrument-task-body nm capture executor enter-probe return-probe implicit? with-bindings? timeout
-           (f a b c) [a b c]))
-      ([a b c d]
-         (instrument-task-body nm capture executor enter-probe return-probe implicit? with-bindings? timeout
-           (f a b c d) [a b c d]))
-      ([a b c d e] 
-         (instrument-task-body nm capture executor enter-probe return-probe implicit? with-bindings? timeout
-           (f a b c d e) [a b c d e]))
-      ([a b c d e & rest]
-         (instrument-task-body nm capture executor enter-probe return-probe implicit? with-bindings? timeout
-           (apply f a b c d e rest) (list* a b c d e rest))))))
-
-(defmacro instrument-body [nm capture enter-probe return-probe implicit? invoke args]
+(defmacro fn-body
+  [{:keys [nm
+           capture
+           enter-probe
+           error-probe
+           return-probe
+           implicit?]}
+   invoke
+   args]
   `(do
      (when (probe-enabled? ~enter-probe)
        (enqueue ~enter-probe (Enter. ~nm (System/currentTimeMillis) ~args)))
@@ -78,6 +84,7 @@
                     :capture ~capture
                     :name ~nm
                     :args ~args
+                    :error-probe ~error-probe
                     :return-probe ~return-probe
                     :implicit? ~implicit?)]
        
@@ -93,6 +100,60 @@
          (catch Exception e#
            (t/mark-error timer# e#)
            (throw e#))))))
+
+(defn instrument-task-fn
+  [f
+   {:keys [executor capture timeout implicit? with-bindings? enter-probe error-probe return-probe]
+    :as options
+    :or {implicit? true
+         capture :in-out
+         with-bindings? false}}]
+  (expand-multi-arities task-fn-body f
+    {:name nm
+     :capture capture
+     :executor executor
+     :enter-probe enter-probe
+     :error-probe error-probe
+     :return-probe return-probe
+     :implict? implicit?
+     :with-bindings? false
+     :timeout timeout}))
+
+(defn bound-instrument-task-fn
+  [f
+   {:keys [executor capture timeout implicit? with-bindings? enter-probe error-probe return-probe]
+    :as options
+    :or {implicit? true
+         capture :in-out
+         with-bindings? false}}]
+  (expand-multi-arities task-fn-body f
+    {:name nm
+     :capture capture
+     :executor executor
+     :enter-probe enter-probe
+     :error-probe error-probe
+     :return-probe return-probe
+     :implict? implicit?
+     :with-bindings? true
+     :timeout timeout}))
+
+(defn instrument-fn
+  [f
+   {:keys [capture timeout implicit? with-bindings? enter-probe error-probe return-probe]
+    :as options
+    :or {implicit? true
+         capture :in-out
+         with-bindings? false}}]
+  (expand-multi-arities fn-body f
+    {:name nm
+     :capture capture
+     :enter-probe enter-probe
+     :error-probe error-probe
+     :return-probe return-probe
+     :implicit? false
+     :with-bindings? with-bindings?}))
+
+;;;
 
 (defn instrument
   "A general purpose transform for functions, allowing for tracing their execution,
@@ -175,36 +236,21 @@
            with-bindings? false}}]
   (when-not (contains? options :name)
     (throw (IllegalArgumentException. "Instrumented functions must have a :name defined.")))
-  (if executor
-    (instrument-task f options)
-    (let [nm (name (:name options))
-          enter-probe (probe-channel [nm :enter])
-          return-probe (probe-channel [nm :return])
-          error-probe (probe-channel [nm :error])]
-      (doseq [[k v] probes]
-        (siphon (probe-channel [~nm k]) v))
-      (fn
-        ([]
-           (instrument-body nm capture enter-probe return-probe implicit?
-             (f) []))
-        ([a]
-           (instrument-body nm capture enter-probe return-probe implicit?
-             (f a) [a]))
-        ([a b]
-           (instrument-body nm capture enter-probe return-probe implicit?
-             (f a b) [a b]))
-        ([a b c]
-           (instrument-body nm capture enter-probe return-probe implicit?
-             (f a b c) [a b c]))
-        ([a b c d]
-           (instrument-body nm capture enter-probe return-probe implicit?
-             (f a b c d) [a b c d]))
-         ([a b c d e] 
-           (instrument-body nm capture enter-probe return-probe implicit?
-             (f a b c d e) [a b c d e]))
-        ([a b c d e & rest]
-           (instrument-body nm capture enter-probe return-probe implicit?
-             (apply f a b c d e rest) (list* a b c d e rest)))))))
+  (let [nm (name (:name options))
+        enter-probe (probe-channel [nm :enter])
+        return-probe (probe-channel [nm :return])
+        error-probe (probe-channel [nm :error])]
+    (doseq [[k v] probes]
+      (siphon (probe-channel [~nm k]) v))
+    (let [options (assoc options
+                    :enter-probe enter-probe
+                    :return-probe return-probe
+                    :error-probe error-probe)]
+      (if executor
+        (if with-bindings?
+          (bound-instrument-task-fn f options)
+          (instrument-task-fn f options))
+        (instrument-fn f options)))))
 
 ;;;
 
@@ -257,18 +303,26 @@
              return-probe## (probe-channel [~name :return])
              error-probe## (probe-channel [~name :error])
              executor## ~executor
-             implicit?## ~implicit?
              capture## ~capture]
          (doseq [[k# v#] ~probes]
            (siphon (probe-channel [~name k#]) v#))
          ~(transform-fn-bodies
             (fn [args body]
               (let [args (vec (remove #{'&} args))]
-                (if executor
-                  `((instrument-task-body ~name capture## executor## enter-probe## return-probe## ~implicit? ~with-bindings? ~timeout
-                      (do ~@body) ~args))
-                  `((instrument-body ~name capture## enter-probe## return-probe## ~implicit?
-                      (do ~@body) ~args)))))
+                `((~(if executor
+                      `task-fn-body
+                      `fn-body)
+                   {:name ~name
+                    :capture capture##
+                    :executor executor##
+                    :enter-probe enter-probe##
+                    :error-probe error-probe##
+                    :return-probe return-probe##
+                    :implicit? ~implicit?
+                    :with-bindings? ~with-bindings?
+                    :timeout ~timeout}
+                   (do ~@body)
+                   ~args))))
             `(fn ~@(when fn-name [fn-name]) ~@fn-tail))))))
 
 (defmacro defn-instrumented

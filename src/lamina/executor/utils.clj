@@ -10,6 +10,7 @@
   (:use [potemkin]))
 
 (defprotocol+ IExecutor
+  (probe-enabled? [_])
   (trace-return [_ val])
   (trace-error [_ val])
   (execute [_ timer f timeout])

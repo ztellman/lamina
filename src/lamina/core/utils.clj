@@ -57,6 +57,8 @@
 (defn retry-exception? [x]
   (= "clojure.lang.LockingTransaction$RetryEx" (.getName ^Class (class x))))
 
+;;;
+
 (defmacro try*
   "A variant of try that is fully transparent to transaction retry exceptions"
   [& body+catch]
@@ -93,6 +95,21 @@
              (apply concat))
          :else
          (throw (IllegalArgumentException. (str "no matching clause for " (pr-str val##))))))))
+
+(defmacro fast-bound-fn [& fn-body]
+  `(let [bound-frame# (clojure.lang.Var/cloneThreadBindingFrame)
+         f# (fn ~@fn-body)]
+     (fn [~'& args#]
+       (let [curr-frame# (clojure.lang.Var/getThreadBindingFrame)]
+         (clojure.lang.Var/resetThreadBindingFrame bound-frame#)
+         (try
+           (apply f# args#)
+           (finally
+             (clojure.lang.Var/resetThreadBindingFrame curr-frame#)))))))
+
+(defn fast-bound-fn* [f]
+  (fast-bound-fn [& args]
+    (apply f args)))
 
 ;;;
 

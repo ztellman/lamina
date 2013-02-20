@@ -237,6 +237,7 @@
                 timeout
                 executor
                 with-bindings?
+                middleware
                 description
                 implicit?
                 unwrap?
@@ -252,13 +253,18 @@
         fn-transform (gensym "fn-transform")
         expand-subscribe (fn [idx] `(subscribe this## result## initial-val## val## ~fn-transform ~idx))]
 
+    ;; handle compositions of 
     `(let [executor# ~executor
-           fn-transform# identity
+           fn-transform# (or ~middleware identity) 
            fn-transform# (if executor#
-                           (fn [f#] (fn [x#] (ex/execute executor# nil #(f# x#) ~(when implicit? `(context/timer)))))
+                           (fn [f#]
+                             (fn [x#]
+                               (ex/execute executor# nil
+                                 #(f# x#)
+                                 ~(when implicit? `(context/timer)))))
                            fn-transform#)
            fn-transform# (if ~with-bindings?
-                           (comp bound-fn* fn-transform#)
+                           (comp u/fast-bound-fn* fn-transform#)
                            fn-transform#)
            ~fn-transform fn-transform#]
        (reify IPipeline

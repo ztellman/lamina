@@ -77,8 +77,13 @@
                        (reductions* +))}
                    analyses)
         ks (list* :sub-tasks (keys analyses))]
+
     (->> ch
+
+      ;; normalize the input
       (map* distill-timing)
+
+      ;; split along the :task facet
       (distribute-aggregate
         (merge
           options
@@ -89,7 +94,7 @@
                           (zip
                             (list*
                                 
-                              ;; sub-tasks
+                              ;; recursively analyze all sub-tasks
                               (->> ch
                                 (map*
                                   (fn [{:keys [sub-tasks] :as trace}]
@@ -97,7 +102,7 @@
                                 concat*
                                 (analyze-timings options))
                                 
-                              ;; everything else
+                              ;; all per-task analyses
                               (map #(% ch) (vals analyses))))))})))))
 
 (def-trace-operator analyze-timings

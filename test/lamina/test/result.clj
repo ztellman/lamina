@@ -258,6 +258,20 @@
 
 ;;;
 
+(deftest ^:stress stress-test-merge-results
+  (let [wait-for #(deref %2 %1 ::timeout)
+        n 10]
+    (dotimes* [i 1e6]
+      (is (= (repeat n nil)
+            (->> (repeatedly n result-channel)
+              (map (fn [r]
+                     (future
+                       (Thread/sleep 0 (rand-int 1e3))
+                       (success r nil))
+                     r))
+              (apply merge-results)
+              (wait-for 500))))))) 
+
 (defn stress-test-result-channel [r-fn]
   (dotimes* [i 1e5]
     (let [r (r-fn)]
