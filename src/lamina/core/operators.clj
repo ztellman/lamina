@@ -431,15 +431,17 @@
     :or {task-queue (t/task-queue)
          period (t/period)}}]
 
-  ;; todo: this is far from ideal
   (let [begin-latch (AtomicBoolean. false)
-        close-latch (atom false)]
+        close-latch (atom false)
+        close-callback #(close dst)]
+    (on-closed src close-callback)
     (bridge-siphon src dst description
       (fn [msg]
         (try
           (accumulator msg)
           (finally
             (when (.compareAndSet begin-latch false true)
+              (cancel-callback src close-callback)
               (join
                 (periodically period
                   (with-meta

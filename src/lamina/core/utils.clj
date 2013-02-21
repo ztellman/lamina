@@ -97,15 +97,26 @@
          (throw (IllegalArgumentException. (str "no matching clause for " (pr-str val##))))))))
 
 (defmacro fast-bound-fn [& fn-body]
-  `(let [bound-frame# (clojure.lang.Var/cloneThreadBindingFrame)
-         f# (fn ~@fn-body)]
-     (fn [~'& args#]
-       (let [curr-frame# (clojure.lang.Var/getThreadBindingFrame)]
-         (clojure.lang.Var/resetThreadBindingFrame bound-frame#)
-         (try
-           (apply f# args#)
-           (finally
-             (clojure.lang.Var/resetThreadBindingFrame curr-frame#)))))))
+  (let [{:keys [major minor]} *clojure-version*
+        use-thread-bindings? (and (= 1 major) (< minor 3))
+        use-get-binding? (and (= 1 major) (< minor 4))]
+    (if use-thread-bindings?
+      `(let [bindings# (get-thread-bindings)
+             f# (fn ~@fn-body)]
+         (fn [~'& args#]
+           (with-bindings bindings#
+             (apply f# args#))))      
+      `(let [bound-frame# ~(if use-get-binding?
+                             `(clojure.lang.Var/getThreadBindingFrame)
+                             `(clojure.lang.Var/cloneThreadBindingFrame))
+             f# (fn ~@fn-body)]
+         (fn [~'& args#]
+           (let [curr-frame# (clojure.lang.Var/getThreadBindingFrame)]
+             (clojure.lang.Var/resetThreadBindingFrame bound-frame#)
+             (try
+               (apply f# args#)
+               (finally
+                 (clojure.lang.Var/resetThreadBindingFrame curr-frame#)))))))))
 
 (defn fast-bound-fn* [f]
   (fast-bound-fn [& args]

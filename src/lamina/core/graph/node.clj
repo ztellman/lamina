@@ -806,7 +806,7 @@
          :read? false
          :permanent? ~permanent?
          :transactional? ~transactional?)
-       (Collections/synchronizedMap (HashMap.))
+       (Collections/synchronizedMap (HashMap. 2))
        (CopyOnWriteArrayList.)
        (CopyOnWriteArrayList.))))
 
