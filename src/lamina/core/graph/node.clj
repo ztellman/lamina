@@ -775,7 +775,7 @@
       identity
       nil
       (.grounded? node)
-      (assoc-record ^NodeState s :permanent? false)
+      s
       (Collections/synchronizedMap (HashMap. ^Map (.cancellations node)))
       (CopyOnWriteArrayList. ^CopyOnWriteArrayList (.edges node))
       (CopyOnWriteArrayList. ^CopyOnWriteArrayList (.watchers node)))))

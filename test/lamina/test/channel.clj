@@ -56,7 +56,12 @@
 
 (deftest test-fork
   (run-split-test fork channel)
-  (run-split-test fork closed-channel))
+  (run-split-test fork closed-channel)
+  (let [a (channel* :permanent? true)
+        b (fork a)]
+    (close b)
+    (is (closed? b))
+    (is (not (closed? a)))))
 
 (deftest test-tap
   (run-split-test tap channel)
