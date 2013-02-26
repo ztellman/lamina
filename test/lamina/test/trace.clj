@@ -87,7 +87,7 @@
          inc))))
 
 (def-cnt countdown* countdown* {:name :countdown*})
-(def-cnt threaded-countdown* threaded-countdown* {:name :countdown*, :executor exc})
+(def-cnt threaded-countdown* threaded-countdown* {:name :threaded-countdown*, :executor exc})
 
 (declare semi-silent-countdown)
 (def-cnt semi-silent-countdown* semi-silent-countdown {:name :countdown})
@@ -106,14 +106,18 @@
   (let [val (capture-probe :countdown :return)]
     (f initial-value)
     (->> @val
-      timing-seq
-      (map :args)
-      (apply concat))))
+      timing-seq)))
 
 (deftest test-nested-tasks
-  (is (= [2 1 0] (test-capture countdown 2)))
-  (is (= [2 1 0] (test-capture threaded-countdown 2)))
-  (is (= [0] (test-capture semi-silent-countdown 1))))
+  (let [arg-seq #(->> % (map :args) (apply concat))
+        name-seq #(map :name %)]
+    (is (= [2 1 0] (arg-seq (test-capture countdown 2))))
+    (is (= "countdown" (first (name-seq (test-capture countdown 2)))))
+    (is (= [2 1 0] (arg-seq (test-capture threaded-countdown 2))))
+    (is (= "countdown" (first (name-seq (test-capture threaded-countdown 2)))))
+    (is (= [0] (arg-seq (test-capture semi-silent-countdown 1))))
+    (is (= "countdown" (first (name-seq (test-capture semi-silent-countdown 1)))))
+    ))
 
 (def ^{:dynamic true} n 10)
 

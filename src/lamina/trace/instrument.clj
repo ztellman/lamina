@@ -41,7 +41,7 @@
         (~instrument-macro ~options-map (apply ~f a# b# c# d# e# rest#) (list* a# b# c# d# e# rest#)))))
 
 (defmacro task-fn-body
-  [{:keys [nm
+  [{:keys [name
            capture
            executor
            enter-probe
@@ -54,12 +54,12 @@
    args]
   `(do
      (when (probe-enabled? ~enter-probe)
-       (enqueue ~enter-probe (Enter. ~nm (System/currentTimeMillis) ~args)))
+       (enqueue ~enter-probe (Enter. ~name (System/currentTimeMillis) ~args)))
      (let [executor# ~executor
            timer# (t/enqueued-timer
                     ~executor
                     :capture ~capture
-                    :name ~nm
+                    :name ~name
                     :args ~args
                     :error-probe ~error-probe
                     :return-probe ~return-probe
@@ -69,7 +69,7 @@
          ~(when timeout `(when ~timeout (~timeout ~args)))))))
 
 (defmacro fn-body
-  [{:keys [nm
+  [{:keys [name
            capture
            enter-probe
            error-probe
@@ -79,10 +79,10 @@
    args]
   `(do
      (when (probe-enabled? ~enter-probe)
-       (enqueue ~enter-probe (Enter. ~nm (System/currentTimeMillis) ~args)))
+       (enqueue ~enter-probe (Enter. ~name (System/currentTimeMillis) ~args)))
      (let [timer# (t/timer
                     :capture ~capture
-                    :name ~nm
+                    :name ~name
                     :args ~args
                     :error-probe ~error-probe
                     :return-probe ~return-probe
@@ -103,13 +103,13 @@
 
 (defn instrument-task-fn
   [f
-   {:keys [executor capture timeout implicit? with-bindings? enter-probe error-probe return-probe]
+   {:keys [name executor capture timeout implicit? with-bindings? enter-probe error-probe return-probe]
     :as options
     :or {implicit? true
          capture :in-out
          with-bindings? false}}]
   (expand-multi-arities task-fn-body f
-    {:name nm
+    {:name name
      :capture capture
      :executor executor
      :enter-probe enter-probe
@@ -121,13 +121,13 @@
 
 (defn bound-instrument-task-fn
   [f
-   {:keys [executor capture timeout implicit? with-bindings? enter-probe error-probe return-probe]
+   {:keys [name executor capture timeout implicit? with-bindings? enter-probe error-probe return-probe]
     :as options
     :or {implicit? true
          capture :in-out
          with-bindings? false}}]
   (expand-multi-arities task-fn-body f
-    {:name nm
+    {:name name
      :capture capture
      :executor executor
      :enter-probe enter-probe
@@ -139,13 +139,13 @@
 
 (defn instrument-fn
   [f
-   {:keys [capture timeout implicit? with-bindings? enter-probe error-probe return-probe]
+   {:keys [name capture timeout implicit? with-bindings? enter-probe error-probe return-probe]
     :as options
     :or {implicit? true
          capture :in-out
          with-bindings? false}}]
   (expand-multi-arities fn-body f
-    {:name nm
+    {:name name
      :capture capture
      :enter-probe enter-probe
      :error-probe error-probe
@@ -243,6 +243,7 @@
     (doseq [[k v] probes]
       (siphon (probe-channel [~nm k]) v))
     (let [options (assoc options
+                    :name nm
                     :enter-probe enter-probe
                     :return-probe return-probe
                     :error-probe error-probe)]
@@ -291,8 +292,9 @@
          implicit? true}
     :as options}
    & fn-tail]
-  (let [name (or (:name options)
-               (str (-> (ns-name *ns*) str (.replace \. \:)) ":" (name fn-name)))]
+  (let [name (name
+               (or (:name options)
+                 (str (-> (ns-name *ns*) str (.replace \. \:)) ":" (name fn-name))))]
 
     (when-not name
       (throw (IllegalArgumentException.

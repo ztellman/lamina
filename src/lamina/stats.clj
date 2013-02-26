@@ -35,13 +35,15 @@
        (bridge-accumulate ch (mimic ch) "sum"
          (merge options
            {:accumulator (fn [n]
-                           (loop []
-                             (let [current (.get cnt)
-                                   val (Double/longBitsToDouble (long current))]
-                               (when-not (.compareAndSet cnt current
-                                           (Double/doubleToRawLongBits
-                                             (+ (double val) (double n))))
-                                 (recur)))))
+                           (if-not (number? n)
+                             (log/warn "non-numerical value in 'sum':" (pr-str n))
+                             (loop []
+                               (let [current (.get cnt)
+                                     val (Double/longBitsToDouble (long current))]
+                                 (when-not (.compareAndSet cnt current
+                                             (Double/doubleToRawLongBits
+                                               (+ (double val) (double n))))
+                                   (recur))))))
             :emitter #(Double/longBitsToDouble
                         (.getAndSet cnt
                           (Double/doubleToRawLongBits 0)))})))))
@@ -73,7 +75,9 @@
      (let [avg (avg/moving-average period window)]
        (bridge-accumulate ch (mimic ch) "moving-average"
          (merge options
-           {:accumulator #(update avg %)
+           {:accumulator #(if-not (number? %)
+                            (log/warn "non-numerical value in 'moving-average':" (pr-str %))
+                            (update avg %))
             :emitter #(deref avg)})))))
 
 (defn moving-quantiles
@@ -102,7 +106,9 @@
      (let [quantiles (qnt/moving-quantiles task-queue window quantiles)]
        (bridge-accumulate ch (mimic ch) "moving-quantiles"
          (merge options
-           {:accumulator #(update quantiles %)
+           {:accumulator #(if-not (number? %)
+                            (log/warn "non-numerical value in 'moving-quantiles':" (pr-str %))
+                            (update quantiles %))
             :emitter #(deref quantiles)})))))
 
 (defn variance
@@ -116,7 +122,9 @@
      (let [vr (atom (var/create-variance))]
        (bridge-accumulate ch (mimic ch) "variance"
          (merge options
-           {:accumulator #(swap! vr update %)
+           {:accumulator #(if-not (number? %)
+                            (log/warn "non-numerical value in 'variance':" (pr-str %))
+                            (swap! vr update %))
             :emitter #(var/variance @vr)})))))
 
 (defn- abs [x]
