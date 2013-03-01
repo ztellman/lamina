@@ -13,28 +13,51 @@
   (:require
     [lamina.time :as t]))
 
-(deftest test-partition-all
+(deftest test-partition-every
+
+  ;; smaller period than interval of data
   (let [val (query-seq
               #(partition-every {:period 10} %)
-              (range 20)
-              {:timestamp identity})]
+              {:timestamp identity}
+              (range 20))]
     (is (= [10 20 30]
           (map :timestamp val)))
     (is (= [(range 11) (range 11 20) nil]
           (map :value val))))
+
+  ;; larger period than interval of data
   (let [val (query-seq
               #(partition-every {:period 100} %)
-              (range 20)
-              {:timestamp identity})]
+              {:timestamp identity}
+              (range 20))]
     (is (= [100] (map :timestamp val)))
-    (is (= [(range 20)] (map :value val)))))
+    (is (= [(range 20)] (map :value val))))
+
+  ;; both at once
+  (let [s (range 20)
+        f1 ".partition-every(period: 10ms)"
+        f2 ".partition-every(period: 100ms)"
+        val (query-seqs
+              {f1 s
+               f2 s}
+              {:timestamp identity})
+        val1 (get val f1)
+        val2 (get val f2)]
+
+    (is (= [10 20 30]
+          (map :timestamp val1)))
+    (is (= [(range 11) (range 11 20) nil]
+          (map :value val1)))
+
+    (is (= [100] (map :timestamp val2)))
+    (is (= [(range 20)] (map :value val2)))))
 
 (deftest test-group-by
   (let [val (query-seq
               ".group-by(facet).value.rate()"
-              (map #(hash-map :facet :foo, :value %) (range 20))
               {:timestamp :value
-               :period 100})]
+               :period 100}
+              (map #(hash-map :facet :foo, :value %) (range 20)))]
 
     (is (= [{:timestamp 100, :value {:foo 20}}] val))))
 

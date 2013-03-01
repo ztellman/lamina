@@ -140,12 +140,12 @@
 
 (deftest test-operators
   (let [ch (channel)
-        sub #(query-stream % ch {:period 100})
+        sub #(query-stream % {:period 100} ch)
         enq #(enqueue ch %)]
     (run-basic-operator-test sub enq nil)
     (close ch))
   (let [ch (channel)
-        sub #(query-stream % ch {:period 100})
+        sub #(query-stream % {:period 100} ch)
         enq #(enqueue ch %)]
     (run-group-by-test sub enq nil)
     (close ch))

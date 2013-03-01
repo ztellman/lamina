@@ -36,9 +36,9 @@
                      x)]
     descriptor))
 
-(defn query-stream
+(defn query-streams
   "something goes here"
-  [transform-descriptor ch
+  [descriptor->channel
    {:keys [task-queue
            timestamp
            payload
@@ -46,26 +46,44 @@
            stream-generator]
     :or {payload identity}
     :as options}]
-  (let [stream-generator (if timestamp
+  (let [;; make sure inner-streams are properly deferred
+        stream-generator (if timestamp
                            #(->> %
                               stream-generator
                               (map* identity)
                               (defer-onto-queue task-queue timestamp)
                               (map* payload))
                            stream-generator)
-        ch (if timestamp
-             (->> ch
-               (defer-onto-queue task-queue timestamp)
-               (map* payload))
-             ch)
-        f (if (ifn? transform-descriptor)
-            #(transform-descriptor ch)
-            #(c/transform-trace-stream
-               (parse-descriptor transform-descriptor options)
-               ch))
-        f #(with-bindings (merge {}
-                            (when stream-generator
-                              {#'c/*stream-generator* stream-generator}))
+
+        ;; make sure input streams are properly deferred
+        descriptor->channel (zipmap
+                              (keys descriptor->channel)
+                              (if timestamp
+                                (->> descriptor->channel
+                                  vals
+                                  (map
+                                    #(->> %
+                                       (defer-onto-queue task-queue timestamp)
+                                       (map* payload))))
+                                (vals descriptor->channel)))
+
+        ;; parse and apply descriptors
+        f #(zipmap
+             (keys descriptor->channel)
+             (map
+               (fn [[descriptor ch]]
+                 (if (ifn? descriptor)
+                   (descriptor ch)
+                   (let [desc (parse-descriptor descriptor options)
+                         ch (or ch (stream-generator (desc "pattern")))]
+                     (c/transform-trace-stream desc ch))))
+               descriptor->channel))
+
+        ;; set up evaluation scopes
+        f #(with-bindings
+             (merge {}
+               (when stream-generator
+                 {#'c/*stream-generator* stream-generator}))
              (f))
         f (if period
             #(time/with-period period (f))
@@ -75,9 +93,24 @@
             f)]
     (f)))
 
-(defn query-seq
+(defn query-stream
   "something goes here"
-  [transform-descriptor s
+  [descriptor
+   {:keys [task-queue
+           timestamp
+           payload
+           period
+           stream-generator]
+    :or {payload identity}
+    :as options}
+   ch]
+  (->> (query-streams {descriptor ch} options)
+    vals
+    first))
+
+(defn query-seqs
+  "something goes here"
+  [descriptor->seq
    {:keys [timestamp
            payload
            period
@@ -85,10 +118,13 @@
     :or {payload identity}
     :as options}]
   (assert timestamp)
-  (let [start (-> s first timestamp)
+  (let [start (->> descriptor->seq
+                vals
+                (map (comp timestamp first))
+                (apply min))
         q (time/non-realtime-task-queue start false)
-        ch (channel)
 
+        ;; lazily iterate over seqs
         enqueue-next
         (fn enqueue-next [s ch]
           (if-let [x (first s)]
@@ -103,8 +139,11 @@
                 #(close ch)
                 {:priority -1}))))
 
-        ch*
-        (query-stream transform-descriptor ch
+        chs (repeatedly (count descriptor->seq) channel)
+
+        ;; create output streams
+        descriptor->ch
+        (query-streams (zipmap (keys descriptor->seq) chs)
           {:task-queue q
            :period period
            :stream-generator (when seq-generator
@@ -115,15 +154,16 @@
                                      ch)
                                    ch)))})]
 
-    ;; set up consumption of the incoming seq
-    (enqueue-next s ch)
+    ;; set up consumption of the incoming seqs
+    (doseq [[s ch] (map list (vals descriptor->seq) chs)]
+      (enqueue-next s ch))
 
     ;; set up production of the outgoing seq
     (let [advance-until-message
-          (fn []
+          (fn [ch]
             (let [latch (atom true)
                   result (run-pipeline
-                           (read-channel* ch* :on-drained ::drained)
+                           (read-channel* ch :on-drained ::drained)
                            (fn [val]
                              (reset! latch false)
                              val))]
@@ -131,9 +171,29 @@
                 (if (and (time/advance q) @latch)
                   (recur)
                   @result))))]
-      (->> (repeatedly advance-until-message)
-        (take-while #(not= ::drained %))
-        (map #(hash-map :timestamp (time/now q) :value %))))))
+
+      (zipmap
+        (keys descriptor->ch)
+        (map
+          (fn [ch]
+            (->> (repeatedly #(advance-until-message ch))
+              (take-while #(not= ::drained %))
+              (map #(hash-map :timestamp (time/now q) :value %))))
+          (vals descriptor->ch))))))
+
+(defn query-seq
+  "something goes here"
+  [descriptor
+   {:keys [timestamp
+           payload
+           period
+           seq-generator]
+    :or {payload identity}
+    :as options}
+   s]
+  (->> (query-seqs {descriptor s} options)
+    vals
+    first))
 
 ;;;
 

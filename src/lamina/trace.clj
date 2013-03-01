@@ -156,7 +156,9 @@
 
 ;;;
 
+(import-fn r/query-streams)
 (import-fn r/query-stream)
+(import-fn r/query-seqs)
 (import-fn r/query-seq)
 
 (import-fn r/trace-router)
