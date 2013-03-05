@@ -57,7 +57,8 @@
     (is (= false (cancel-callback r nil))))
 
   (let [listener (result-channel)
-        r (success-result 1 listener)]
+        r (success-result 1)]
+    (add-listener r listener)
     (is (= 1 @(capture-success r :foo)))
     (is (= :foo @listener))))
 
@@ -75,7 +76,8 @@
 
   (let [ex (IllegalStateException. "boom")
         listener (result-channel)
-        r (error-result ex listener)]
+        r (error-result ex)]
+    (add-listener r listener)
     (is (= ex @(capture-error r :foo)))
     (is (= :foo @listener))))
 
@@ -96,7 +98,8 @@
 
   ;; success result with listener
   (let [listener (r-fn)
-        r (r-fn listener)]
+        r (r-fn)]
+    (add-listener r listener)
     (is (= :lamina/realized (success r 1)))
     (is (= ::none (success-value r ::none)))
     (is (= ::none (error-value r ::none)))
@@ -139,8 +142,9 @@
 
   ;; error result with listener
   (let [listener (r-fn)
-        r (r-fn listener)
+        r (r-fn)
         ex (IllegalStateException. "boom")]
+    (add-listener r listener)
     (is (= :lamina/realized (error r ex false)))
     (is (= ::none (success-value r ::none)))
     (is (= ::none (error-value r ::none)))

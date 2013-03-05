@@ -57,36 +57,34 @@
   (Consumption. ::error error result-channel))
 
 (defn consumption [consumer msg]
-  (let [msg msg
-        consumer consumer]
-     (if (instance? SimpleConsumer consumer)
-       (let [result-channel (.result-channel ^SimpleConsumer consumer)]
-         (Consumption.
-           (if (or (identical? nil result-channel) (r/claim result-channel))
-             ::consumed
-             ::not-consumed)
-           msg
-           result-channel))
-       (let [^MessageConsumer consumer consumer
-             predicate (.predicate consumer)
-             result-channel (.result-channel consumer)]
-         (try
-           (let [consume? (or (identical? nil predicate) (predicate msg))]
-             (if (or (identical? nil result-channel) (r/claim result-channel))
+  (if (instance? SimpleConsumer consumer)
+    (let [result-channel (.result-channel ^SimpleConsumer consumer)]
+      (Consumption.
+        (if (or (identical? nil result-channel) (r/claim result-channel))
+          ::consumed
+          ::not-consumed)
+        msg
+        result-channel))
+    (let [^MessageConsumer consumer consumer
+          predicate (.predicate consumer)
+          result-channel (.result-channel consumer)]
+      (try
+        (let [consume? (or (identical? nil predicate) (predicate msg))]
+          (if (or (identical? nil result-channel) (r/claim result-channel))
                
-               ;; either we didn't need to claim the result-channel, or we succeeded
-               (Consumption.
-                 (if consume? ::consumed ::not-consumed)
-                 (if consume? msg (.false-value consumer))
-                 result-channel)
+            ;; either we didn't need to claim the result-channel, or we succeeded
+            (Consumption.
+              (if consume? ::consumed ::not-consumed)
+              (if consume? msg (.false-value consumer))
+              result-channel)
                
-               ;; we failed to claim it
-               (no-consumption result-channel)))
+            ;; we failed to claim it
+            (no-consumption result-channel)))
            
-           (catch Exception e
-             (if (or (identical? nil result-channel) (r/claim (.result-channel consumer)))
-               (error-consumption e result-channel)
-               (no-consumption result-channel))))))))
+        (catch Exception e
+          (if (or (identical? nil result-channel) (r/claim (.result-channel consumer)))
+            (error-consumption e result-channel)
+            (no-consumption result-channel)))))))
 
 (defmacro dispatch-consumption [consumption]
   `(let [^Consumption c# ~consumption

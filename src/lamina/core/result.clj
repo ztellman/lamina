@@ -21,7 +21,8 @@
      Lock]
     [java.util.concurrent
      ConcurrentLinkedQueue
-     CountDownLatch]
+     CountDownLatch
+     CopyOnWriteArrayList]
     [java.util.concurrent.atomic
      AtomicInteger]
     [java.util
@@ -29,8 +30,6 @@
      LinkedList]
     [java.io
      Writer]))
-
-
 
 (deftype+ ResultCallback [on-success on-error])
 
@@ -42,9 +41,24 @@
   (set-state [_ val])
   (success-value [_ default-value])
   (error-value [_ default-value])
+  (add-listener [_ listener])
   (result [_])
   (subscribe [_ callback])
   (cancel-callback [_ callback]))
+
+(defn enqueue-to-listeners [^CopyOnWriteArrayList listeners result]
+  (when-not (.isEmpty listeners)
+    (if (= 1 (.size listeners))
+      (enqueue (.get listeners 0) result)
+      (doseq [listener listeners]
+        (enqueue listener result)))))
+
+(defn error-to-listeners [^CopyOnWriteArrayList listeners result]
+  (when-not (.isEmpty listeners)
+    (if (= 1 (.size listeners))
+      (error (.get listeners 0) result false)
+      (doseq [listener listeners]
+        (error listener result false)))))
 
 ;;;
 
@@ -69,7 +83,7 @@
 (deftype+ SuccessResult
   [value
    ^{:volatile-mutable true} metadata
-   listener]
+   ^CopyOnWriteArrayList listeners]
   IEnqueue
   (enqueue [_ _]
     :lamina/already-realized!)
@@ -88,6 +102,8 @@
   (resetMeta [_ m] (set! metadata m))
 
   IResult
+  (add-listener [_ listener]
+    (.add listeners listener))
   (success [_ _]
     :lamina/already-realized!)
   (success! [_ _]
@@ -97,7 +113,7 @@
   (claim [_]
     false)
   (success-value [_ default-value]
-    (if listener
+    (if-not (.isEmpty listeners)
       default-value
       value))
   (error-value [_ default-value]
@@ -106,8 +122,7 @@
     :success)
   (subscribe [_ callback]
     (let [result ((.on-success ^ResultCallback callback) value)]
-      (when listener
-        (enqueue listener result))
+      (enqueue-to-listeners listeners result)
       result))
   (cancel-callback [_ callback]
     false)
@@ -117,7 +132,7 @@
 (deftype+ ErrorResult
   [error
    ^{:volatile-mutable true} metadata
-   listener]
+   ^CopyOnWriteArrayList listeners]
 
   IEnqueue
   (enqueue [_ _]
@@ -143,6 +158,8 @@
   (resetMeta [_ m] (set! metadata m))
   
   IResult
+  (add-listener [_ listener]
+    (.add listeners listener))
   (success [_ _]
     :lamina/already-realized!)
   (success! [_ _]
@@ -154,15 +171,14 @@
   (success-value [_ default-value]
     default-value)
   (error-value [_ default-value]
-    (if listener
+    (if-not (.isEmpty listeners)
       default-value
       error))
   (result [_]
     :error)
   (subscribe [_ callback]
     (let [result ((.on-error ^ResultCallback callback) error)]
-      (when listener
-        (enqueue listener result))
+      (enqueue-to-listeners listeners result)
       result))
   (cancel-callback [_ callback]
     false)
@@ -224,10 +240,10 @@
 
 ;;;
 
-(defmacro compare-and-trigger [[this this-f lock state subscribers listener] signal f value & args]
+(defmacro compare-and-trigger [[this this-f lock state subscribers listeners] signal f value & args]
   `(defer-within-transaction (~this-f ~this ~value ~@args)
      (let [value# ~value
-           listener# ~listener
+           listeners# ~listeners
            s# (l/with-exclusive-lock ~lock
                 (let [^ResultState s# (update-state ~state ~signal ~value)]
                   (if (keyword? s#)
@@ -245,15 +261,13 @@
              1
              (try
                (let [result# ((~f ^ResultCallback (.poll ~subscribers)) (.value s#))]
-                 (when listener#
-                   (enqueue listener# result#))
+                 (enqueue-to-listeners listeners# result#)
                  result#)
                (catch Exception e#
                  (log/error e# "Error in result callback.")
-                 (when listener#
-                   (error listener# e# false))
+                 (error-to-listeners listeners# e#)
                  :lamina/error!))
-               
+             
              (let [value# (.value s#)
                    ^{:tag "objects"} ary# (object-array (.size ~subscribers))]
                  
@@ -262,12 +276,10 @@
                      
                    (try
                      (let [result# ((~f c#) value#)]
-                       (when listener#
-                         (enqueue listener# result#))
+                       (enqueue-to-listeners listeners# result#)
                        (aset ary# idx# result#))
                      (catch Exception e#
-                       (when listener#
-                         (error listener# e# false))
+                       (error-to-listeners listeners# e#)
                        (aset ary# idx# :lamina/error!)
                        (log/error e# "Error in result callback.")))
                      
@@ -302,7 +314,7 @@
 (def-result-channel
   [^Lock lock
    ^{:volatile-mutable true :tag ResultState} state
-   listener
+   ^CopyOnWriteArrayList listeners
    ^{:volatile-mutable true} metadata
    ^LinkedList subscribers]
 
@@ -315,7 +327,7 @@
   
   (error [this err _]
     (compare-and-trigger
-      [this error lock state subscribers listener]
+      [this error lock state subscribers listeners]
       ::error .on-error err nil))
 
   ;;
@@ -354,22 +366,25 @@
   
   IResult
 
+  (add-listener [_ listener]
+    (.add listeners listener))
+
   ;;
   (success [this val]
     (compare-and-trigger
-      [this success lock state subscribers listener]
+      [this success lock state subscribers listeners]
       ::success .on-success val)) 
 
   ;;
   (success! [this val]
     (compare-and-trigger
-      [this success! lock state subscribers listener]
+      [this success! lock state subscribers listeners]
       ::success! .on-success val))
 
   ;;
   (error! [this err]
     (compare-and-trigger
-      [this error! lock state subscribers listener]
+      [this error! lock state subscribers listeners]
       ::error! .on-error err))
 
   ;;
@@ -388,14 +403,14 @@
   ;;
   (success-value [_ default-value]
     (let [state state]
-      (if (and (not listener) (identical? ::success (.mode state)))
+      (if (and (.isEmpty listeners) (identical? ::success (.mode state)))
         (.value state)
         default-value)))
 
   ;;
   (error-value [_ default-value]
     (let [state state]
-      (if (and (not listener) (identical? ::error (.mode state)))
+      (if (and (.isEmpty listeners) (identical? ::error (.mode state)))
         (.value state)
         default-value)))
 
@@ -422,8 +437,7 @@
         (if (identical? nil x)
           :lamina/subscribed
           (let [result (x (.value state))]
-            (when listener
-              (enqueue listener result))
+            (enqueue-to-listeners listeners result)
             result)))))
 
   ;;
@@ -454,17 +468,13 @@
 
 (defn success-result
   "Returns a result already realized with a value."
-  ([value]
-     (SuccessResult. value nil nil))
-  ([value listener]
-     (SuccessResult. value nil listener)))
+  [value]
+  (SuccessResult. value nil (CopyOnWriteArrayList.)))
 
 (defn error-result
   "Returns a result already realized with an error."
-  ([error]
-     (ErrorResult. error nil nil))
-  ([error listener]
-     (ErrorResult. error nil listener)))
+  [error]
+  (ErrorResult. error nil (CopyOnWriteArrayList.)))
 
 (defn result-channel
   "Returns a result-channel, representing an unrealized value or error."
@@ -472,14 +482,7 @@
      (ResultChannel.
        (l/lock)
        (ResultState. 0 ::none nil nil)
-       nil
-       nil
-       (LinkedList.)))
-  ([listener]
-     (ResultChannel.
-       (l/lock)
-       (ResultState. 0 ::none nil nil)
-       listener
+       (CopyOnWriteArrayList.)
        nil
        (LinkedList.))))
 
