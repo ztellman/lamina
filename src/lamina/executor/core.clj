@@ -24,26 +24,25 @@
      ThreadFactory
      TimeUnit]))
 
-
-
 (defn contract-pool-size [^ThreadPoolExecutor pool min-thread-count]
   (let [active (.getActiveCount pool)
         pool-size (.getPoolSize pool)]
-    (if (< active (dec pool-size))
-      (.setCorePoolSize pool (max min-thread-count (dec pool-size))))))
+    (if (< active pool-size)
+      (let [delta (- pool-size active)]
+        (.setCorePoolSize pool (max min-thread-count (int (- pool-size (/ delta 2)))))))))
 
 (defn expand-pool-size [^ThreadPoolExecutor pool max-thread-count]
-  (let [active (.getActiveCount pool)
+  (let [pending (- (.getTaskCount pool) (.getCompletedTaskCount pool))
         pool-size (.getPoolSize pool)]
-    (when (= pool-size active)
-      (.setCorePoolSize pool (min max-thread-count (inc active))))))
+    (when (<= pool-size pending)
+      (.setCorePoolSize pool (min max-thread-count (inc pool-size))))))
 
-(defn periodically-contract-pool-size [^ThreadPoolExecutor pool min-thread-count interval]
-  (when-not (.isShutdown pool)
-    (contract-pool-size pool min-thread-count)
-    (invoke-in
-      interval
-      #(periodically-contract-pool-size pool min-thread-count interval))))
+(defn periodically-contract-pool-size [^ThreadPoolExecutor pool min-thread-count period]
+  (invoke-repeatedly period
+    (fn [cancel]
+      (if (.isShutdown pool)
+        (cancel)
+        (contract-pool-size pool min-thread-count)))))
 
 (defn executor
   "Defines a thread pool that can be used with instrument and defn-instrumented.
