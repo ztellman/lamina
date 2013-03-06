@@ -20,6 +20,8 @@
     [lamina.core.threads :as t]
     [clojure.tools.logging :as log])
   (:import
+    [lamina.core.queue
+     Message]
     [lamina.core.lock
      AsymmetricLock]
     [lamina.core.graph.core
@@ -420,9 +422,12 @@
       (if (identical? ::split x)
         (drain (.split state))
         (when x
-          (let [msgs (q/drain x)]
+          (let [msgs (q/drain x)
+                f (constantly :lamina/to-seq)]
+            (doseq [msg msgs]
+              (q/dispatch-message msg f))
             (check-for-drained this state watchers cancellations)
-            msgs)))))
+            (map #(.message ^Message %) msgs))))))
 
   ;;
   (read-node [this]
@@ -637,9 +642,10 @@
                      ;; if we've gone from ::zero -> ::one or ::closed -> ::drained,
                      ;; send all queued messages
                      (when-let [msgs (drain-queue new-state)]
-                       (let [nxt (.next ^Edge edge)]
+                       (let [nxt (.next ^Edge edge)
+                             f #(propagate nxt % true)]
                          (doseq [msg msgs]
-                           (propagate nxt msg true))))
+                           (q/dispatch-message msg f))))
 
                      (when new-state
                        (.put cancellations name #(unlink % edge)))

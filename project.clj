@@ -13,7 +13,7 @@
                                   [criterium "0.3.1"]]}
              :1.2 {:dependencies [[org.clojure/clojure "1.2.1"]]}
              :1.3 {:dependencies [[org.clojure/clojure "1.3.0"]]}
-             :1.5 {:dependencies [[org.clojure/clojure "1.5.0-master-SNAPSHOT"]]}}
+             :1.5 {:dependencies [[org.clojure/clojure "1.5.0"]]}}
   :aliases {"all" ["with-profile" "1.2,dev:1.3,dev:dev:1.5,dev"]}
   :plugins [[codox "0.6.2"]]
   :codox {:include [lamina.core

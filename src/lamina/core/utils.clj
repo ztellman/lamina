@@ -94,7 +94,9 @@
                    ~expr)))
              (apply concat))
          :else
-         (throw (IllegalArgumentException. (str "no matching clause for " (pr-str val##))))))))
+         ~(if (even? (count cases))
+            `(throw (IllegalArgumentException. (str "no matching clause for " (pr-str val##))))
+            (last cases))))))
 
 (defmacro fast-bound-fn [& fn-body]
   (let [{:keys [major minor]} *clojure-version*

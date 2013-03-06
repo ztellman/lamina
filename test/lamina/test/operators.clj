@@ -134,7 +134,10 @@
     (assert-equivalence 
       #(map identity %)
       #(let [ch (mimic %)]
-         (run-pipeline (receive-in-order % (fn [x] (enqueue ch x)))
+         (run-pipeline (receive-in-order %
+                         (fn [x]
+                           (enqueue ch x)
+                           true))
            (fn [_] (close ch)))
          ch)
       (range total-elements))

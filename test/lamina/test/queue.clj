@@ -13,7 +13,9 @@
     [lamina.time :only (invoke-in)])
   (:require
     [lamina.core.queue :as q]
-    [lamina.core.result :as r]))
+    [lamina.core.result :as r])
+  (:import
+    [lamina.core.queue Message]))
 
 (defn enqueue
   ([q msg]
@@ -40,7 +42,7 @@
   (let [q (q-fn)]
     (enqueue q nil)
     (enqueue q :a)
-    (is (= [nil :a] (q/drain q))))
+    (is (= [nil :a] (map #(.message ^Message %) (q/drain q)))))
   
   ;; enqueue, then receive
   (let [q (q-fn)]
@@ -52,7 +54,7 @@
   (let [q (q-fn)]
     (enqueue q 0)
     (enqueue q 1)
-    (is (= [0 1] (q/drain q))))
+    (is (= [0 1] (map #(.message ^Message %) (q/drain q)))))
 
   ;; multi-receive, then enqueue
   (let [q (q-fn)

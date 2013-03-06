@@ -20,12 +20,30 @@
     [lamina.core.result ResultChannel]
     [java.util.concurrent ConcurrentLinkedQueue]))
 
+;;;
 
+(defprotocol+ IMessage
+  (dispatch-message [_ f]))
+
+(deftype+ Message
+  [message
+   listener]
+  IMessage
+  (dispatch-message [_ f]
+    (if listener
+
+      (u/try*
+        (let [x (f message)]
+          (u/enqueue listener x))
+        (catch Throwable e
+          (u/error listener e false)))
+
+      (f message))))
 
 (deftype+ MessageConsumer
   [predicate
    false-value
-   ^ResultChannel result-channel])
+   ^ResultChannel result-channel]) 
 
 (deftype+ SimpleConsumer
   [^ResultChannel result-channel]
@@ -41,70 +59,71 @@
   (hashCode [_]
     (hash result-channel)))
 
-(defrecord Consumption
+(deftype+ Consumption
   [type ;; ::consumed, ::not-consumed, ::error, ::no-dispatch
    result
+   listener
    ^ResultChannel result-channel])
 
 (deftype+ Consumptions [s])
 
-(deftype+ FailedConsumptions [s])
+(deftype+ FailedConsumptions [s listener])
 
 (defn no-consumption [result-channel]
-  (Consumption. ::no-dispatch nil result-channel))
+  (Consumption. ::no-dispatch nil nil result-channel))
 
 (defn error-consumption [error result-channel]
-  (Consumption. ::error error result-channel))
+  (Consumption. ::error error nil result-channel))
 
-(defn consumption [consumer msg]
+(defn consumption [consumer ^Message msg]
   (if (instance? SimpleConsumer consumer)
     (let [result-channel (.result-channel ^SimpleConsumer consumer)]
       (Consumption.
         (if (or (identical? nil result-channel) (r/claim result-channel))
           ::consumed
           ::not-consumed)
-        msg
+        (.message msg)
+        (.listener msg)
         result-channel))
     (let [^MessageConsumer consumer consumer
           predicate (.predicate consumer)
           result-channel (.result-channel consumer)]
-      (try
-        (let [consume? (or (identical? nil predicate) (predicate msg))]
+      (u/try*
+        (let [consume? (or (identical? nil predicate) (predicate (.message msg)))]
           (if (or (identical? nil result-channel) (r/claim result-channel))
                
             ;; either we didn't need to claim the result-channel, or we succeeded
             (Consumption.
               (if consume? ::consumed ::not-consumed)
-              (if consume? msg (.false-value consumer))
+              (if consume? (.message msg) (.false-value consumer))
+              (when consume? (.listener msg))
               result-channel)
                
             ;; we failed to claim it
             (no-consumption result-channel)))
            
-        (catch Exception e
+        (catch Throwable e
           (if (or (identical? nil result-channel) (r/claim (.result-channel consumer)))
             (error-consumption e result-channel)
             (no-consumption result-channel)))))))
 
-(defmacro dispatch-consumption [consumption]
-  `(let [^Consumption c# ~consumption
-         result-channel# (.result-channel c#)]
-     (case (.type c#)
+(defn dispatch-consumption [^Consumption c]
+  (let [result-channel (.result-channel c)]
+     (u/cond-case (.type c)
        (::not-consumed ::consumed)
-       (if (identical? nil result-channel#)
-         (r/success-result (.result c#))
-         (r/success! result-channel# (.result c#)))
+       (if (identical? nil result-channel)
+         (r/success-result (.result c))
+         (r/success! result-channel (.result c)))
  
        ::error
-       (if (identical? nil result-channel#)
-         (r/error-result (.result c#))
-         (r/error! result-channel# (.result c#)))
+       (if (identical? nil result-channel)
+         (r/error-result (.result c))
+         (r/error! result-channel (.result c)))
 
        nil)))
 
-(defmacro consumed? [consumption]
-  `(let [consumption# ~consumption]
-     (identical? ::consumed (.type ^Consumption consumption#))))
+(defn consumed? [^Consumption consumption]
+  (identical? ::consumed (.type consumption)))
 
 ;;;
 
@@ -210,7 +229,7 @@
         (doseq [^MessageConsumer c consumers]
           (u/error (.result-channel c) error false)))))
 
-  ;; this isn't super atomic (multiple calls can receive 'true', though), but we
+  ;; this isn't super atomic (multiple calls can receive 'true'), but we
   ;; don't much care 
   (close [_]
     (io! "Cannot modify non-transactional queues inside a transaction."
@@ -243,15 +262,15 @@
         (when-not (.isEmpty messages)
           (let [msgs (seq (.toArray messages))]
             (.clear messages)
-            (map #(if (identical? ::nil %) nil %) msgs))))))
+            msgs)))))
 
   ;;
   (messages [_]
-    (map #(if (identical? ::nil %) nil %) (seq (.toArray messages))))
+    (map #(.message ^Message %) (seq (.toArray messages))))
 
   ;;
   (append [_ msgs]
-    (.addAll messages (map #(if (identical? nil %) ::nil %) msgs)))
+    (.addAll messages (map #(Message. % nil) msgs)))
 
   ;;
   (enqueue [_ msg persist? release-fn]
@@ -272,14 +291,15 @@
                       
                     ;; no consumers, just hold onto the message
                     (if persist?
-                      (do
-                        (.add messages (if (nil? msg) ::nil msg))
-                        :lamina/enqueued)
+                      (let [listener (r/result-channel)]
+                        (.add messages (Message. msg listener))
+                        listener)
                       :lamina/discarded) 
                       
                     ;; handle the first consumer specially, since most of the time
                     ;; there will only be one
-                    (let [^Consumption c (consumption (.poll consumers) msg)]
+                    (let [msg-wrapper (Message. msg nil)
+                          ^Consumption c (consumption (.poll consumers) msg-wrapper)]
                       (if (consumed? c)
                         c
                           
@@ -287,16 +307,18 @@
                         (loop [cs (list c)]
                           (if (.isEmpty consumers)
                             (do
-                              (when persist?
-                                (.add messages (if (nil? msg) ::nil msg)))
-                              (FailedConsumptions. cs))
-                            (let [^Consumption c (consumption (.poll consumers) msg)]
+                              (if persist?
+                                (let [listener (r/result-channel)]
+                                  (.add messages (Message. msg listener))
+                                  (FailedConsumptions. cs listener))
+                                (FailedConsumptions. cs nil)))
+                            (let [^Consumption c (consumption (.poll consumers) msg-wrapper)]
                               (if (consumed? c)
                                 (Consumptions. (cons c cs))
                                 (recur (cons c cs)))))))))))]
 
         (cond
-          (identical? :lamina/enqueued x)
+          (r/async-result? x)
           x
 
           (identical? :lamina/discarded x)
@@ -305,6 +327,7 @@
           (instance? Consumption x)
           (dispatch-consumption x)
 
+          ;; todo: this needs to return an actual value
           (instance? Consumptions x)
           (do
             (doseq [c (.s ^Consumptions x)]
@@ -312,21 +335,24 @@
             :lamina/queue-split)
 
           :else
-          (do
-            (doseq [c (.s ^FailedConsumptions x)]
+          (let [^FailedConsumptions cs x]
+            (doseq [c (.s cs)]
               (dispatch-consumption c))
-            (if persist?
-              :lamina/enqueued
+            (or
+              (.listener cs)
               :lamina/discarded))))))
 
   ;;
   (receive [_]
     (io! "Cannot modify non-transactional queues inside a transaction."
       (l/with-exclusive-lock lock
-        (if-let [msg (.poll messages)]
-
-          (r/success-result (if (identical? ::nil msg) nil msg))
-              
+        (if-let [^Message msg (.poll messages)]
+          
+          (let [r (r/success-result (.message msg))]
+            (when-let [listener (.listener msg)]
+              (r/add-listener r listener))
+            r)
+          
           (if closed?
             (r/error-result :lamina/drained!)
             (let [result-channel (r/result-channel)]
@@ -353,8 +379,7 @@
                                         rc))
                       (no-consumption rc)))
               
-                  (let [msg (if (identical? ::nil msg) nil msg)
-                        c (consumption
+                  (let [c (consumption
                             (MessageConsumer.
                               predicate
                               false-value
@@ -363,10 +388,11 @@
                     (when (consumed? c)
                       (.poll messages))
                     c))))]
-        (let [result (dispatch-consumption consumption)]
-          (if-not (.result-channel consumption)
-            result
-            (.result-channel consumption))))))
+        (let [result (dispatch-consumption consumption)
+              result (or (.result-channel consumption) result)]
+          (when-let [listener (.listener consumption)]
+            (r/add-listener result listener))
+          result))))
 
   ;;
   (cancel-receive [_ result-channel]
@@ -464,7 +490,8 @@
   (append [_ msgs]
     (when-not (empty? msgs)
       (dosync
-        (apply alter messages conj msgs))))
+        (apply alter messages conj
+          (map #(Message. % nil) msgs)))))
 
   ;;
   (enqueue [_ msg persist? release-fn]
@@ -478,13 +505,16 @@
                   (if (empty? cs)
                         
                     ;; no consumers, just hold onto the message
-                    (when persist?
-                      (alter messages conj msg)
-                      :lamina/enqueued) 
+                    (if persist?
+                      (let [listener (r/result-channel)]
+                        (alter messages conj (Message. msg listener))
+                        listener)
+                      :lamina/discarded) 
                         
                     ;; handle the first consumer specially, since most of the time
                     ;; there will only be one
-                    (let [^Consumption c (consumption (poll-queue consumers) msg)]
+                    (let [msg-wrapper (Message. msg nil)
+                          ^Consumption c (consumption (poll-queue consumers) msg-wrapper)]
                       (if (consumed? c)
                         c
                             
@@ -493,21 +523,27 @@
                           (if (empty? @consumers)
                             (do
                               (when persist?
-                                (alter messages conj msg))
+                                (let [listener (r/result-channel)]
+                                  (alter messages conj (Message. msg listener))
+                                  listener))
                               cs)
-                            (let [^Consumption c (consumption (poll-queue consumers) msg)]
+                            (let [^Consumption c (consumption (poll-queue consumers) msg-wrapper)]
                               (if (consumed? c)
                                 (cons c cs)
                                 (recur (cons c cs))))))))))))]
 
       (cond
-        (keyword? x)
+        (r/async-result? x)
+        x
+        
+        (identical? :lamina/discarded x)
         x
           
         (instance? Consumption x)
         (dispatch-consumption x)
           
         :else
+        ;; todo: this should return a real value
         (do
           (doseq [c x]
             (dispatch-consumption c))
@@ -518,7 +554,11 @@
     (dosync-yielding
       (if-not (empty? (ensure messages))
 
-        (r/success-result (poll-queue messages))
+        (let [^Message msg (poll-queue messages)
+              result (r/success-result (.message msg))]
+          (when-let [listener (.listener msg)]
+            (r/add-listener result listener))
+          result)
           
         (if (ensure closed?)
           (r/error-result :lamina/drained!)
@@ -551,10 +591,11 @@
                 (when (consumed? c)
                   (alter messages pop))
                 c)))]
-      (let [result (dispatch-consumption consumption)]
-        (if-not (.result-channel consumption)
-          result
-          (.result-channel consumption)))))
+      (let [result (dispatch-consumption consumption)
+            result (or (.result-channel consumption) result)]
+        (when-let [listener (.listener consumption)]
+          (r/add-listener result listener))
+        result)))
 
   ;; TODO: make this a bit more efficient
   (cancel-receive [_ result-channel]
@@ -583,7 +624,7 @@
      (EventQueue.
        (l/lock)
        (if messages
-         (ConcurrentLinkedQueue. (map #(if (identical? nil %) ::nil %) messages))
+         (ConcurrentLinkedQueue. (map #(Message. % nil) messages))
          (ConcurrentLinkedQueue.))
        (ConcurrentLinkedQueue.)
        false)))
@@ -593,7 +634,7 @@
      (transactional-queue nil))
   ([messages]
      (TransactionalEventQueue.
-       (ref (persistent-queue messages))
+       (ref (persistent-queue (map #(Message. % nil) messages)))
        (ref (persistent-queue))
        (ref false))))
 

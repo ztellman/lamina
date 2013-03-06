@@ -88,9 +88,7 @@
 (defn sink []
   (let [a (atom [])]
     [a
-     #(do
-        (swap! a conj %)
-        true)]))
+     #(swap! a conj %)]))
 
 ;;;
 
@@ -98,7 +96,7 @@
   ;; simple linear
   (let [[v callback] (sink)
         n (construct-nodes [inc [(pred even?) [callback]]])]
-    (is (= true (enqueue n 1)))
+    (is (= [2] (enqueue n 1)))
     (enqueue n 2 3)
     (is (= @v [2 4])))
 
@@ -109,7 +107,7 @@
             [identity
              [inc [(pred even?) [callback-a]]]
              [dec [(pred even?) [callback-b]]]])]
-    (is (= true (enqueue n 1)))
+    (is (= [2] (enqueue n 1)))
     (enqueue n 2 3)
     (is (= @a [2 4]))
     (is (= @b [0 2])))
@@ -135,23 +133,27 @@
 (deftest test-queueing
   ;; simple test
   (let [n (node identity)
-        [v f] (sink)]
-    (is (= :lamina/enqueued (enqueue n nil)))
-    (is (= :lamina/enqueued (enqueue n 1)))
+        [v f] (sink)
+        a (enqueue n nil)
+        b (enqueue n 1)]
     (link* n (callback-propagator f))
-    (is (= [nil 1] @v)))
+    (is (= [nil 1] @v))
+    (is (= [nil] @a))
+    (is (= [nil 1] @b)))
   
   ;; test with closed node
   (let [n (node identity)
-        [v f] (sink)]
-    (is (= :lamina/enqueued (enqueue n nil)))
-    (is (= :lamina/enqueued (enqueue n 1)))
+        [v f] (sink)
+        a (enqueue n nil)
+        b (enqueue n 1)]
     (close* n)
     (is (closed? n))
     (is (not (drained? n)))
     (link* n (callback-propagator f))
     (is (drained? n))
-    (is (= [nil 1] @v))))
+    (is (= [nil 1] @v))
+    (is (= [nil] @a))
+    (is (= [nil 1] @b))))
 
 (deftest test-long-chain-propagation
   (let [cnt 1e4
