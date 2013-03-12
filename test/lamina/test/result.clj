@@ -101,12 +101,18 @@
         r (r-fn)]
     (add-listener r listener)
     (is (= :lamina/realized (success r 1)))
-    (is (= ::none (success-value r ::none)))
     (is (= ::none (error-value r ::none)))
     (is (= :success (result r)))
     (is (= 1 @(capture-success r ::return)))
     (is (= ::return @listener))
     (is (= 1 @r)))
+
+  (let [listener (r-fn)
+        r (r-fn)]
+    (is (= :lamina/realized (success r 1)))
+    (add-listener r listener)
+    (is (= 1 (success-value r ::none)))
+    (is (= :lamina/dereferenced @listener)))
 
   ;; claim and success!
   (let [r (r-fn)]
@@ -147,11 +153,18 @@
     (add-listener r listener)
     (is (= :lamina/realized (error r ex false)))
     (is (= ::none (success-value r ::none)))
-    (is (= ::none (error-value r ::none)))
     (is (= :error (result r)))
     (is (= ex @(capture-error r ::return)))
     (is (= ::return @listener))
     (is (thrown? IllegalStateException @r)))
+
+  (let [listener (r-fn)
+        r (r-fn)
+        ex (IllegalStateException. "boom")]
+    (is (= :lamina/realized (error r ex false)))
+    (add-listener r listener)
+    (is (= ex (error-value r ::none)))
+    (is (= :lamina/dereferenced @listener)))
   
   ;; claim and error!
   (let [r (r-fn)

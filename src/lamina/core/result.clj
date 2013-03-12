@@ -113,9 +113,8 @@
   (claim [_]
     false)
   (success-value [_ default-value]
-    (if-not (.isEmpty listeners)
-      default-value
-      value))
+    (enqueue-to-listeners listeners :lamina/dereferenced)
+    value)
   (error-value [_ default-value]
     default-value)
   (result [_]
@@ -171,9 +170,8 @@
   (success-value [_ default-value]
     default-value)
   (error-value [_ default-value]
-    (if-not (.isEmpty listeners)
-      default-value
-      error))
+    (enqueue-to-listeners listeners :lamina/dereferenced)
+    error)
   (result [_]
     :error)
   (subscribe [_ callback]
@@ -344,6 +342,7 @@
   clojure.lang.IDeref
 
   (deref [this]
+    (enqueue-to-listeners listeners :lamina/deferenced)
     (let [state state
           value (.value state)
           result (case (.mode state)
@@ -403,15 +402,19 @@
   ;;
   (success-value [_ default-value]
     (let [state state]
-      (if (and (.isEmpty listeners) (identical? ::success (.mode state)))
-        (.value state)
+      (if (identical? ::success (.mode state))
+        (do
+          (enqueue-to-listeners listeners :lamina/dereferenced)
+          (.value state))
         default-value)))
 
   ;;
   (error-value [_ default-value]
     (let [state state]
-      (if (and (.isEmpty listeners) (identical? ::error (.mode state)))
-        (.value state)
+      (if (identical? ::error (.mode state))
+        (do
+          (enqueue-to-listeners listeners :lamina/dereferenced)
+          (.value state))
         default-value)))
 
   ;;
