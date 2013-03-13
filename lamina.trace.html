@@ -19,7 +19,7 @@ The :name can be explicitly defined, but will default to
 This is an idempotent operation.
 
 This data structure can be merged using merge-distilled-timings.</pre></div><div class="public" id="var-error-probe-channel"><h3>error-probe-channel</h3><div class="usage"></div><pre class="doc">Like probe-channel, but if the probe is not active every message enqueued into the channe will be
-logged as an error.</pre></div><div class="public" id="var-instrument"><h3>instrument</h3><div class="usage"><code>(instrument f {:keys [executor capture timeout probes implicit? with-bindings?], :as options, :or {implicit? true, capture :in-out, with-bindings? false}})</code></div><pre class="doc">A general purpose transform for functions, allowing for tracing their execution,
+logged as an error.</pre></div><div class="public" id="var-instrument"><h3>instrument</h3><div class="usage"><code>(instrument f {:keys [executor capture timeout probes implicit? with-bindings?], :as options, :or {implicit? true, capture :none, with-bindings? false}})</code></div><pre class="doc">A general purpose transform for functions, allowing for tracing their execution,
  defining timeouts, and deferring their execution onto a thread pool.
 
  Instrumenting a function does not change its behavior in any way (unless an
@@ -90,7 +90,7 @@ and return an unrealized result representing its eventual value.
 
 In this case, :timeout will also interrupt the thread if it is still actively
 computing the value, and the 'return' probe will include an :enqueued-duration
-parameter that describes the time, in nanoseconds, spent waiting to be executed.</pre></div><div class="public" id="var-instrumented-fn"><h3>instrumented-fn</h3><div class="usage"><code>(instrumented-fn fn-name {:keys [executor capture with-bindings? implicit? timeout probes], :or {capture :in-out, with-bindings? false, implicit? true}, :as options} &amp; fn-tail)</code></div><pre class="doc">A compile-time version of (instrument ...).
+parameter that describes the time, in nanoseconds, spent waiting to be executed.</pre></div><div class="public" id="var-instrumented-fn"><h3>instrumented-fn</h3><div class="usage"><code>(instrumented-fn fn-name {:keys [executor capture with-bindings? implicit? timeout probes], :or {capture :none, with-bindings? false, implicit? true}, :as options} &amp; fn-tail)</code></div><pre class="doc">A compile-time version of (instrument ...).
 
 (instrumented-fn
   foo
