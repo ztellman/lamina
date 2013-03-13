@@ -50,7 +50,9 @@
 
 (defn executor-channel
   "Creates a channel that ensures all downstream channels will receive messages on the thread-pool
-   specified by :executor.  This can be useful for both rate-limiting and parallelization."
+   specified by :executor.  This can be useful for both rate-limiting and parallelization.
+
+   This may change the downstream order of messages."
   [{:keys [name executor probes] :as options}]
   (when-not (and name executor)
     (throw (IllegalArgumentException. "executor-channel must be given a :name and :executor")))
@@ -83,10 +85,29 @@
     (splice emitter receiver)))
 
 (defn defer
-  "Defers propagation of messages onto another thread pool."
+  "Defers propagation of messages onto another thread pool. This may change the downstream
+   order of messages."
   ([ch]
      (defer default-executor ch))
   ([executor ch]
      (let [ex (executor-channel {:name "defer", :executor executor, :capture :none})]
        (join ch ex)
        ex)))
+
+(defn pmap*
+  "Like map*, but executes function on thread pool. This preserves the downstream order of
+   messages."
+  ([f ch]
+     (pmap* {:executor default-executor} f ch))
+  ([{:keys [executor name]
+     :as options
+     :or {executor default-executor
+          name "pmap*"}}
+    f ch]
+     (->> ch
+       (map* (trace/instrument f
+               (merge
+                 {:executor executor, :name name}
+                 options)))
+       emit-in-order)))
+

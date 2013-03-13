@@ -106,7 +106,7 @@
    {:keys [name executor capture timeout implicit? with-bindings? enter-probe error-probe return-probe]
     :as options
     :or {implicit? true
-         capture :in-out
+         capture :none
          with-bindings? false}}]
   (expand-multi-arities task-fn-body f
     {:name name
@@ -124,7 +124,7 @@
    {:keys [name executor capture timeout implicit? with-bindings? enter-probe error-probe return-probe]
     :as options
     :or {implicit? true
-         capture :in-out
+         capture :none
          with-bindings? false}}]
   (expand-multi-arities task-fn-body f
     {:name name
@@ -142,7 +142,7 @@
    {:keys [name capture timeout implicit? with-bindings? enter-probe error-probe return-probe]
     :as options
     :or {implicit? true
-         capture :in-out
+         capture :none
          with-bindings? false}}]
   (expand-multi-arities fn-body f
     {:name name
@@ -232,7 +232,7 @@
   [f {:keys [executor capture timeout probes implicit? with-bindings?]
       :as options
       :or {implicit? true
-           capture :in-out
+           capture :none
            with-bindings? false}}]
   (when-not (contains? options :name)
     (throw (IllegalArgumentException. "Instrumented functions must have a :name defined.")))
@@ -287,7 +287,7 @@
      implicit?
      timeout
      probes]
-    :or {capture :in-out
+    :or {capture :none
          with-bindings? false
          implicit? true}
     :as options}

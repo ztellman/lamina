@@ -150,7 +150,10 @@
 (defn try-instrument [options f]
   (if (contains? options :name)
     (with-meta
-      (instrument f options)
+      (instrument f
+        (merge
+          options
+          {:capture :in-out}))
       (meta f))
     f))
 

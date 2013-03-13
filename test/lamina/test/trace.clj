@@ -46,7 +46,8 @@
   (let [nm (gensym "name")
         probe (probe-channel [nm probe-type])
         [val callback] (capture)
-        f (instrument f (assoc options :name nm))]
+        f (instrument f (assoc options
+                          :name nm))]
     (receive-all probe callback)
     (try
       (let [result (apply f args)]
@@ -80,7 +81,7 @@
 ;;;
 
 (defmacro def-cnt [name sub-fn options]
-  `(defn-instrumented ~name ~options [n#]
+  `(defn-instrumented ~name ~(merge {:capture :in-out} options) [n#]
      (if (zero? n#)
        0
        (run-pipeline (~sub-fn (dec n#))

@@ -118,11 +118,11 @@
     :or {payload identity}
     :as options}]
   (assert timestamp)
-  (let [start (->> descriptor->seq
-                vals
-                (map (comp timestamp first))
-                (apply min))
-        q (time/non-realtime-task-queue start false)
+  (let [start (comment (->> descriptor->seq
+                 vals
+                 (map (comp timestamp first))
+                 (apply min)))
+        q (time/non-realtime-task-queue 0 false)
 
         ;; lazily iterate over seqs
         enqueue-next
@@ -143,7 +143,9 @@
 
         ;; create output streams
         descriptor->ch
-        (query-streams (zipmap (keys descriptor->seq) chs)
+        (query-streams (zipmap
+                         (keys descriptor->seq)
+                         (map #(when %1 %2) (vals descriptor->seq) chs))
           {:task-queue q
            :period period
            :stream-generator (when seq-generator

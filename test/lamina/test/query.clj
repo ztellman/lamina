@@ -34,7 +34,7 @@
     (is (= [(range 20)] (map :value val))))
 
   ;; both at once
-  (let [s (range 20)
+  (let [s (range 100 120)
         f1 ".partition-every(period: 10ms)"
         f2 ".partition-every(period: 100ms)"
         val (query-seqs
@@ -44,13 +44,32 @@
         val1 (get val f1)
         val2 (get val f2)]
 
-    (is (= [10 20 30]
+    (is (= [110 120 130]
           (map :timestamp val1)))
-    (is (= [(range 11) (range 11 20) nil]
+    (is (= [(range 100 111) (range 111 120) nil]
           (map :value val1)))
 
-    (is (= [100] (map :timestamp val2)))
-    (is (= [(range 20)] (map :value val2)))))
+    (is (= [200] (map :timestamp val2)))
+    (is (= [(range 100 120)] (map :value val2))))
+
+  (let [s (range 100 120)
+        f1 "abc.partition-every(period: 10ms)"
+        f2 "def.partition-every(period: 100ms)"
+        val (query-seqs
+              {f1 nil
+               f2 nil}
+              {:timestamp identity
+               :seq-generator (constantly s)})
+        val1 (get val f1)
+        val2 (get val f2)]
+
+    (is (= [110 120 130]
+          (map :timestamp val1)))
+    (is (= [(range 100 111) (range 111 120) nil]
+          (map :value val1)))
+
+    (is (= [200] (map :timestamp val2)))
+    (is (= [(range 100 120)] (map :value val2)))))
 
 (deftest test-group-by
   (let [val (query-seq

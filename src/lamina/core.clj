@@ -80,6 +80,7 @@
    partition-all*
    
    receive-in-order
+   emit-in-order
    combine-latest
    merge-channels
    transitions

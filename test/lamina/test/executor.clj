@@ -19,6 +19,16 @@
 
 ;;;
 
+(deftest test-pmap*
+  (let [n 1e3]
+    (is (= (range n)
+          (->> (range n)
+            (apply closed-channel)
+            (pmap* (fn [x] (Thread/sleep (rand-int 100)) x))
+            channel->lazy-seq)))))
+
+;;;
+
 (def n 1e3)
 
 (defn benchmark-active-probe [description probe]
