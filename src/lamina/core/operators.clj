@@ -80,22 +80,32 @@
                                        (error dst ex false)
                                        (error src ex false)))
              :finally cleanup}
-            
+
             (fn [_]
-              (read-channel* src
-                :on-drained ::stop
-                :predicate predicate
-                :on-false ::stop))
-            
-            (fn [msg]
+              (let [result (r/result-channel)]
+                (p/run-pipeline nil
+                  {:error-handler (fn [_])}
+                  (fn [_]
+                    (read-channel* src
+                      :on-drained ::stop
+                      :predicate predicate
+                      :listener-result result
+                      :on-false ::stop))
+                  (fn [msg]
+                    [result msg]))))
+
+            (fn [[result msg]]
               (if (identical? ::stop msg)
                 (p/complete nil)
-                (when callback
-                  (let [f #(let [result (callback msg)]
-                             (when wait-on-callback?
-                               result))]
-                    (r/defer-within-transaction (f)
-                      (f))))))
+                (let [f (fn []
+                          (p/run-pipeline msg
+                            {:result result
+                             :error-handler (fn [_])}
+                            callback))]
+                  (r/defer-within-transaction (f)
+                    (f))
+                  (when wait-on-callback?
+                    result))))
             
             (fn [_]
               (if dst
@@ -439,6 +449,7 @@
       (fn [msg]
         (try
           (accumulator msg)
+          :lamina/accumulated
           (finally
             (when (.compareAndSet begin-latch false true)
               (cancel-callback src close-callback)

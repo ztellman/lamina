@@ -346,12 +346,16 @@
                     
                     ;; send message to all nodes
                     (try
-                      (let [s (downstream this)
-                            edge (first s)
-                            result (propagate (.next ^Edge edge) msg true)]
-                        (doseq [e (rest s)]
-                          (propagate (.next ^Edge e) msg true))
-                        result)
+                      (let [^objects ary (object-array (.downstream-count state))]
+                        (loop [idx 0, s (downstream this)]
+                          (when-let [^Edge edge (first s)]
+                            (let [r (propagate (.next edge) msg true)]
+                              (if (sneaky-edge? edge)
+                                (recur idx (rest s))
+                                (do
+                                  (aset ary idx r)
+                                  (recur (unchecked-inc idx) (rest s)))))))
+                        (result-seq ary))
                       (catch Exception e
                         (error this e false)
                         :lamina/error!))))

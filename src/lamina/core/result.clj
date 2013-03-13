@@ -42,6 +42,7 @@
   (success-value [_ default-value])
   (error-value [_ default-value])
   (add-listener [_ listener])
+  (listeners [_])
   (result [_])
   (subscribe [_ callback])
   (cancel-callback [_ callback]))
@@ -104,6 +105,8 @@
   IResult
   (add-listener [_ listener]
     (.add listeners listener))
+  (listeners [_]
+    listeners)
   (success [_ _]
     :lamina/already-realized!)
   (success! [_ _]
@@ -159,6 +162,8 @@
   IResult
   (add-listener [_ listener]
     (.add listeners listener))
+  (listeners [_]
+    listeners)
   (success [_ _]
     :lamina/already-realized!)
   (success! [_ _]
@@ -367,6 +372,9 @@
 
   (add-listener [_ listener]
     (.add listeners listener))
+
+  (listeners [_]
+    listeners)
 
   ;;
   (success [this val]

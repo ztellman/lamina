@@ -112,30 +112,41 @@
   [n & {:keys [predicate
                timeout
                result
+               listener-result
                on-timeout
                on-false
                on-drained]
         :as options}]
-  (let [result-sym (gensym "result")]
-    `(let [~result-sym (read-node ~n
-                         ~predicate
-                         ~(when predicate
-                            (or on-false :lamina/false))
-                         ~result)]
+  (unify-gensyms
+    `(let [result## (read-node ~n
+                      ~predicate
+                      ~(when predicate
+                         (or on-false :lamina/false))
+                      ~result)]
+
+       ;; timeouts
        ~@(when (contains? options :timeout)
            `((let [timeout# ~timeout]
-               (when (and timeout# (instance? ResultChannel ~result-sym))
+               (when (and timeout# (instance? ResultChannel result##))
                  (t/invoke-in timeout#
                    (fn []
                      ~(if on-timeout
-                        `(r/success ~result-sym ~on-timeout)
-                        `(u/error ~result-sym :lamina/timeout! false))))))))
+                        `(r/success result## ~on-timeout)
+                        `(u/error result## :lamina/timeout! false))))))))
+
+       ;; downstream results for listeners
+       ~@(when (contains? options :listener-result)
+           `((r/enqueue-to-listeners
+               (r/listeners result##)
+               ~listener-result)))
+
+       ;; drained result
        ~(if-not (contains? options :on-drained)
-          result-sym
-          `(if (instance? SuccessResult ~result-sym)
-             ~result-sym
+          `result##
+          `(if (instance? SuccessResult result##)
+             result##
              (let [result# (r/result-channel)]
-               (r/subscribe ~result-sym
+               (r/subscribe result##
                  (r/result-callback
                    (fn [x#] (r/success result# x#))
                    (fn [err#]

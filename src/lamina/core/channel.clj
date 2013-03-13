@@ -209,7 +209,15 @@
 
 (defmacro read-channel*
   "something goes here"
-  [ch & {:keys [timeout predicate result on-timeout on-error on-false] :as options}]
+  [ch &
+   {:keys [timeout
+           predicate
+           result
+           listener-result
+           on-timeout
+           on-error
+           on-false]
+    :as options}]
   `(g/read-node* (emitter-node ~ch) ~@(apply concat options)))
 
 (defn receive-all

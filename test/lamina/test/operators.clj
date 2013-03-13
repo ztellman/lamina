@@ -28,10 +28,10 @@
   [transactional? ch messages]
   (task
     (doseq [m messages]
-      (Thread/sleep 25)
+      (Thread/sleep 1)
       (dosync* transactional?
         (enqueue ch m)))
-    (Thread/sleep 25)
+    (Thread/sleep 1)
     (dosync* transactional?
       (close ch))))
 

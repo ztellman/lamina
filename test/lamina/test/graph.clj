@@ -22,9 +22,7 @@
   ([n msg]
      (propagate n msg true))
   ([n msg & msgs]
-     (propagate n msg true)
-     (doseq [m msgs]
-       (propagate n m true))))
+     (doall (map #(propagate n % true) (list* msg msgs)))))
 
 (defn link* [src dst]
   (link src dst (edge "link" dst) nil nil))
@@ -106,11 +104,13 @@
         n (construct-nodes
             [identity
              [inc [(pred even?) [callback-a]]]
-             [dec [(pred even?) [callback-b]]]])]
-    (is (= [2] (enqueue n 1)))
-    (enqueue n 2 3)
+             [dec [(pred odd?) [callback-b]]]])]
+    (is (= [[2] :lamina/filtered]
+          (enqueue n 1)))
+    (is (= [[:lamina/filtered [1]] [[2 4] :lamina/filtered]]
+          (enqueue n 2 3)))
     (is (= @a [2 4]))
-    (is (= @b [0 2])))
+    (is (= @b [1])))
 
   ;; deep branched
   (let [[v callback] (sink)]

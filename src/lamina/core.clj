@@ -105,10 +105,10 @@
   ([channel message]
      (u/enqueue channel message))
   ([channel message & messages]
-     (let [val (u/enqueue channel message)]
-       (doseq [m messages]
-         (u/enqueue channel m))
-       val)))
+     (doall
+       (map
+         #(u/enqueue channel %)
+         (list* message messages)))))
 
 (defn enqueue-and-close
   "Enqueues the message or messages into the channel, and then closes the channel."
