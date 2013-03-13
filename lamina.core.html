@@ -118,7 +118,7 @@ result-channel can represent any given message; calling (read-channel ...) multi
 will always consume multiple messages.
 
 Enqueueing a value into the result-channel before it is realized will prevent the message
-from being consumed, effectively cancelling the read-channel call.</pre></div><div class="public" id="var-read-channel*"><h3>read-channel*</h3><div class="usage"><code>(read-channel* ch &amp; {:keys [timeout predicate result on-timeout on-error on-false], :as options})</code></div><pre class="doc">something goes here
+from being consumed, effectively cancelling the read-channel call.</pre></div><div class="public" id="var-read-channel*"><h3>read-channel*</h3><div class="usage"><code>(read-channel* ch &amp; {:keys [timeout predicate result listener-result on-timeout on-error on-false], :as options})</code></div><pre class="doc">something goes here
 </pre></div><div class="public" id="var-read-merge"><h3>read-merge</h3><div class="usage"><code>(read-merge read-fn merge-fn)</code></div><pre class="doc">something goes here
 </pre></div><div class="public" id="var-receive"><h3>receive</h3><div class="usage"><code>(receive channel callback)</code></div><pre class="doc">Registers a callback that will be invoked with the next message enqueued into the channel, or
 the first message already in the queue.  Only one callback can consume any given message;
