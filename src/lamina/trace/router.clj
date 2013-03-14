@@ -131,7 +131,7 @@
             (time/invoke-at q (timestamp x)
               (with-meta
                 (fn []
-                  (enqueue ch x)
+                  (enqueue ch (payload x))
                   (enqueue-next (rest s) ch))
                 {:priority Integer/MAX_VALUE}))
             (time/invoke-at q (inc (time/now q))

@@ -14,6 +14,7 @@
   (:require
     [clojure.tools.logging :as log]
     [lamina.time :as t]
+    [lamina.stats.sample :as sample]
     [lamina.stats.moving-average :as avg]
     [lamina.stats.variance :as var]
     [lamina.stats.quantiles :as qnt])
@@ -21,6 +22,32 @@
     [java.util.concurrent.atomic
      AtomicLong
      AtomicBoolean]))
+
+;;;
+
+(defn moving-sample
+  "something goes here"
+  ([ch]
+     (moving-sample nil ch))
+  ([{:keys [window period sample-size task-queue] :as options} ch]
+     (let [sampler (sample/moving-sampler options)]
+       (bridge-accumulate ch (mimic ch) "moving-sample"
+         (merge options
+           {:accumulator #(update sampler %)
+            :emitter #(deref sampler)})))))
+
+(defn sample
+  "something goes here"
+  ([ch]
+     (sample nil ch))
+  ([{:keys [window period sample-size task-queue] :as options} ch]
+     (let [sampler (sample/sampler options)]
+       (bridge-accumulate ch (mimic ch) "sample"
+         (merge options
+           {:accumulator #(update sampler %)
+            :emitter #(deref sampler)})))))
+
+;;;
 
 (defn number-accumulator [name f]
   (let [warn-str (format "non-numerical value in '%s':" name)]
@@ -41,17 +68,17 @@
        (bridge-accumulate ch (mimic ch) "sum"
          (merge options
            (number-accumulator "sum"
-            (fn [n]
-              (loop []
-                (let [current (.get cnt)
-                      val (Double/longBitsToDouble (long current))]
-                  (when-not (.compareAndSet cnt current
-                              (Double/doubleToRawLongBits
-                                (+ (double val) (double n))))
-                    (recur))))))
+             (fn [n]
+               (loop []
+                 (let [current (.get cnt)
+                       val (Double/longBitsToDouble (long current))]
+                   (when-not (.compareAndSet cnt current
+                               (Double/doubleToRawLongBits
+                                 (+ (double val) (double n))))
+                     (recur))))))
            {:emitter #(Double/longBitsToDouble
-                       (.getAndSet cnt
-                         (Double/doubleToRawLongBits 0)))})))))
+                        (.getAndSet cnt
+                          (Double/doubleToRawLongBits 0)))})))))
 
 (defn rate
   "Returns a channel that will periodically emit the number of messages emitted by the source
