@@ -4,7 +4,7 @@
   :dependencies [[org.clojure/tools.logging "0.2.4"]
                  [org.flatland/useful "0.9.0"]
                  [potemkin "0.2.0"]
-                 [com.yammer.metrics/metrics-core "3.0.0-20121019.210556-4"
+                 [com.yammer.metrics/metrics-core "3.0.0-SNAPSHOT"
                   :exclusions [[org.slf4j/slf4j-api]
                                [com.yammer.metrics/metrics-annotation]]]]
   :exclusions [org.clojure/contrib

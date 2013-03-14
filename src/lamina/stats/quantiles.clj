@@ -13,9 +13,8 @@
   (:require
     [lamina.time :as t])
   (:import
-    [com.yammer.metrics.core
-     Clock]
-    [com.yammer.metrics.stats
+    [com.yammer.metrics
+     Clock
      ExponentiallyDecayingSample
      Snapshot]))
 
