@@ -77,7 +77,6 @@
                           (when close-on-complete? (close src))))]
           
           (p/run-pipeline nil
-            
             {:error-handler (fn [ex] (if dst
                                        (error dst ex false)
                                        (error src ex false)))
