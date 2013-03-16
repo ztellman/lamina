@@ -74,8 +74,8 @@
                                (throw ~ex)
                                (do ~@(drop 3 x)))))))
         class->clause (-> (zipmap (map second catch) catch)
-                        (update-in [Throwable] ignore-retry)
-                        (update-in [Error] ignore-retry))]
+                        (update-in ['Throwable] ignore-retry)
+                        (update-in ['Error] ignore-retry))]
     `(try
        ~@body
        ~@(->> class->clause vals (remove nil?)))))

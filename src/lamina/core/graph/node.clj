@@ -119,9 +119,9 @@
          transform?# ~transform?]
      (if-not (and transform?# operator#)
        msg#
-       (try
+       (try*
          (operator# msg#)
-         (catch Exception e#
+         (catch Throwable e#
            (log/warn e# "Error in map*/filter* function.")
            (error node# e# false)
            ::error)))))
