@@ -72,6 +72,7 @@
    concat*
    take*
    drop*
+   drop-while*
    take-while*
    reductions*
    reduce*

@@ -10,7 +10,7 @@
   (:use
     [potemkin]
     [flatland.useful.datatypes :only (make-record)]
-    [lamina.core.utils :only (enqueue)])
+    [lamina.core.utils :only (enqueue enable-unchecked-math)])
   (:require
     [clojure.string :as str]
     [lamina.trace.context :as trace-context]
@@ -25,7 +25,7 @@
      ConcurrentLinkedQueue
      ConcurrentHashMap]))
 
-
+(enable-unchecked-math)
 
 ;;;
 
@@ -97,15 +97,15 @@
                          (= Long/MIN_VALUE ~'return)
                          (= Long/MIN_VALUE ~'enter))
                      -1
-                     (unchecked-subtract (long ~'return) (long ~'enter)))
+                     (- (long ~'return) (long ~'enter)))
          timing# (make-record ~type
                    :name ~'name
                    :timestamp ~'timestamp
                    :context (trace-context/context)
-                   :offset (unchecked-subtract (long start#) (long root-start#))
+                   :offset (- (long start#) (long root-start#))
                    :compute-duration (if (= Long/MIN_VALUE ~'waiting)
                                        duration#
-                                       (unchecked-subtract (long ~'waiting) (long ~'enter)))
+                                       (- (long ~'waiting) (long ~'enter)))
                    :duration duration#
                    :args ~'args
                    :result ~'result
@@ -136,7 +136,7 @@
     (make-timing EnqueuedTiming start enqueued
       :enqueued-duration (if (= Long/MIN_VALUE enter)
                            -1
-                           (unchecked-subtract (long enter) (long enqueued)))))
+                           (- (long enter) (long enqueued)))))
   (add-sub-task [_ timer]
     (.add sub-tasks timer)
     true)
@@ -162,7 +162,7 @@
     (let [timing (make-timing EnqueuedTiming enqueued enqueued
                    :enqueued-duration (if (= Long/MIN_VALUE enter)
                                         -1
-                                        (unchecked-subtract (long enter) (long enqueued))))]
+                                        (- (long enter) (long enqueued))))]
       (when return-probe
         (enqueue return-probe timing))
       (ex/trace-return executor timing))))

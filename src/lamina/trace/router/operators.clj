@@ -271,7 +271,7 @@
 
 ;;;
 
-(r/def-trace-operator sample
+(r/def-trace-operator sample-every
   :periodic? true
   :distribute? true
 

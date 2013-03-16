@@ -77,9 +77,9 @@
 (deftest test-sample
   #_(prn
     (last
-      (run-stats-test moving-sample (map vector (range 1e4)) (t/seconds 1)
+      (run-stats-test moving-sample (map vector (range 1e6)) (t/seconds 1)
         {:sample-size 20
-         :window (t/seconds 100)})))
+         :window (t/seconds 1e4)})))
   #_(prn
     (last
       (run-stats-test sample (map vector (range 1e4)) (t/seconds 1)
@@ -121,4 +121,18 @@
         ch (channel)
         ch* (moving-quantiles {:task-queue q} ch)]
     (bench "moving-quantiles"
+      (enqueue ch 1))))
+
+(deftest ^:benchmark benchmark-sample
+  (let [q (t/non-realtime-task-queue)
+        ch (channel)
+        ch* (sample {:task-queue q} ch)]
+    (bench "sample"
+      (enqueue ch 1))))
+
+(deftest ^:benchmark benchmark-moving-sample
+  (let [q (t/non-realtime-task-queue)
+        ch (channel)
+        ch* (moving-sample {:task-queue q} ch)]
+    (bench "moving-sample"
       (enqueue ch 1))))

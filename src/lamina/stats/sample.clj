@@ -9,7 +9,8 @@
 (ns lamina.stats.sample
   (:use
     [potemkin]
-    [lamina.stats.utils])
+    [lamina.stats.utils]
+    [lamina.core.utils])
   (:require
     [lamina.core.lock :as l]
     [lamina.time :as t])
@@ -20,22 +21,29 @@
      AtomicLong
      AtomicReferenceArray]))
 
+(enable-unchecked-math)
+
 ;; implementations strongly based on those in Code Hale's metrics-core library
+;; which are in turn based on:
+;; http://www.research.att.com/people/Cormode_Graham/library/publications/CormodeShkapenyukSrivastavaXu09.pdf
 
 (defprotocol+ IExponentiallyDecayingSampler
-  (rescale [_]))
+  (rescale [_ next]))
 
 (defn priority [alpha elapsed]
   (/
     (double
       (Math/exp
-        (* alpha (double elapsed))))
+        (* (double alpha) (double elapsed))))
     (double
       (rand))))
+
+(def rescale-interval (t/hours 1))
 
 (deftype+ ExponentiallyDecayingSampler
   [^ConcurrentSkipListMap samples
    ^AtomicLong counter
+   ^AtomicLong next-rescale
    ^{:volatile-mutable true, :tag long} start-time
    ^double alpha
    lock
@@ -49,15 +57,16 @@
   
   IUpdatable
   (update [this val]
-    (let [elapsed (- (t/now task-queue) start-time)]
-      (if false ;(> elapsed 36e5)
+    (let [now (t/now task-queue)]
+      (if (>= now (.get next-rescale))
 
         ;; we need to rescale
         (do
-          (rescale this)
+          (rescale this (.get next-rescale))
           (update this val))
 
-        (let [pr (priority alpha elapsed)]
+        (let [elapsed (- now start-time)
+              pr (priority alpha elapsed)]
           (l/with-lock lock
             (if (< (.incrementAndGet counter) sample-size)
               
@@ -73,19 +82,20 @@
                         (recur (.firstKey samples)))))))))))))
 
   IExponentiallyDecayingSampler
-  (rescale [_]
-    (l/with-exclusive-lock lock
-      (let [prev-start-time start-time
-            _ (set! start-time (long (t/now task-queue)))
-            scale-factor (Math/exp (* (- alpha) (- start-time prev-start-time)))]
-        (prn "scale-factor" scale-factor)
-        ;; rescale each key
-        (doseq [k (keys samples)]
-          (let [val (.remove samples k)]
-            (.put samples (* scale-factor k) val)))
-
-        ;; make sure counter reflects size of collection
-        (.set counter (count samples))))))
+  (rescale [_ next]
+    (when (.compareAndSet next-rescale next (+ (t/now task-queue) (long rescale-interval)))
+      (l/with-exclusive-lock lock
+        (let [prev-start-time start-time
+              _ (set! start-time (long (t/now task-queue)))
+              scale-factor (Math/exp (* (- alpha) (- start-time prev-start-time)))]
+          
+          ;; rescale each key
+          (doseq [k (keys samples)]
+            (let [val (.remove samples k)]
+              (.put samples (* scale-factor k) val)))
+          
+          ;; make sure counter reflects size of collection
+          (.set counter (count samples)))))))
 
 (deftype+ UniformSampler
   [^AtomicReferenceArray samples
@@ -120,11 +130,13 @@
     :or {sample-size 1024
          window (t/hours 1)
          task-queue (t/task-queue)}}]
-  (let [alpha (/ 8.5e-2 window)]
+  (let [alpha (/ 8e-2 window) ;; magic numbers ahoy
+        now (t/now task-queue)]
     (ExponentiallyDecayingSampler.
       (ConcurrentSkipListMap.)
       (AtomicLong. 0)
-      (t/now task-queue)
+      (AtomicLong. (+ now rescale-interval))
+      now
       (double alpha)
       (l/asymmetric-lock)
       task-queue

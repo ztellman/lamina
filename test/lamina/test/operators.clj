@@ -127,7 +127,9 @@
 
     [1 2 3]
     [1 1 1]
-    [1 2 2 3 3 2 2 1]))
+    [1 2 2 3 3 2 2 1]
+    [[1] [2] [3]]
+    [[1] [1] [1]]))
 
 (deftest test-receive-in-order
   (are [total-elements]
@@ -179,6 +181,19 @@
     (assert-equivalence
       #(take-while predicate %)
       #(take-while* predicate %)
+      (range total-elements))
+
+    even?              0
+    even?              10
+    odd?               10
+    (constantly true)  10
+    (constantly false) 1))
+
+(deftest test-take-drop-while*
+  (are [predicate total-elements]
+    (assert-equivalence
+      #(drop-while predicate %)
+      #(drop-while* predicate %)
       (range total-elements))
 
     even?              0

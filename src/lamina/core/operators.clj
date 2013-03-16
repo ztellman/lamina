@@ -48,6 +48,7 @@
    {:keys [predicate
            callback
            on-complete
+           close-on-complete?
            wait-on-callback?]}]
 
   (p/run-pipeline (g/consume
@@ -72,7 +73,8 @@
                         (r/defer-within-transaction (cleanup)
                           (unconsume)
                           (when on-complete (on-complete))
-                          (when dst (close dst))))]
+                          (when dst (close dst))
+                          (when close-on-complete? (close src))))]
           
           (p/run-pipeline nil
             
@@ -203,6 +205,23 @@
       :predicate f)
     ch*))
 
+(defn drop-while*
+  "A dual to drop-while.
+
+  (drop-while* pos? (closed-channel 1 2 0 4) => [0 4]"
+  [f ch]
+  (let [ch* (channel)]
+    (p/run-pipeline nil
+      {:error-handler (fn [_])}
+      (fn [_]
+        (bridge-in-order ch nil "drop-while*"
+          :callback (fn [_])
+          :predicate f))
+      (fn [_]
+        (bridge-join ch ch* "drop-while*"
+          #(enqueue ch* %))))
+    ch*))
+
 (defn reductions*
   "A dual to reductions.
 
@@ -225,7 +244,8 @@
                (enqueue ch* val)
                (let [val (atom val)]
                  (bridge-in-order ch ch* "reductions*"
-                   :callback #(enqueue ch* (swap! val f %))))))))
+                   :callback #(enqueue ch* (swap! val f %))
+                   :close-on-complete? true))))))
        ch*))
   ([f val ch]
      (let [ch* (mimic ch)
@@ -233,7 +253,8 @@
 
        (enqueue ch* @val)
        (bridge-in-order ch ch* "reductions*"
-         :callback #(enqueue ch* (swap! val f %)))
+         :callback #(enqueue ch* (swap! val f %))
+         :close-on-complete? true)
 
        ch*)))
 
@@ -280,6 +301,7 @@
 
       (fn [_]
         (bridge-in-order ch ch* description
+          :close-on-complete? true
           :on-complete
           (fn []
             (doseq [msg (final-messages @acc)]

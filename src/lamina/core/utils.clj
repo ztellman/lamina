@@ -98,6 +98,11 @@
             `(throw (IllegalArgumentException. (str "no matching clause for " (pr-str val##))))
             (last cases))))))
 
+(defmacro enable-unchecked-math []
+  (let [{:keys [major minor]} *clojure-version*]
+    (when-not (and (= 1 major) (= 2 minor))
+      `(set! *unchecked-math* true))))
+
 (defmacro fast-bound-fn [& fn-body]
   (let [{:keys [major minor]} *clojure-version*
         use-thread-bindings? (and (= 1 major) (< minor 3))

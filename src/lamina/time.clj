@@ -19,9 +19,9 @@
 
 (defn now
   "Returns the current time, in milliseconds since the epoch."
-  ([]
+  (^long []
      (System/currentTimeMillis))
-  ([clock]
+  (^long [clock]
      (q/now clock)))
 
 (defn nanoseconds
