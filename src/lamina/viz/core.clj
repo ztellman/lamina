@@ -50,7 +50,8 @@
 
 ;;;
 
-(def escapable-characters "|{}\"")
+;;(def escapable-characters "|{}\"")
+(def escapable-characters "\"")
 
 (defn escape-string [s]
   (reduce

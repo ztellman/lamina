@@ -1,10 +1,10 @@
-(defproject lamina "0.5.0-beta14"
+(defproject lamina "0.5.0-SNAPSHOT"
   :description "event-driven data structures for clojure"
   :min-lein-version "2.0.0"
   :dependencies [[org.clojure/tools.logging "0.2.4"]
                  [org.flatland/useful "0.9.0"]
                  [potemkin "0.2.0"]
-                 [com.yammer.metrics/metrics-core "3.0.0-20130315.200005-6"
+                 [com.yammer.metrics/metrics-core "3.0.0-SNAPSHOT"
                   :exclusions [[org.slf4j/slf4j-api]
                                [com.yammer.metrics/metrics-annotation]]]]
   :exclusions [org.clojure/contrib
