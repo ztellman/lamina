@@ -661,9 +661,11 @@
 
         (do
           ;; notify all state-changed listeners
-          (let [^NodeState s s]
-            (doseq [l watchers]
-              (l (.mode s) (.downstream-count s) nil)))
+          (let [^NodeState s s
+                cnt (.downstream-count s)]
+            (when (or (== 1 cnt) (== 0 cnt))
+              (doseq [w watchers]
+                (w (.mode s) cnt nil))))
 
           true)
 
@@ -704,9 +706,11 @@
                        nil)))]
         (do
           (when-not (identical? s ::state-unchanged)
-            (let [^NodeState s s]
-              (doseq [l watchers]
-                (l (.mode s) (.downstream-count s) nil))))
+            (let [^NodeState s s
+                  cnt (.downstream-count s)]
+              (when (or (== 1 cnt) (== 0 cnt))
+                (doseq [w watchers]
+                  (w (.mode s) cnt nil)))))
           true)
         false)))
 

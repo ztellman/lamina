@@ -108,11 +108,23 @@
 
 (deftest ^:benchmark benchmark-queues
   (let [ch (channel)]
+    (bench "enqueue 1"
+      (enqueue ch 1)
+      (channel->seq ch))
     (bench "enqueue 1e3"
       (dotimes [_ 1e3]
         (enqueue ch 1))
       (channel->seq ch))
     #_(bench "enqueue 1e6"
-      (dotimes [_ 1e6]
-        (enqueue ch 1))
-      (channel->seq ch))))
+        (dotimes [_ 1e6]
+          (enqueue ch 1))
+        (channel->seq ch))))
+
+(deftest ^:benchmark benchmark-join
+  (bench "join 1"
+    (let [ch (channel)]
+      (join ch (channel))))
+  (bench "join 1e3"
+    (let [ch (channel)]
+      (dotimes [_ 1e3]
+        (join ch (channel))))))
