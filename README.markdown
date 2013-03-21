@@ -4,7 +4,7 @@ An event is a value that we don't yet have.  Lamina contains a rich set of opera
 
 ## Installation
 
-    [lamina "0.5.0-beta9"]
+    [lamina "0.5.0-beta14"]
     
 ## Rationale
 
