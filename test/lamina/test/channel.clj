@@ -108,10 +108,10 @@
 
 (deftest ^:benchmark benchmark-queues
   (let [ch (channel)]
-    (bench "enqueue 1"
+    (bench "enqueue 1 message"
       (enqueue ch 1)
       (channel->seq ch))
-    (bench "enqueue 1e3"
+    (bench "enqueue 1e3 messages"
       (dotimes [_ 1e3]
         (enqueue ch 1))
       (channel->seq ch))
@@ -127,4 +127,18 @@
   (bench "join 1e3"
     (let [ch (channel)]
       (dotimes [_ 1e3]
-        (join ch (channel))))))
+        (join ch (channel)))))
+  (let [ch (channel)]
+    (ground (join ch (channel)))
+    (bench "enqueue to 1"
+      (enqueue ch 1)))
+  (let [ch (channel)]
+    (dotimes [_ 1e3]
+      (ground (join ch (channel))))
+    (bench "enqueue to 1e3"
+      (enqueue ch 1)))
+  (let [ch (channel)]
+    (dotimes [_ 1e5]
+      (ground (join ch (channel))))
+    (bench "enqueue to 1e5"
+      (enqueue ch 1))))
