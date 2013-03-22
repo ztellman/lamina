@@ -85,9 +85,9 @@
   (toString [_]
     (if-not (= ::none (g/error-value receiver ::none))
       (str "<== | ERROR: " (g/error-value receiver nil) " |")
-      (if-let [q (g/queue emitter)]
+      (if-let [q (g/queue emitter false)]
         (str "<== "
-          (let [msgs (q/messages q)
+          (let [msgs (when q (q/messages q))
                 msgs-str (-> msgs vec str)]
             (str
               (first msgs-str)

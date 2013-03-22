@@ -73,6 +73,9 @@
     (is (closed? a))
     (is (closed? c))))
 
+(deftest test-to-string
+  (is (= "<== []" (str (closed-channel)))))
+
 ;;;
 
 (deftest ^:benchmark benchmark-channels
