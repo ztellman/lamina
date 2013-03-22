@@ -39,10 +39,10 @@
 
 (definterface IChannelMarker)
 
-(defprotocol+ IEnqueue
+(definterface+ IEnqueue
   (enqueue [_ msg]))
 
-(defprotocol+ IError
+(definterface+ IError
   (error [_ err force?]))
 
 (defprotocol+ IDescribed

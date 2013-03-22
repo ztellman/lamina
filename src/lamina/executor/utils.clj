@@ -9,7 +9,7 @@
 (ns lamina.executor.utils
   (:use [potemkin]))
 
-(defprotocol+ IExecutor
+(definterface+ IExecutor
   (probe-enabled? [_])
   (trace-return [_ val])
   (trace-error [_ val])

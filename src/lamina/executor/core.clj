@@ -18,6 +18,8 @@
     [lamina.trace.timer :as t]
     [lamina.core.context :as context])
   (:import
+    [lamina.executor.utils
+     IExecutor]
     [java.util.concurrent
      LinkedBlockingQueue
      ThreadPoolExecutor

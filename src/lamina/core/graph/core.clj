@@ -31,7 +31,7 @@
 
 ;;;
 
-(defprotocol+ IPropagator
+(definterface+ IPropagator
   (downstream [_]
     "Returns a list of nodes which are downstream of this node.")
   (transactional [_]

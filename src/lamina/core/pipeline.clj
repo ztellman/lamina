@@ -29,7 +29,7 @@
 
 (deftype+ Redirect [pipeline value])
 
-(defprotocol+ IPipeline
+(definterface+ IPipeline
   (implicit? [_])
   (gen-timer [_ stage])
   (run-finally [_])

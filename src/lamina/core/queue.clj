@@ -22,7 +22,7 @@
 
 ;;;
 
-(defprotocol+ IMessage
+(definterface+ IMessage
   (dispatch-message [_ f]))
 
 (deftype+ Message
@@ -129,7 +129,7 @@
 
 ;; This queue is specially designed to interact with the node in lamina.core.graph.node, and
 ;; is not intended as a general-purpose data structure.
-(defprotocol+ IEventQueue
+(definterface+ IEventQueue
   (error [_ error]
     "All pending receives are resolved as errors. It's expected that the queue will
      be swapped out for an error-emitting queue at this point.")

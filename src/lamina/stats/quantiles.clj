@@ -13,6 +13,8 @@
   (:require
     [lamina.time :as t])
   (:import
+    [lamina.stats.utils
+     IUpdatable]
     [com.yammer.metrics
      Clock
      ExponentiallyDecayingSample

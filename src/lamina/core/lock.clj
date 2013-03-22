@@ -19,7 +19,7 @@
 
 ;;;
 
-(defprotocol+ ILock
+(definterface+ ILock
   (acquire [_])
   (acquire-exclusive [_])
   (release [_])

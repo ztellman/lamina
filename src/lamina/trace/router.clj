@@ -18,7 +18,10 @@
     [lamina.trace.router
      [core :as c]
      [parse :as p]
-     [operators :as o]]))
+     [operators :as o]])
+  (:import
+    [lamina.cache
+     IRouter]))
 
 (defn- stringify-keys [x]
   (postwalk
@@ -236,7 +239,7 @@
                    :generator generator
                    :cache+topic->topic-descriptor topic-fn))]
 
-    (reify cache/IRouter
+    (reify IRouter
       (inner-cache [_]
         (cache/inner-cache router))
       (subscribe [this topic options]
@@ -263,7 +266,7 @@
                  {:generator
                   (fn [{:strs [endpoint]}]
                     (cache/subscribe endpoint-router endpoint {}))})]
-    (reify cache/IRouter
+    (reify IRouter
       (inner-cache [_]
         (cache/inner-cache router))
       (subscribe [this topic options]

@@ -17,6 +17,9 @@
     [lamina.time :as t]
     [clojure.tools.logging :as log])
   (:import
+    [lamina.core.utils
+     IEnqueue
+     IError]
     [lamina.core.lock
      Lock]
     [java.util.concurrent
@@ -33,7 +36,7 @@
 
 (deftype+ ResultCallback [on-success on-error])
 
-(defprotocol+ IResult
+(definterface+ IResult
   (success [_ val])
   (success! [_ val])
   (error! [_ err])

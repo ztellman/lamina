@@ -8,7 +8,7 @@
 
 (ns lamina.cache
   (:use
-    [potemkin :only (defprotocol+)]
+    [potemkin :only (definterface+)]
     [lamina.core.channel :only (channel channel* on-closed on-error close siphon)])
   (:require
     [clojure.tools.logging :as log])
@@ -16,7 +16,7 @@
     [java.util.concurrent
      ConcurrentHashMap]))
 
-(defprotocol+ ChannelCache
+(definterface+ IChannelCache
   (get-or-create [cache id on-create]
     "something goes here")
   (ids [cache]
@@ -34,7 +34,7 @@
    necessary."
   [generator]
   (let [m (ConcurrentHashMap.)]
-    (reify ChannelCache
+    (reify IChannelCache
       (get-or-create [this id on-create]
         (let [id* (if (nil? id) ::nil id)]
           (if-let [thunk (.get m id*)]
@@ -59,7 +59,7 @@
 
 ;;;
 
-(defprotocol+ TopicChannelCache
+(definterface+ ITopicChannelCache
   (id->topic [_ id]))
 
 (defn topic-channel-cache
@@ -74,9 +74,9 @@
 
     (reify
 
-      TopicChannelCache
+      ITopicChannelCache
 
-      ChannelCache
+      IChannelCache
 
       (get-or-create [this topic callback]
         (get-or-create cache topic
@@ -128,8 +128,8 @@
 
     (reify
 
-      TopicChannelCache
-      ChannelCache
+      ITopicChannelCache
+      IChannelCache
       
       (get-or-create [this topic callback]
         (let [created? (atom false)
@@ -159,7 +159,7 @@
 
 ;;;
 
-(defprotocol+ IRouter
+(definterface+ IRouter
   (inner-cache [_])
   (subscribe [_ descriptor options]))
 

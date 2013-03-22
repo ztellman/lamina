@@ -3,18 +3,18 @@
   :min-lein-version "2.0.0"
   :dependencies [[org.clojure/tools.logging "0.2.4"]
                  [org.flatland/useful "0.9.0"]
-                 [potemkin "0.2.0"]
+                 [potemkin "0.2.1-SNAPSHOT"]
                  [com.yammer.metrics/metrics-core "3.0.0-SNAPSHOT"
                   :exclusions [[org.slf4j/slf4j-api]
                                [com.yammer.metrics/metrics-annotation]]]]
   :exclusions [org.clojure/contrib
                org.clojure/clojure-contrib]
-  :profiles {:dev {:dependencies [[org.clojure/clojure "1.4.0"]
+  :profiles {:dev {:dependencies [[org.clojure/clojure "1.5.1"]
                                   [criterium "0.3.1"]]}
              :1.2 {:dependencies [[org.clojure/clojure "1.2.1"]]}
              :1.3 {:dependencies [[org.clojure/clojure "1.3.0"]]}
-             :1.5 {:dependencies [[org.clojure/clojure "1.5.0"]]}}
-  :aliases {"all" ["with-profile" "1.2,dev:1.3,dev:dev:1.5,dev"]}
+             :1.4 {:dependencies [[org.clojure/clojure "1.4.0"]]}}
+  :aliases {"all" ["with-profile" "1.2,dev:1.3,dev:dev:1.4,dev"]}
   :plugins [[codox "0.6.2"]]
   :codox {:include [lamina.core
                     lamina.trace
@@ -25,7 +25,12 @@
                     lamina.api
                     lamina.time]
           :output-dir "autodoc"}
-  :jvm-opts ["-server" "-XX:+UseConcMarkSweepGC" "-Xmx2g" "-XX:NewSize=1g" "-XX:MaxPermSize=256m"]
+  :jvm-opts ["-javaagent:/users/zach/clj/verloc/target/verloc-0.1.0-SNAPSHOT.jar"
+             "-server"
+             "-XX:+UseConcMarkSweepGC"
+             "-Xmx2g"
+             "-XX:NewSize=1g"
+             "-XX:MaxPermSize=256m"]
   :repositories {"sonatype-oss-public"
                  "https://oss.sonatype.org/content/groups/public/"}
   :test-selectors {:default #(not (some #{:wiki :benchmark :stress}

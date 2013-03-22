@@ -11,10 +11,12 @@
     [potemkin]
     [lamina.stats.utils])
   (:import
+    [lamina.stats.utils
+     IUpdatable]
     [java.util.concurrent.atomic
      AtomicLong]))
 
-(defprotocol+ IVariance
+(definterface+ IVariance
   (std-dev [_])
   (variance [_])
   (mean [_]))

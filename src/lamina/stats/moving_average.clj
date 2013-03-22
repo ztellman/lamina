@@ -11,6 +11,8 @@
     [potemkin]
     [lamina.stats.utils])
   (:import
+    [lamina.stats.utils
+     IUpdatable]
     [java.util.concurrent.atomic
      AtomicReference]))
 

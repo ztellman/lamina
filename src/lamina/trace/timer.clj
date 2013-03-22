@@ -29,7 +29,7 @@
 
 ;;;
 
-(defprotocol+ ITimed
+(definterface+ ITimed
   (timing [_ start])
   (mark-enter [_])
   (mark-error [_ err])
@@ -59,7 +59,7 @@
         (update-in t [:sub-tasks]
           #(map
              (fn [t]
-               (if (satisfies? ITimed t)
+               (if (instance? ITimed t)
                  (timing t start)
                  t))
              (concat % (seq sub-tasks)))))
@@ -402,7 +402,7 @@
 
 ;;;
 
-(defprotocol+ IDistilledTiming
+(definterface+ IDistilledTiming
   (add-sub-timing! [_ x])
   (merge-distilled-timing! [_ x])
   (set-context-visible! [_ visible?]))

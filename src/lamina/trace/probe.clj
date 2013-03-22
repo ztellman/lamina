@@ -18,7 +18,10 @@
     [clojure.tools.logging :as log])
   (:import
     [lamina.core.utils
-     IChannelMarker]
+     IChannelMarker
+     IEnqueue]
+    [lamina.core.channel
+     IChannel]
     [java.io
      Writer]
     [java.util.concurrent
@@ -27,7 +30,7 @@
     [java.util.concurrent.atomic
      AtomicBoolean]))
 
-(defprotocol+ IProbe
+(definterface+ IProbe
   (probe-enabled? [_] "Returns true if the probe has downstream channels.")
   (trigger-callbacks [_ enabled?]))
 
@@ -54,7 +57,7 @@
           (log/error e "Error in on-enabled-changed callback.")))))
 
   IChannelMarker
-  c/IChannel
+  IChannel
   (receiver-node [_]
     (c/receiver-node channel))
   (emitter-node [_]
@@ -181,7 +184,7 @@
   IProbe
   (probe-enabled? [_]
     (.get enabled?))
-  c/IChannel
+  IChannel
   (receiver-node [_]
     (c/receiver-node receiver))
   (emitter-node [_]

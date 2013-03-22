@@ -9,7 +9,7 @@
 (ns lamina.trace.router.core
   (:use
     [lamina.cache :only (subscribe)]
-    [potemkin :only (defprotocol+)])
+    [potemkin :only (definterface+)])
   (:require
     [lamina.time :as t]
     [lamina.trace.context])
@@ -44,7 +44,7 @@
     (apply concat)
     (apply hash-map)))
 
-(defprotocol+ TraceOperator
+(definterface+ ITraceOperator
   (periodic? [_])
   (distribute? [_])
   (pre-aggregate? [_])
@@ -75,7 +75,7 @@
                  (getName [_] ~(str name))
                  (getNamespace [_] ~ns-str)
                  
-                 TraceOperator
+                 lamina.trace.router.core.ITraceOperator
 
                  (periodic? [_]
                    periodic#)

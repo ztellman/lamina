@@ -17,10 +17,13 @@
     [lamina.core.graph.node :as n]
     [clojure.tools.logging :as log])
   (:import
+    [lamina.core.utils
+     IError]
     [lamina.core.lock
      AsymmetricLock]
     [lamina.core.graph.core
-     Edge]
+     Edge
+     IPropagator]
     [java.util.concurrent.atomic
      AtomicBoolean]
     [java.util.concurrent
@@ -84,7 +87,7 @@
       (.clear ^ConcurrentHashMap downstream)
       (map deref channel-thunks))))
 
-(defprotocol+ IDistributingPropagator
+(definterface+ IDistributingPropagator
   (close-all-facets [_ force?])
   (facets [_]))
 

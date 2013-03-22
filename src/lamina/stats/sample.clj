@@ -15,6 +15,8 @@
     [lamina.core.lock :as l]
     [lamina.time :as t])
   (:import
+    [lamina.stats.utils
+     IUpdatable]
     [java.util.concurrent
      ConcurrentSkipListMap]
     [java.util.concurrent.atomic
@@ -27,7 +29,7 @@
 ;; which are in turn based on:
 ;; http://www.research.att.com/people/Cormode_Graham/library/publications/CormodeShkapenyukSrivastavaXu09.pdf
 
-(defprotocol+ IExponentiallyDecayingSampler
+(definterface+ IExponentiallyDecayingSampler
   (rescale [_ next]))
 
 (defn priority [alpha elapsed]

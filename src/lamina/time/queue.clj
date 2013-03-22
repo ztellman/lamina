@@ -21,10 +21,10 @@
      LinkedBlockingQueue
      ConcurrentSkipListSet]))
 
-(defprotocol+ IClock
+(definterface+ IClock
   (now [_]))
 
-(defprotocol+ ITaskQueue
+(definterface+ ITaskQueue
   (invoke-in- [_ delay f]))
 
 ;;;
@@ -119,7 +119,7 @@
 
 ;;;
 
-(defprotocol+ INonRealTimeTaskQueue
+(definterface+ INonRealTimeTaskQueue
   (advance [_] "Advances to the next task. Returns false if there are no remaining tasks.")
   (advance-until [_ timestamp] "Advances across all tasks that occur before or on the given timestamp."))
 

@@ -20,12 +20,16 @@
     [lamina.core.threads :as t]
     [clojure.tools.logging :as log])
   (:import
+    [lamina.core.utils
+     IError]
     [lamina.core.queue
      Message]
     [lamina.core.lock
+     ILock
      AsymmetricLock]
     [lamina.core.graph.core
-     Edge]
+     Edge
+     IPropagator]
     [lamina.core.result
      SuccessResult
      ErrorResult
@@ -39,8 +43,39 @@
     [java.util.concurrent
      CopyOnWriteArrayList]))
 
+;;;
 
-(defprotocol+ INode
+;; The possible modes:
+;; open         messages can freely pass through
+;; split        messages can freely pass through, queue operations are forwarded to upstream split node
+;; consumed     single consuming process (i.e. take-while*), messages go in queue
+;; closed       no further messages can propagate through the node, messages still in queue
+;; drained      no further messages can propagate through the node, queue is empty
+;; error        an error prevents any further messages from being propagated
+(deftype+ NodeState
+  [mode
+   ^long downstream-count
+   split
+   error
+   ;; queue info
+   queue 
+   ^boolean read?
+   ;; special node states
+   ^boolean transactional?
+   ^boolean permanent?])
+
+(defmacro set-state! [this state-val &
+                      {:or {read? false
+                            transactional? false
+                            permanent? false}
+                       :as key-vals}]
+  `(let [val# (assoc-record ~(with-meta state-val {:tag NodeState}) ~@key-vals)]
+     (set-state ~this val#)
+     val#))
+
+;;;
+
+(definterface+ INode
   
   ;;
   (read-node [_] [_ predicate false-value result-channel]
@@ -74,36 +109,6 @@
      Possible states are ::open, ::consumed, ::split, ::closed, ::drained, ::error.")
   (drain [_]
     "Consumes and returns all messages currently in the queue."))
-
-;;;
-
-;; The possible modes:
-;; open         messages can freely pass through
-;; split        messages can freely pass through, queue operations are forwarded to upstream split node
-;; consumed     single consuming process (i.e. take-while*), messages go in queue
-;; closed       no further messages can propagate through the node, messages still in queue
-;; drained      no further messages can propagate through the node, queue is empty
-;; error        an error prevents any further messages from being propagated
-(deftype+ NodeState
-  [mode
-   ^long downstream-count
-   split
-   error
-   ;; queue info
-   queue 
-   ^boolean read?
-   ;; special node states
-   ^boolean transactional?
-   ^boolean permanent?])
-
-(defmacro set-state! [this state-val &
-                      {:or {read? false
-                            transactional? false
-                            permanent? false}
-                       :as key-vals}]
-  `(let [val# (assoc-record ~(with-meta state-val {:tag NodeState}) ~@key-vals)]
-     (set-state ~this val#)
-     val#))
 
 ;;;
 
@@ -190,7 +195,7 @@
 
 (declare split-node join node?)
 
-(deftype Node
+(deftype+ Node
   [^AsymmetricLock lock
    operator
    description
@@ -210,7 +215,7 @@
   IDescribed
   (description [_] description)
 
-  l/ILock
+  ILock
   (acquire [_] (l/acquire lock))
   (acquire-exclusive [_] (l/acquire-exclusive lock))
   (release [_] (l/release lock))

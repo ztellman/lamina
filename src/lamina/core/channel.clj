@@ -20,7 +20,9 @@
     [clojure.tools.logging :as log])
   (:import
     [lamina.core.utils
-     IChannelMarker]
+     IChannelMarker
+     IEnqueue
+     IError]
     [lamina.core.lock
      AsymmetricLock]
     [lamina.core.graph.node
@@ -36,7 +38,7 @@
 
 ;;;
 
-(defprotocol+ IChannel
+(definterface+ IChannel
   (receiver-node [_]
     "Returns the receiver node for the channel.")
   (emitter-node [_]
