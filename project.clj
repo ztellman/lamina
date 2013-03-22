@@ -25,11 +25,11 @@
                     lamina.api
                     lamina.time]
           :output-dir "autodoc"}
-  :jvm-opts ["-javaagent:/users/zach/clj/verloc/target/verloc-0.1.0-SNAPSHOT.jar"
+  :jvm-opts [;"-javaagent:/users/zach/clj/verloc/target/verloc-0.1.0-SNAPSHOT.jar"
              "-server"
              "-XX:+UseConcMarkSweepGC"
-             "-Xmx2g"
-             "-XX:NewSize=1g"
+             "-Xmx1g"
+             ;"-XX:NewSize=1g"
              "-XX:MaxPermSize=256m"]
   :repositories {"sonatype-oss-public"
                  "https://oss.sonatype.org/content/groups/public/"}

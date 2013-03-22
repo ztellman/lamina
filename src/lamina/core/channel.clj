@@ -315,8 +315,8 @@
 
 (defn- split [ch description sneaky?]
   (let [n (g/node identity)
-        populate #(when-let [q (-> ch emitter-node g/queue)]
-                    (q/append (g/queue n) (q/messages q)))]
+        populate #(when-let [q (-> ch emitter-node (g/queue false))]
+                    (q/append (g/queue n true) (q/messages q)))]
     (if (split-receiver ch)
       (let [emitter (split-receiver ch)]
         (g/join

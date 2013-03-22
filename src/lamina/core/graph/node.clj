@@ -76,6 +76,8 @@
 ;;;
 
 (definterface+ INode
+
+  (queue [_ ensure?])
   
   ;;
   (read-node [_] [_ predicate false-value result-channel]
@@ -131,7 +133,7 @@
            (error node# e# false)
            ::error)))))
 
-(defmacro check-for-drained [this state watchers cancellations]
+(defmacro check-for-drained [this lock state watchers cancellations]
   `(let [^NodeState state# ~state]
      (when-let [q# (.queue state#)]
        (when (q/drained? q#)
@@ -141,7 +143,8 @@
          (doseq [l# ~watchers]
            (l# ::drained 0 nil))
          (.clear ~watchers)
-         (.clear ~cancellations)))))
+         (l/with-exclusive-lock ~lock
+           (.clear ~cancellations))))))
 
 (defmacro ensure-queue [this state s]
   `(let [^NodeState s# ~s]
@@ -178,7 +181,7 @@
         (let [~state-sym ^NodeState x#
               result# ~queue-receive]
           (when (instance? SuccessResult result#)
-            (check-for-drained ~this ~state ~watchers ~cancellations))
+            (check-for-drained ~this ~lock ~state ~watchers ~cancellations))
           result#)))))
 
 (defn drain-queue [^NodeState state]
@@ -249,7 +252,8 @@
           (doseq [l watchers]
             (l ::error 0 err))
           (.clear watchers)
-          (.clear cancellations)
+          (l/with-exclusive-lock lock
+            (.clear cancellations))
           true)
         
         ;; state has already been permanently changed or cannot be changed
@@ -343,7 +347,7 @@
                                     (enqueue-and-release (.lock node) state msg true))))))))))
 
                   0
-                  (enqueue-and-release lock state msg (not grounded?))
+                  (enqueue-and-release lock (ensure-queue this state state) msg (not grounded?))
 
                   ;; more than one node
                   (do
@@ -417,6 +421,11 @@
 
   INode
 
+  (queue [this ensure?]
+    (if ensure?
+      (.queue (ensure-queue this state state))
+      (.queue state)))
+
   ;;
   (state [_]
     state)
@@ -435,7 +444,7 @@
                 f (constantly :lamina/to-seq)]
             (doseq [msg msgs]
               (q/dispatch-message msg f))
-            (check-for-drained this state watchers cancellations)
+            (check-for-drained this lock state watchers cancellations)
             (map #(.message ^Message %) msgs))))))
 
   ;;
@@ -479,15 +488,18 @@
           (cond
 
             (instance? SuccessResult result)
-            (check-for-drained this state watchers cancellations)
+            (check-for-drained this lock state watchers cancellations)
 
             (instance? ResultChannel result)
             (when name
-              (.put cancellations name
-                #(when-let [q (.queue ^NodeState (.state ^Node %))]
-                   (q/cancel-receive q result)))
-              (let [f (fn [_] (.remove cancellations name))]
-                (r/subscribe result (r/result-callback f f)))))
+              (l/with-exclusive-lock lock
+
+                (.put cancellations name
+                 #(when-let [q (.queue ^NodeState (.state ^Node %))]
+                    (q/cancel-receive q result)))
+
+                (let [f (fn [_] (.remove cancellations name))]
+                  (r/subscribe result (r/result-callback f f))))))
 
           (r/subscribe result (r/result-callback callback (fn [_])))))))
 
@@ -506,7 +518,7 @@
                        (close-node! this edges s)))))]
         ;; signal state change
         (do
-          (when-not (check-for-drained this s watchers cancellations)
+          (when-not (check-for-drained this lock s watchers cancellations)
             (doseq [l watchers]
               (l (.mode s) (.downstream-count s) nil)))
           true)
@@ -593,7 +605,8 @@
 
           (::open ::consumed)
           (let [n (split-node this)]
-            (.clear cancellations)
+            (l/with-exclusive-lock lock
+              (.clear cancellations))
             (.clear watchers)
             (set-state! this s
               :mode ::split
@@ -657,7 +670,8 @@
                            (q/dispatch-message msg f))))
 
                      (when new-state
-                       (.put cancellations name #(unlink % edge)))
+                       (l/with-exclusive-lock lock
+                         (.put cancellations name #(unlink % edge))))
                      
                      (when post
                        (post (boolean new-state)))
@@ -753,7 +767,7 @@
   ;;
   (cancel [this name]
     (io! "Cannot cancel modifications to node within a transaction."
-      (if-let [x (l/with-lock lock
+      (if-let [x (l/with-exclusive-lock lock
                   (if (identical? ::split (.mode state))
                     (or (.remove cancellations name) ::split)
                     (.remove cancellations name)))]
@@ -795,7 +809,7 @@
       nil
       (.grounded? node)
       s
-      (Collections/synchronizedMap (HashMap. ^Map (.cancellations node)))
+      (HashMap. ^Map (.cancellations node))
       (CopyOnWriteArrayList. ^CopyOnWriteArrayList (.edges node))
       (CopyOnWriteArrayList. ^CopyOnWriteArrayList (.watchers node)))))
 
@@ -818,14 +832,14 @@
        (make-record NodeState
          :mode ::open
          :downstream-count 0
-         :queue (let [messages# ~messages]
+         :queue (when-let [messages# (seq ~messages)]
                   (if ~transactional?
                     (q/transactional-queue messages#)
                     (q/queue messages#)))
          :read? false
          :permanent? ~permanent?
          :transactional? ~transactional?)
-       (Collections/synchronizedMap (HashMap. 2))
+       (HashMap. 1 2)
        (CopyOnWriteArrayList.)
        (CopyOnWriteArrayList.))))
 
@@ -919,9 +933,6 @@
 
 (defn grounded? [node]
   (.grounded? ^Node node))
-
-(defn queue [node]
-  (.queue (state node)))
 
 ;;;
 
