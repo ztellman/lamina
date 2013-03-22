@@ -531,7 +531,7 @@
     (r/defer-within-transaction (consume this edge)
       (let [result
             (l/with-exclusive-lock lock
-              (let [s state]
+              (let [s (ensure-queue this state state)]
                 (case (.mode s)
                   ::split
                   ::split
