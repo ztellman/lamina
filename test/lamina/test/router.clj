@@ -154,7 +154,7 @@
 (deftest test-non-realtime-router
   (let [q (t/non-realtime-task-queue)
         router (trace-router
-                 {:generator (fn [{:strs [pattern]}]
+                 {:generator (fn [{:keys [pattern]}]
                                (select-probes pattern))
                   :task-queue q
                   :payload :value

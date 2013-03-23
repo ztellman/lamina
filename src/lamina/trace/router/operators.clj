@@ -22,11 +22,6 @@
 
 ;; lookups
 
-(defn keywordize [m]
-  (zipmap
-    (map #(if (string? %) (keyword %) %) (keys m))
-    (vals m)))
-
 (defn getter [lookup]
   (if (coll? lookup)
 
@@ -35,6 +30,7 @@
       (fn [m]
         (vec (map #(% m) fs))))
 
+    ;; do field lookup
     (let [str-facet (-> lookup name)]
       (cond
         (= "_" str-facet)
@@ -64,10 +60,10 @@
               (get m key-facet))))))))
 
 (defn selector [m]
-  (let [ignore-key? #(re-find #"^[0-9]+" %)
+  (let [ignore-key? number?
         ks (map (fn [[k v]] (if (ignore-key? k) v k)) m)
         vs (->> m vals (map getter))]
-    (assert (every? #(not (re-find #"\." %)) ks))
+    (assert (every? #(not (re-find #"\." (name %))) ks))
     (fn [m]
       (zipmap
         ks
@@ -78,15 +74,15 @@
   :distribute? true
 
   :transform
-  (fn [{:strs [options] :as desc} ch]
-    (map* (getter (get options "field")) ch)))
+  (fn [{:keys [options] :as desc} ch]
+    (map* (getter (get options :field)) ch)))
 
 (r/def-trace-operator select
   :periodic? false
   :distribute? true
 
   :transform
-  (fn [{:strs [options]} ch]
+  (fn [{:keys [options]} ch]
     (map* (selector options) ch)))
 
 ;;; merge, zip
@@ -96,12 +92,12 @@
   :distribute? false
 
   :transform
-  (fn [{:strs [options]} ch]
+  (fn [{:keys [options]} ch]
     (let [descs (vals options)]
-      (assert (every? #(contains? % "operators") descs))
+      (assert (every? #(contains? % :operators) descs))
       (apply merge-channels
         (map
-          (fn [{:strs [operators pattern] :as desc}]
+          (fn [{:keys [operators pattern] :as desc}]
             (if pattern
               (r/generate-stream desc)
               (r/transform-trace-stream desc (fork ch))))
@@ -112,14 +108,14 @@
   :distribute? false
 
   :transform
-  (fn [{:strs [options]} ch]
+  (fn [{:keys [options]} ch]
     (let [options options
           ks (map keyword (keys options))
           descs (vals options)]
-      (assert (every? #(contains? % "operators") descs))
+      (assert (every? #(contains? % :operators) descs))
       (let [ch* (->> descs
                   (map
-                    (fn [{:strs [operators pattern] :as desc}]
+                    (fn [{:keys [operators pattern] :as desc}]
                       (if pattern
                         (r/generate-stream desc)
                         (r/transform-trace-stream desc (fork ch)))))
@@ -157,20 +153,20 @@
   :distribute? true
   
   :transform
-  (fn [{:strs [options]} ch]
+  (fn [{:keys [options]} ch]
     (filter*
       (->> options vals (map comparison-filter) filters)
       ch)))
 
 ;;; group-by
 
-(defn group-by-op [{:strs [options operators] :as desc} ch]
-  (let [facet (or (get options "facet")
-                (get options "0"))
+(defn group-by-op [{:keys [options operators] :as desc} ch]
+  (let [facet (or (:facet options)
+                (get options 0))
         periodic? (r/periodic-chain? operators)
-        period (or (get options "period")
+        period (or (get options :period)
                  (t/period))
-        expiration (get options "expiration" (max (t/minutes 1) (* 10 period)))]
+        expiration (get options :expiration (max (t/minutes 1) (* 10 period)))]
 
     (assert facet)
 
@@ -179,18 +175,18 @@
        :generator (fn [k ch]
                     (let [ch (->> ch
                                (close-on-idle expiration)
-                               (r/transform-trace-stream (dissoc desc "name")))]
+                               (r/transform-trace-stream (dissoc desc :name)))]
                       (if-not periodic?
                         (partition-every {:period period} ch)
                         ch)))
        :period period}
       ch)))
 
-(defn merge-group-by [{:strs [options operators] :as desc} ch]
+(defn merge-group-by [{:keys [options operators] :as desc} ch]
   (let [periodic? (r/periodic-chain? operators)
-        period (or (get options "period")
+        period (or (get options :period)
                  (t/period))
-        expiration (get options "expiration" (max (t/minutes 1) (* 10 period)))]
+        expiration (get options :expiration (max (t/minutes 1) (* 10 period)))]
     (->> ch
       concat*
       (distribute-aggregate
@@ -202,7 +198,7 @@
                             ch (if-not periodic?
                                  (concat* ch)
                                  ch)
-                            ch (r/transform-trace-stream (dissoc desc "name") ch)]
+                            ch (r/transform-trace-stream (dissoc desc :name) ch)]
                         (if-not periodic?
                           (partition-every {:period period} ch)
                           ch)))
@@ -217,8 +213,8 @@
 
 ;;;
 
-(defn normalize-options [{:strs [options] :as desc}]
-  (keywordize options))
+(defn normalize-options [{:keys [options] :as desc}]
+  options)
 
 (defn sum-op [desc ch]
   (lamina.stats/sum (normalize-options desc) ch))
@@ -276,16 +272,16 @@
   :distribute? true
 
   :transform
-  (fn [{:strs [options] :as desc} ch]
-    (let [period (or (get options "period")
-                   (get options "0")
+  (fn [{:keys [options] :as desc} ch]
+    (let [period (or (get options :period)
+                   (get options 0)
                    (t/period))]
       (sample-every {:period period} ch))))
 
 (defn partition-every-op
-  [{:strs [options] :as desc} ch]
-  (let [period (or (get options "period")
-                 (get options "0")
+  [{:keys [options] :as desc} ch]
+  (let [period (or (get options :period)
+                 (get options 0)
                  (t/period))]
     (partition-every {:period period} ch)))
 

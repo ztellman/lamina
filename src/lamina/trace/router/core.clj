@@ -112,13 +112,13 @@
 
 ;;;
 
-(defn group-by? [{:strs [name] :as op}]
+(defn group-by? [{:keys [name] :as op}]
   (when op
     (= "group-by" name)))
 
 (defn operator-seq [ops]
   (mapcat
-    (fn [{:strs [operators] :as op}]
+    (fn [{:keys [operators] :as op}]
       (if (group-by? op)
         (cons op (operator-seq operators))
         [op]))
@@ -130,14 +130,14 @@
   (loop [acc [], ops ops]
     (if (empty? ops)
       acc
-      (let [{:strs [operators name] :as op} (first ops)]
+      (let [{:keys [operators name] :as op} (first ops)]
         (if (group-by? op)
             
           ;; traverse the group-by, see if it has to terminate mid-stream
           (let [operators* (distributable-chain operators)]
             (if (= operators operators*) 
               (recur (conj acc op) (rest ops))
-              (conj acc (assoc op "operators" operators*))))
+              (conj acc (assoc op :operators operators*))))
             
           (if (or
                 ;; we don't know what this is, maybe the endpoint does
@@ -147,14 +147,14 @@
             (concat
               acc
               (when (pre-aggregate? (operator name))
-                [(assoc op "stage" "pre-aggregate")]))))))))
+                [(assoc op :stage :pre-aggregate)]))))))))
 
 (defn non-distributable-chain
   "Operators which must be performed at the root of the topology."
   [ops]
   (loop [ops ops]
     (when-not (empty? ops)
-      (let [{:strs [operators name] :as op} (first ops)]
+      (let [{:keys [operators name] :as op} (first ops)]
         (if (group-by? op)
               
           ;; traverse the group-by, see if it has to terminate mid-stream
@@ -163,8 +163,8 @@
               (recur (rest ops))
               (list*
                 (assoc op
-                  "stage" "aggregate"
-                  "operators" operators*)
+                  :stage :aggregate
+                  :operators operators*)
                 (rest ops))))
               
           (if (or
@@ -173,7 +173,7 @@
             (recur (rest ops))
             (concat
               (when (operator name)
-                [(assoc op "stage" "aggregate")])
+                [(assoc op :stage :aggregate)])
               (rest ops))))))))
 
 (defn periodic-chain?
@@ -181,18 +181,18 @@
   [ops]
   (->> ops
     operator-seq
-    (map #(get % "name"))
+    (map :name)
     (remove nil?)
     (map operator)
     (some periodic?)
     boolean))
 
 (defn transform-trace-stream
-  ([{:strs [name operators stage]
-     :or {stage "transform"}
+  ([{:keys [name operators stage]
+     :or {stage :transform}
      :as desc}
     ch]
-     (let [f (case (keyword stage)
+     (let [f (case stage
                :pre-aggregate pre-aggregate
                :aggregate aggregate
                :transform transform)]

@@ -204,7 +204,7 @@
       colon
       param)
     (fn [[k _ v]]
-      {k v})))
+      {(keyword k) v})))
 
 (def params
   (token

@@ -23,19 +23,9 @@
     [lamina.cache
      IRouter]))
 
-(defn- stringify-keys [x]
-  (postwalk
-    (fn [x]
-      (if (map? x)
-        (zipmap
-          (map #(if (keyword? %) (name %) (str %)) (keys x))
-          (vals x))
-        x))
-    x))
-
 (defn parse-descriptor [x {:as options}]
   (let [descriptor (if (string? x)
-                     (stringify-keys (p/parse-stream x))
+                     (p/parse-stream x)
                      x)]
     descriptor))
 
@@ -78,7 +68,7 @@
                  (if (ifn? descriptor)
                    (descriptor ch)
                    (let [desc (parse-descriptor descriptor options)
-                         ch (or ch (stream-generator (desc "pattern")))]
+                         ch (or ch (stream-generator (desc :pattern)))]
                      (c/transform-trace-stream desc ch))))
                descriptor->channel))
 
@@ -226,14 +216,14 @@
                        (map* payload))
                     generator)
 
-        topic-fn (fn [this {:strs [operators name] :as topic}]
+        topic-fn (fn [this {:keys [operators name] :as topic}]
                    
                    ;; is it a chain of operators?
                    (when (and (not name) (not (empty? operators)))
                      {:cache this
-                      :topic (update-in topic ["operators"] butlast)
+                      :topic (update-in topic [:operators] butlast)
                       :transform #(c/transform-trace-stream
-                                    (update-in topic ["operators"] (comp list last)) %)}))
+                                    (update-in topic [:operators] (comp list last)) %)}))
         router (cache/router
                  (assoc options
                    :generator generator
@@ -245,10 +235,11 @@
       (subscribe [this topic options]
         (let [descriptor (parse-descriptor topic options)
               period (or (:period options)
-                       (get descriptor "period")
+                       (:period descriptor)
                        (time/period))]
           (time/with-task-queue task-queue
-            (binding [c/*stream-generator* (or c/*stream-generator* #(cache/subscribe this % options))]
+            (binding [c/*stream-generator* (or c/*stream-generator*
+                                             #(cache/subscribe this % options))]
               (time/with-period period
                 (cache/subscribe router descriptor options)))))))))
 
@@ -256,7 +247,7 @@
   ^{:doc "something goes here"}
   local-trace-router
   (trace-router
-    {:generator (fn [{:strs [pattern]}]
+    {:generator (fn [{:keys [pattern]}]
                   (select-probes pattern))}))
 
 (defn aggregating-trace-router
@@ -264,22 +255,22 @@
   [endpoint-router]
   (let [router (trace-router
                  {:generator
-                  (fn [{:strs [endpoint]}]
+                  (fn [{:keys [endpoint]}]
                     (cache/subscribe endpoint-router endpoint {}))})]
     (reify IRouter
       (inner-cache [_]
         (cache/inner-cache router))
       (subscribe [this topic options]
-        (let [{:strs [operators] :as descriptor} (parse-descriptor topic options)
-              period (or (options :period)
-                       (get descriptor "period")
+        (let [{:keys [operators] :as descriptor} (parse-descriptor topic options)
+              period (or (:period options)
+                       (:period descriptor)
                        (time/period))
               distributable (assoc descriptor
-                              "operators" (c/distributable-chain operators)
-                              "period" period)
+                              :operators (c/distributable-chain operators)
+                              :period period)
               non-distributable (assoc descriptor
-                                  "endpoint" distributable 
-                                  "operators" (c/non-distributable-chain operators))]
+                                  :endpoint distributable 
+                                  :operators (c/non-distributable-chain operators))]
           (binding [c/*stream-generator* (or c/*stream-generator* #(cache/subscribe this % options))]
             (time/with-period period
               (cache/subscribe router non-distributable options))))))))
