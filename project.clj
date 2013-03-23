@@ -10,7 +10,7 @@
                                   [criterium "0.3.1"]]}
              :1.3 {:dependencies [[org.clojure/clojure "1.3.0"]]}
              :1.4 {:dependencies [[org.clojure/clojure "1.4.0"]]}}
-  :aliases {"all" ["with-profile" "1.2,dev:1.3,dev:dev:1.4,dev"]}
+  :aliases {"all" ["with-profile" "1.3,dev:dev:1.4,dev"]}
   :plugins [[codox "0.6.2"]]
   :codox {:include [lamina.core
                     lamina.trace
