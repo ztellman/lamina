@@ -9,7 +9,7 @@
 (ns lamina.core.pipeline
   (:use
     [potemkin]
-    [lamina.core.utils :only (description try*)])
+    [lamina.core.utils :only (description)])
   (:require
     [lamina.core.utils :as u]
     [lamina.trace.timer :as t]
@@ -264,7 +264,7 @@
                                  ~(when implicit? `(context/timer)))))
                            fn-transform#)
            fn-transform# (if ~with-bindings?
-                           (comp u/fast-bound-fn* fn-transform#)
+                           (comp potemkin/fast-bound-fn* fn-transform#)
                            fn-transform#)
            ~fn-transform fn-transform#]
        (reify IPipeline

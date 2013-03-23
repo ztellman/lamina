@@ -119,8 +119,9 @@
 
   clojure.lang.IDeref
   (deref [_]
-    (let [^objects ary (object-array sample-size)]
-      (dotimes [i (min (.get counter) sample-size)]
+    (let [cnt (min (.get counter) sample-size)
+          ^objects ary (object-array cnt)]
+      (dotimes [i cnt]
         (aset ary i (.get samples i)))
       (seq ary))))
 

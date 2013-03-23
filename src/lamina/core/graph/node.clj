@@ -282,7 +282,7 @@
             ;; acquire the lock before we look at the state
             (l/acquire lock)
             (let [state state]
-              (cond-case (.mode state)
+              (condp-case identical? (.mode state)
 
                 (::open ::split)
                 (condp = (.size edges)
@@ -317,7 +317,7 @@
                               (do
                                 (l/acquire (.lock node))
                                 (let [^NodeState state (.state node)]
-                                  (cond-case (.mode state)
+                                  (condp-case identical? (.mode state)
 
                                     (::open ::split)
                                     (let [^CopyOnWriteArrayList edges (.edges node)]

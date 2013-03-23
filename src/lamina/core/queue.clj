@@ -32,7 +32,7 @@
   (dispatch-message [_ f]
     (if listener
 
-      (u/try*
+      (try*
         (let [x (f message)]
           (u/enqueue listener x))
         (catch Throwable e
@@ -88,7 +88,7 @@
     (let [^MessageConsumer consumer consumer
           predicate (.predicate consumer)
           result-channel (.result-channel consumer)]
-      (u/try*
+      (try*
         (let [consume? (or (identical? nil predicate) (predicate (.message msg)))]
           (if (or (identical? nil result-channel) (r/claim result-channel))
                
@@ -109,7 +109,7 @@
 
 (defn dispatch-consumption [^Consumption c]
   (let [result-channel (.result-channel c)]
-     (u/cond-case (.type c)
+     (condp-case identical? (.type c)
        (::not-consumed ::consumed)
        (if (identical? nil result-channel)
          (r/success-result (.result c))

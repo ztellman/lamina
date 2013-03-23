@@ -65,7 +65,7 @@
                     :return-probe ~return-probe
                     :implicit? ~implicit?)]
        (ex/execute executor# timer#
-         (~(if with-bindings? `lamina.core.utils/fast-bound-fn `fn) [] ~invoke)
+         (~(if with-bindings? `potemkin/fast-bound-fn `fn) [] ~invoke)
          ~(when timeout `(when ~timeout (~timeout ~args)))))))
 
 (defmacro fn-body

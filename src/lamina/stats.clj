@@ -17,7 +17,7 @@
     [lamina.stats.sample :as sample]
     [lamina.stats.moving-average :as avg]
     [lamina.stats.variance :as var]
-    [lamina.stats.quantiles :as qnt])
+    [lamina.stats.math :as math])
   (:import
     [lamina.stats.utils
      IUpdatable]
@@ -135,11 +135,14 @@
           window (t/minutes 5)}
      :as options}
     ch]
-     (let [quantiles (qnt/moving-quantiles task-queue window quantiles)]
-       (bridge-accumulate ch (mimic ch) "moving-quantiles"
-         (merge options
-           (number-accumulator "moving-quantiles" #(update quantiles %))
-           {:emitter #(deref quantiles)})))))
+     (let [sampler (sample/moving-sampler options)
+           ch* (bridge-accumulate ch (mimic ch) "moving-quantiles"
+                 (merge options
+                   (number-accumulator "moving-quantiles" #(update sampler %))
+                   {:emitter #(deref sampler)}))]
+       (map*
+         #(zipmap quantiles (math/quantiles % quantiles))
+         ch*))))
 
 (defn variance
   "Returns a channel that will periodically emit the variance of all values emitted by the source
