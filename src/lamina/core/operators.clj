@@ -558,7 +558,7 @@
         lock (l/lock)
         ch* (channel* :description "zip-all")]
     
-    (doseq [[^long idx ch] (map vector (range cnt) channels)]
+    (doseq [[idx ch] (map vector (range cnt) channels)] ;; todo: tag as long
       (bridge-join ch ch* ""
         (fn [msg]
           (if-let [ary* (l/with-exclusive-lock lock
@@ -616,7 +616,7 @@
                             (let [ary* (object-array cnt)]
                               (System/arraycopy ary 0 ary* 0 cnt)
                               ary*))]
-       (doseq [[^long idx ch] (map vector (range cnt) channels)]
+       (doseq [[idx ch] (map vector (range cnt) channels)]  ;; tag as long
          (bridge-join ch ch* ""
            (fn [msg]
              (let [curr-result @result]

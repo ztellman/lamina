@@ -28,7 +28,10 @@
 ;;;
 
 (defn moving-sample
-  "something goes here"
+  "Accumulates a representative sample of values passing through the channel, biased towards values within the
+   last `window` milliseconds.
+
+   The current sample is emitted every `period` milliseconds."
   ([ch]
      (moving-sample nil ch))
   ([{:keys [window period sample-size task-queue] :as options} ch]
@@ -39,7 +42,9 @@
             :emitter #(deref sampler)})))))
 
 (defn sample
-  "something goes here"
+  "Accumulates a representative sample of values passing through the channel.
+
+   The current sample is emitted every `period` milliseconds."
   ([ch]
      (sample nil ch))
   ([{:keys [window period sample-size task-queue] :as options} ch]
@@ -51,7 +56,7 @@
 
 ;;;
 
-(defn number-accumulator [name f]
+(defn- number-accumulator [name f]
   (let [warn-str (format "non-numerical value in '%s':" name)]
     {:accumulator (fn [n]
                     (if-not (number? n)

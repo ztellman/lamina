@@ -24,7 +24,14 @@
 ;;;
 
 (defn trace-router
-  "something goes here"
+  "Creates a router which can be queried via the default syntax and allows multiple queries to share sub-streams.
+
+   Like `lamina.cache/router`, with the addition of:
+	
+   `:timestamp` - a function which returns the logical time of each message, defaults to wall time.
+  
+   `:payload` - a function which describes the content of each message, defaults to `identity`.
+  "
   [{:keys [generator
            topic->id
            on-subscribe
@@ -72,14 +79,15 @@
                 (cache/subscribe router descriptor options)))))))))
 
 (def
-  ^{:doc "something goes here"}
+  ^{:doc "A trace-router which can be used to consume and analyze probe-channels."}
   local-trace-router
   (trace-router
     {:generator (fn [{:keys [pattern]}]
                   (select-probes pattern))}))
 
 (defn aggregating-trace-router
-  "something goes here"
+  "A trace-router which splits the query into distributable and non-distributable portions, and forwards
+   the distributable portion to `endpoint-router`."
   [endpoint-router]
   (let [router (trace-router
                  {:generator

@@ -7,18 +7,22 @@
   :exclusions [org.clojure/contrib
                org.clojure/clojure-contrib]
   :profiles {:dev {:dependencies [[org.clojure/clojure "1.5.1"]
-                                  [criterium "0.3.1"]]}
+                                  [criterium "0.3.1"]
+                                  [codox-md "0.2.0"]]}
              :1.3 {:dependencies [[org.clojure/clojure "1.3.0"]]}
-             :1.4 {:dependencies [[org.clojure/clojure "1.4.0"]]}}
-  :aliases {"all" ["with-profile" "1.3,dev:dev:1.4,dev"]}
+             :1.4 {:dependencies [[org.clojure/clojure "1.4.0"]]}
+             :1.6 {:dependencies [[org.clojure/clojure "1.6.0-master-SNAPSHOT"]]}}
+  :aliases {"all" ["with-profile" "1.6,dev:1.3,dev:dev:1.4,dev"]}
   :plugins [[codox "0.6.2"]]
-  :codox {:include [lamina.core
+  :codox {:writer codox-md.writer/write-docs
+          :include [lamina.core
                     lamina.trace
                     lamina.viz
                     lamina.walk
                     lamina.executor
                     lamina.stats
                     lamina.api
+                    lamina.query
                     lamina.time]
           :output-dir "autodoc"}
   :jvm-opts ["-server"
