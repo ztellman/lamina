@@ -1,202 +1,1044 @@
-<!DOCTYPE html>
-<html><head><link href="css/default.css" rel="stylesheet" type="text/css"><script src="js/jquery.min.js" type="text/javascript"></script><script src="js/page_effects.js" type="text/javascript"></script><title>lamina.core documentation</title></head><body><div id="header"><h1><a href="index.html">Lamina 0.5.0-SNAPSHOT API documentation</a></h1></div><div class="sidebar" id="namespaces"><h3><span>Namespaces</span></h3><ul><li><a href="lamina.api.html"><span>lamina.api</span></a></li><li class="current"><a href="lamina.core.html"><span>lamina.core</span></a></li><li><a href="lamina.executor.html"><span>lamina.executor</span></a></li><li><a href="lamina.stats.html"><span>lamina.stats</span></a></li><li><a href="lamina.time.html"><span>lamina.time</span></a></li><li><a href="lamina.trace.html"><span>lamina.trace</span></a></li><li><a href="lamina.viz.html"><span>lamina.viz</span></a></li><li><a href="lamina.walk.html"><span>lamina.walk</span></a></li></ul></div><div class="sidebar" id="vars"><h3>Public Vars</h3><ul><li><a href="lamina.core.html#var-aggregate"><span>aggregate</span></a></li><li><a href="lamina.core.html#var-async-result%3F"><span>async-result?</span></a></li><li><a href="lamina.core.html#var-atom-sink"><span>atom-sink</span></a></li><li><a href="lamina.core.html#var-cancel-callback"><span>cancel-callback</span></a></li><li><a href="lamina.core.html#var-channel"><span>channel</span></a></li><li><a href="lamina.core.html#var-channel*"><span>channel*</span></a></li><li><a href="lamina.core.html#var-channel-%3Elazy-seq"><span>channel-&gt;lazy-seq</span></a></li><li><a href="lamina.core.html#var-channel-%3Eseq"><span>channel-&gt;seq</span></a></li><li><a href="lamina.core.html#var-channel-pair"><span>channel-pair</span></a></li><li><a href="lamina.core.html#var-channel%3F"><span>channel?</span></a></li><li><a href="lamina.core.html#var-close"><span>close</span></a></li><li><a href="lamina.core.html#var-close-on-idle"><span>close-on-idle</span></a></li><li><a href="lamina.core.html#var-closed-channel"><span>closed-channel</span></a></li><li><a href="lamina.core.html#var-closed-result"><span>closed-result</span></a></li><li><a href="lamina.core.html#var-closed%3F"><span>closed?</span></a></li><li><a href="lamina.core.html#var-combine-latest"><span>combine-latest</span></a></li><li><a href="lamina.core.html#var-complete"><span>complete</span></a></li><li><a href="lamina.core.html#var-concat*"><span>concat*</span></a></li><li><a href="lamina.core.html#var-defer-onto-queue"><span>defer-onto-queue</span></a></li><li><a href="lamina.core.html#var-distribute-aggregate"><span>distribute-aggregate</span></a></li><li><a href="lamina.core.html#var-distributor"><span>distributor</span></a></li><li><a href="lamina.core.html#var-drained-result"><span>drained-result</span></a></li><li><a href="lamina.core.html#var-drained%3F"><span>drained?</span></a></li><li><a href="lamina.core.html#var-drop*"><span>drop*</span></a></li><li><a href="lamina.core.html#var-drop-while*"><span>drop-while*</span></a></li><li><a href="lamina.core.html#var-emit-in-order"><span>emit-in-order</span></a></li><li><a href="lamina.core.html#var-enqueue"><span>enqueue</span></a></li><li><a href="lamina.core.html#var-enqueue-and-close"><span>enqueue-and-close</span></a></li><li><a href="lamina.core.html#var-error"><span>error</span></a></li><li><a href="lamina.core.html#var-error-result"><span>error-result</span></a></li><li><a href="lamina.core.html#var-error-value"><span>error-value</span></a></li><li><a href="lamina.core.html#var-expiring-result"><span>expiring-result</span></a></li><li><a href="lamina.core.html#var-filter*"><span>filter*</span></a></li><li><a href="lamina.core.html#var-force-close"><span>force-close</span></a></li><li><a href="lamina.core.html#var-force-error"><span>force-error</span></a></li><li><a href="lamina.core.html#var-fork"><span>fork</span></a></li><li><a href="lamina.core.html#var-ground"><span>ground</span></a></li><li><a href="lamina.core.html#var-grounded-channel"><span>grounded-channel</span></a></li><li><a href="lamina.core.html#var-idle-result"><span>idle-result</span></a></li><li><a href="lamina.core.html#var-join"><span>join</span></a></li><li><a href="lamina.core.html#var-join-%3E%3E"><span>join-&gt;&gt;</span></a></li><li><a href="lamina.core.html#var-last*"><span>last*</span></a></li><li><a href="lamina.core.html#var-lazy-seq-%3Echannel"><span>lazy-seq-&gt;channel</span></a></li><li><a href="lamina.core.html#var-map*"><span>map*</span></a></li><li><a href="lamina.core.html#var-mapcat*"><span>mapcat*</span></a></li><li><a href="lamina.core.html#var-merge-channels"><span>merge-channels</span></a></li><li><a href="lamina.core.html#var-merge-results"><span>merge-results</span></a></li><li><a href="lamina.core.html#var-named-channel"><span>named-channel</span></a></li><li><a href="lamina.core.html#var-on-closed"><span>on-closed</span></a></li><li><a href="lamina.core.html#var-on-drained"><span>on-drained</span></a></li><li><a href="lamina.core.html#var-on-error"><span>on-error</span></a></li><li><a href="lamina.core.html#var-on-realized"><span>on-realized</span></a></li><li><a href="lamina.core.html#var-partition*"><span>partition*</span></a></li><li><a href="lamina.core.html#var-partition-all*"><span>partition-all*</span></a></li><li><a href="lamina.core.html#var-partition-every"><span>partition-every</span></a></li><li><a href="lamina.core.html#var-periodically"><span>periodically</span></a></li><li><a href="lamina.core.html#var-permanent-channel"><span>permanent-channel</span></a></li><li><a href="lamina.core.html#var-pipeline"><span>pipeline</span></a></li><li><a href="lamina.core.html#var-read-channel"><span>read-channel</span></a></li><li><a href="lamina.core.html#var-read-channel*"><span>read-channel*</span></a></li><li><a href="lamina.core.html#var-read-merge"><span>read-merge</span></a></li><li><a href="lamina.core.html#var-receive"><span>receive</span></a></li><li><a href="lamina.core.html#var-receive-all"><span>receive-all</span></a></li><li><a href="lamina.core.html#var-receive-in-order"><span>receive-in-order</span></a></li><li><a href="lamina.core.html#var-redirect"><span>redirect</span></a></li><li><a href="lamina.core.html#var-reduce*"><span>reduce*</span></a></li><li><a href="lamina.core.html#var-reductions*"><span>reductions*</span></a></li><li><a href="lamina.core.html#var-remove*"><span>remove*</span></a></li><li><a href="lamina.core.html#var-result-channel"><span>result-channel</span></a></li><li><a href="lamina.core.html#var-run-pipeline"><span>run-pipeline</span></a></li><li><a href="lamina.core.html#var-sample-every"><span>sample-every</span></a></li><li><a href="lamina.core.html#var-sink"><span>sink</span></a></li><li><a href="lamina.core.html#var-sink-%3E%3E"><span>sink-&gt;&gt;</span></a></li><li><a href="lamina.core.html#var-siphon"><span>siphon</span></a></li><li><a href="lamina.core.html#var-siphon-%3E%3E"><span>siphon-&gt;&gt;</span></a></li><li><a href="lamina.core.html#var-splice"><span>splice</span></a></li><li><a href="lamina.core.html#var-split"><span>split</span></a></li><li><a href="lamina.core.html#var-success-result"><span>success-result</span></a></li><li><a href="lamina.core.html#var-take*"><span>take*</span></a></li><li><a href="lamina.core.html#var-take-while*"><span>take-while*</span></a></li><li><a href="lamina.core.html#var-tap"><span>tap</span></a></li><li><a href="lamina.core.html#var-timed-result"><span>timed-result</span></a></li><li><a href="lamina.core.html#var-transactional%3F"><span>transactional?</span></a></li><li><a href="lamina.core.html#var-transitions"><span>transitions</span></a></li><li><a href="lamina.core.html#var-wait-for-message"><span>wait-for-message</span></a></li><li><a href="lamina.core.html#var-wait-for-result"><span>wait-for-result</span></a></li><li><a href="lamina.core.html#var-wait-stage"><span>wait-stage</span></a></li><li><a href="lamina.core.html#var-watch-channel"><span>watch-channel</span></a></li><li><a href="lamina.core.html#var-with-timeout"><span>with-timeout</span></a></li><li><a href="lamina.core.html#var-zip"><span>zip</span></a></li><li><a href="lamina.core.html#var-zip-all"><span>zip-all</span></a></li></ul></div><div class="namespace-docs" id="content"><h2>lamina.core documentation</h2><pre class="doc"></pre><div class="public" id="var-aggregate"><h3>aggregate</h3><div class="usage"><code>(aggregate {:keys [facet flush? task-queue period], :or {task-queue (t/task-queue), period (t/period)}} ch)</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-async-result%3F"><h3>async-result?</h3><div class="usage"><code>(async-result? x)</code></div><pre class="doc">Returns true if 'x' is a result.
-</pre></div><div class="public" id="var-atom-sink"><h3>atom-sink</h3><div class="usage"><code>(atom-sink ch)</code><code>(atom-sink initial-value ch)</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-cancel-callback"><h3>cancel-callback</h3><div class="usage"><code>(cancel-callback channel callback)</code></div><pre class="doc">Cancels a callback registered with receive, receive-all, on-closed, on-drained, or on-error.
-</pre></div><div class="public" id="var-channel"><h3>channel</h3><div class="usage"><code>(channel &amp; messages)</code></div><pre class="doc">Returns a channel containing the given messages.
-</pre></div><div class="public" id="var-channel*"><h3>channel*</h3><div class="usage"><code>(channel* &amp; {:keys [grounded? permanent? transactional? messages description meta], :as options})</code></div><pre class="doc">A general-purpose channel creator.  Can be used to mix and match various properties, such as
+<html lang="en">
+  <head>
+    <title>lamina.core documentation</title>
+    <link href="css/default.css" type="text/css" rel="stylesheet" />
+    <link href="css/codox-md.css" type="text/css" rel="stylesheet" />
+    <script type="text/javascript" src="js/jquery.min.js"></script>
+    <script type="text/javascript" src="js/page_effects.js"></script>
+  </head>
+  <body>
+    <header>
+      <div id="header">
+        <h1 class="project-title">Lamina 0.5.0-SNAPSHOT API documentation</h1>
+      </div>
+    </header>
+    <navigation>
+      <div id="namespaces" class="sidebar">
+        <h3>Namespaces</h3>
+        <ul class="ns-links">
+          <li class="ns-list"><a class="ns-link ns-name" href="lamina.api.html">lamina.api</a></li><li class="ns-list"><a class="ns-link ns-name" href="lamina.core.html">lamina.core</a></li><li class="ns-list"><a class="ns-link ns-name" href="lamina.executor.html">lamina.executor</a></li><li class="ns-list"><a class="ns-link ns-name" href="lamina.query.html">lamina.query</a></li><li class="ns-list"><a class="ns-link ns-name" href="lamina.stats.html">lamina.stats</a></li><li class="ns-list"><a class="ns-link ns-name" href="lamina.time.html">lamina.time</a></li><li class="ns-list"><a class="ns-link ns-name" href="lamina.trace.html">lamina.trace</a></li><li class="ns-list"><a class="ns-link ns-name" href="lamina.viz.html">lamina.viz</a></li><li class="ns-list"><a class="ns-link ns-name" href="lamina.walk.html">lamina.walk</a></li>
+        </ul>
+      </div>
+      <div id="vars" class="sidebar">
+        <h3>Public Vars</h3>
+        <ul class="ns-var-links">
+          <li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-async-result%3F">async-result?</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-atom-sink">atom-sink</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-cancel-callback">cancel-callback</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-channel">channel</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-channel*">channel*</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-channel-%3Elazy-seq">channel-&gt;lazy-seq</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-channel-%3Eseq">channel-&gt;seq</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-channel-pair">channel-pair</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-channel%3F">channel?</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-close">close</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-close-on-idle">close-on-idle</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-closed-channel">closed-channel</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-closed-result">closed-result</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-closed%3F">closed?</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-combine-latest">combine-latest</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-complete">complete</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-concat*">concat*</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-defer-onto-queue">defer-onto-queue</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-distribute-aggregate">distribute-aggregate</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-distributor">distributor</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-drained-result">drained-result</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-drained%3F">drained?</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-drop*">drop*</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-drop-while*">drop-while*</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-emit-in-order">emit-in-order</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-enqueue">enqueue</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-enqueue-and-close">enqueue-and-close</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-error">error</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-error-result">error-result</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-error-value">error-value</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-expiring-result">expiring-result</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-filter*">filter*</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-force-close">force-close</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-force-error">force-error</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-fork">fork</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-ground">ground</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-grounded-channel">grounded-channel</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-idle-result">idle-result</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-join">join</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-join-%3E%3E">join-&gt;&gt;</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-last*">last*</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-lazy-seq-%3Echannel">lazy-seq-&gt;channel</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-map*">map*</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-mapcat*">mapcat*</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-merge-channels">merge-channels</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-merge-results">merge-results</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-named-channel">named-channel</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-on-closed">on-closed</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-on-drained">on-drained</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-on-error">on-error</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-on-realized">on-realized</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-partition*">partition*</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-partition-all*">partition-all*</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-partition-every">partition-every</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-periodically">periodically</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-permanent-channel">permanent-channel</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-pipeline">pipeline</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-read-channel">read-channel</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-read-channel*">read-channel*</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-receive">receive</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-receive-all">receive-all</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-receive-in-order">receive-in-order</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-redirect">redirect</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-reduce*">reduce*</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-reductions*">reductions*</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-remove*">remove*</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-restart">restart</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-result-channel">result-channel</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-run-pipeline">run-pipeline</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-sample-every">sample-every</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-sink">sink</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-sink-%3E%3E">sink-&gt;&gt;</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-siphon">siphon</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-siphon-%3E%3E">siphon-&gt;&gt;</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-splice">splice</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-split">split</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-success-result">success-result</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-take*">take*</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-take-while*">take-while*</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-tap">tap</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-timed-result">timed-result</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-transactional%3F">transactional?</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-transitions">transitions</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-wait-for-message">wait-for-message</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-wait-for-result">wait-for-result</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-wait-stage">wait-stage</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-watch-channel">watch-channel</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-with-timeout">with-timeout</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-zip">zip</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.core.html#var-zip-all">zip-all</a></li>
+        </ul>
+      </div>
+    </navigation>
+    <article>
+      <div id="content" class="namespace-docs">
+        <h2 class="namespace-title">lamina.core documentation</h2>
+        <div class="doc">
+</div>
+        <div class="ns-vars">
+          <div class="public">
+            <h3><a id="var-async-result%3F" class="source var-name" href="/src/lamina/core/result.clj">async-result?</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[x]</div>
+            
+            
+            <div class="doc"><p>Returns true if <code>x</code> is a result.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-atom-sink" class="source var-name" href="/src/lamina/core/watch.clj">atom-sink</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[channel]</div><div class="usage">[initial-value ch]</div>
+            
+            
+            <div class="doc"><p>Transforms a <code>channel</code> into an atom which updated with the value of each new message.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-cancel-callback" class="source var-name" href="/src/lamina/core/channel.clj">cancel-callback</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[channel callback]</div>
+            
+            
+            <div class="doc"><p>Cancels a callback registered with <code>receive</code>, <code>receive-all</code>, <code>on-closed</code>, <code>on-drained</code>, or <code>on-error</code>.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-channel" class="source var-name" href="/src/lamina/core/channel.clj">channel</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[&amp; messages]</div>
+            
+            
+            <div class="doc"><p>Returns a channel containing the given messages.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-channel*" class="source var-name" href="/src/lamina/core/channel.clj">channel*</a></h3>
+            <h4 class="var-type macro" id="var-type">macro</h4>
+            <div class="usage">[&amp; {:keys [grounded? permanent? transactional? messages description meta], :as options}]</div>
+            
+            
+            <div class="doc"><p>A general-purpose channel creator.  Can be used to mix and match various properties, such as</p>
 
-(channel* :grounded? true, :description &quot;my very own grounded channel&quot;)
+<p>(channel* :grounded? true, :description "my very own grounded channel")</p>
 
-:grounded?        - ensures that messages cannot accumulate in the queue
+<p>:grounded?        - ensures that messages cannot accumulate in the queue
 :permanent?       - ensures that the channel cannot be closed or be put in an error state
 :transactional?   - determines whether the channel's queue is transactional
 :messages         - sequence of zero or more messages that will be in the channel's queue
 :description      - a string that will be diplayed in channel visualizations
-:meta             - initial metadata</pre></div><div class="public" id="var-channel-%3Elazy-seq"><h3>channel-&gt;lazy-seq</h3><div class="usage"><code>(channel-&gt;lazy-seq ch)</code><code>(channel-&gt;lazy-seq ch timeout)</code></div><pre class="doc">Returns a sequence.  As elements of the sequence are realized, messages from the
+:meta             - initial metadata</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-channel-%3Elazy-seq" class="source var-name" href="/src/lamina/core/operators.clj">channel-&gt;lazy-seq</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[ch]</div><div class="usage">[ch timeout]</div>
+            
+            
+            <div class="doc"><p>Returns a sequence.  As elements of the sequence are realized, messages from the
 source channel are consumed.  If there are no messages are available to be
-consumed, execution will block until one is available.
+consumed, execution will block until one is available.</p>
 
-A 'timeout' can be defined, either as a number or a no-arg function that returns a
+<p>A <code>timeout</code> can be defined, either as a number or a no-arg function that returns a
 number.  Each time the seq must wait for a message to consume, it will only wait
-that many milliseconds before giving up and ending the sequence.</pre></div><div class="public" id="var-channel-%3Eseq"><h3>channel-&gt;seq</h3><div class="usage"><code>(channel-&gt;seq ch)</code><code>(channel-&gt;seq ch timeout)</code></div><pre class="doc">An eager variant of channel-&gt;lazy-seq.  Blocks until the channel has been drained,
-or until 'timeout' milliseconds have elapsed.</pre></div><div class="public" id="var-channel-pair"><h3>channel-pair</h3><div class="usage"><code>(channel-pair)</code></div><pre class="doc">Returns a pair of channels, where all messages enqueued into one channel can
+that many milliseconds before giving up and ending the sequence.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-channel-%3Eseq" class="source var-name" href="/src/lamina/core/operators.clj">channel-&gt;seq</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[ch]</div><div class="usage">[ch timeout]</div>
+            
+            
+            <div class="doc"><p>An eager variant of channel-&gt;lazy-seq.  Blocks until the channel has been drained,
+or until <code>timeout</code> milliseconds have elapsed.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-channel-pair" class="source var-name" href="/src/lamina/core.clj">channel-pair</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[]</div>
+            
+            
+            <div class="doc"><p>Returns a pair of channels, where all messages enqueued into one channel can
 be received by the other, and vice-versa.  Closing one channel will automatically
-close the other.</pre></div><div class="public" id="var-channel%3F"><h3>channel?</h3><div class="usage"><code>(channel? x)</code></div><pre class="doc">Returns true if 'x' is a channel.  This does not encompass result-channels.
-</pre></div><div class="public" id="var-close"><h3>close</h3><div class="usage"><code>(close channel)</code></div><pre class="doc">Closes the channel. Returns if successful, false if the channel is permanent, already closed,
-or in an error state.</pre></div><div class="public" id="var-close-on-idle"><h3>close-on-idle</h3><div class="usage"><code>(close-on-idle interval ch)</code><code>(close-on-idle interval task-queue ch)</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-closed-channel"><h3>closed-channel</h3><div class="usage"><code>(closed-channel &amp; messages)</code></div><pre class="doc">Returns a closed channel containing the given messages.
-</pre></div><div class="public" id="var-closed-result"><h3>closed-result</h3><div class="usage"><code>(closed-result channel)</code></div><pre class="doc">Returns a result-channel that will emit a result when the channel is closed, or emit an error
-if the channel goes into an error state.</pre></div><div class="public" id="var-closed%3F"><h3>closed?</h3><div class="usage"><code>(closed? channel)</code></div><pre class="doc">Returns true if the channel is closed, false otherwise. 
-</pre></div><div class="public" id="var-combine-latest"><h3>combine-latest</h3><div class="usage"><code>(combine-latest f &amp; channels)</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-complete"><h3>complete</h3><div class="usage"><code>(complete value)</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-concat*"><h3>concat*</h3><div class="usage"><code>(concat* ch)</code></div><pre class="doc">A dual to concat.
+close the other.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-channel%3F" class="source var-name" href="/src/lamina/core/channel.clj">channel?</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[x]</div>
+            
+            
+            <div class="doc"><p>Returns true if <code>x</code> is a channel.  This does not encompass result-channels.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-close" class="source var-name" href="/src/lamina/core/channel.clj">close</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[channel]</div>
+            
+            
+            <div class="doc"><p>Closes the <code>channel</code>. Returns if successful, false if <code>channel</code> is permanent, already closed,
+or in an error state.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-close-on-idle" class="source var-name" href="/src/lamina/core/channel.clj">close-on-idle</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[interval channel]</div><div class="usage">[interval task-queue channel]</div>
+            
+            
+            <div class="doc"><p>Sets up a watcher which will close <code>channel</code> if it doesn't emit a message for <code>interval</code> milliseconds.</p>
 
-(concat* (channel [1 2] [2 3])) =&gt; [1 2 3 4]</pre></div><div class="public" id="var-defer-onto-queue"><h3>defer-onto-queue</h3><div class="usage"><code>(defer-onto-queue task-queue time-facet ch)</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-distribute-aggregate"><h3>distribute-aggregate</h3><div class="usage"><code>(distribute-aggregate {:keys [facet generator period task-queue], :or {task-queue (t/task-queue), period (t/period)}} ch)</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-distributor"><h3>distributor</h3><div class="usage"><code>(distributor {:keys [facet initializer on-clearance]})</code></div><pre class="doc">Returns a channel.
+<p>Returns <code>channel</code>, for chaining convenience.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-closed-channel" class="source var-name" href="/src/lamina/core/channel.clj">closed-channel</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[&amp; messages]</div>
+            
+            
+            <div class="doc"><p>Returns a closed channel containing the given messages.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-closed-result" class="source var-name" href="/src/lamina/core/channel.clj">closed-result</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[channel]</div>
+            
+            
+            <div class="doc"><p>Returns a result-channel that will emit a result when <code>channel</code> is closed, or emit an error
+if <code>channel</code> goes into an error state.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-closed%3F" class="source var-name" href="/src/lamina/core/channel.clj">closed?</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[channel]</div>
+            
+            
+            <div class="doc"><p>Returns true if <code>channel</code> is closed, false otherwise. </p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-combine-latest" class="source var-name" href="/src/lamina/core/operators.clj">combine-latest</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[f &amp; channels]</div>
+            
+            
+            <div class="doc"><p>Given n-many <code>channels</code> and a function which takes n arguments, reevaluates the function for each new
+value emitted by one of the channels.  Effectively a composition of <code>zip-all</code> and <code>map*</code>.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-complete" class="source var-name" href="/src/lamina/core/pipeline.clj">complete</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[value]</div>
+            
+            
+            <div class="doc"><p>Returns a redirect signal which causes the pipeline's execution to stop, and simply return <code>value</code>.  If <code>value</code>
+is a <code>Throwable</code>, then the pipeline will be realized as that error.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-concat*" class="source var-name" href="/src/lamina/core/operators.clj">concat*</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[ch]</div>
+            
+            
+            <div class="doc"><p>A dual to concat.</p>
 
-Messages enqueued into this channel are split into multiple streams, grouped by
+<p>(concat* (channel [1 2] [2 3])) =&gt; [1 2 3 4]</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-defer-onto-queue" class="source var-name" href="/src/lamina/core/operators.clj">defer-onto-queue</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[task-queue time-facet channel]</div>
+            
+            
+            <div class="doc"><p>Takes an input <code>channel</code>, a <code>time-facet</code> which takes each message and returns the associated time, 
+and a <code>task-queue</code>.</p>
+
+<p>The returned channel will emit each message from <code>channel</code> only once the designated time has arrived.
+This assumes the timestamp for each message is monotonically increasing.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-distribute-aggregate" class="source var-name" href="/src/lamina/core/operators.clj">distribute-aggregate</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[{:keys [facet generator period task-queue], :or {task-queue (t/task-queue), period (t/period)}} channel]</div>
+            
+            
+            <div class="doc"><p>A mechanism similar to a SQL <code>group by</code> or the split-apply-combine strategy for data analysis.</p>
+
+<p> For each message from <code>channel</code>, the value returned by <code>(facet msg)</code> will be examined, and the
+ message will be routed to a channel that consumes all messages with that facet value.  If no
+ such channel exists, it will be generated by <code>(generator facet-value facet-channel)</code>, which takes
+ the facet-value and associated channel, and returns an output channel which will be merged with
+ the output of all other facet channels.</p>
+
+<p> The output of each facet channel is assumed to be periodic.  The <code>:period</code> may be specified, but
+ is not required.</p>
+
+<p> Returns a channel which will periodically emit a map of facet-value onto the output of the generated
+ facet-channel.</p>
+
+<p> Example:</p>
+
+<p>   (distribute-aggregate 
+  {:facet     :uri
+:generator (fn [uri ch]
+              (rate ch))}
+  ch)</p>
+
+<p> will return a channel which periodically emits a map of the form</p>
+
+<p> {"/abc" 2
+  "/def" 3}</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-distributor" class="source var-name" href="/src/lamina/core/operators.clj">distributor</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[{:keys [facet initializer on-clearance]}]</div>
+            
+            
+            <div class="doc"><p>Returns a channel.</p>
+
+<p>Messages enqueued into this channel are split into multiple streams, grouped by
 (facet msg). When a new facet-value is encountered, (initializer facet ch)
-is called, allowing messages with that facet-value to be handled appropriately.
+is called, allowing messages with that facet-value to be handled appropriately.</p>
 
-If a facet channel is closed, it will be removed from the distributor, and
+<p>If a facet channel is closed, it will be removed from the distributor, and
 a new channel will be generated when another message of that type is enqueued.
 This allows the use of (close-on-idle ch ...), if facet-values will change over
-time.
+time.</p>
 
-Given messages with the form {:type :foo, :value 1}, to print the mean values of all
-types:
+<p>Given messages with the form {:type :foo, :value 1}, to print the mean values of all
+types:</p>
 
-(distributor
+<p>(distributor
   {:facet       :type
    :initializer (fn [facet-value ch]
                   (siphon
                     (-&gt;&gt; ch (map* :value) moving-average)
-                    (sink #(println &quot;average for&quot; facet-value &quot;is&quot; %))))})</pre></div><div class="public" id="var-drained-result"><h3>drained-result</h3><div class="usage"><code>(drained-result channel)</code></div><pre class="doc">Returns a result-channel that will emit a result when the channel is drained, or emit an error
-if the channel goes into an error state.</pre></div><div class="public" id="var-drained%3F"><h3>drained?</h3><div class="usage"><code>(drained? channel)</code></div><pre class="doc">Returns true if the channel is drained, false otherwise.
-</pre></div><div class="public" id="var-drop*"><h3>drop*</h3><div class="usage"><code>(drop* n ch)</code></div><pre class="doc">A dual to drop.
+                    (sink #(println "average for" facet-value "is" %))))})</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-drained-result" class="source var-name" href="/src/lamina/core/channel.clj">drained-result</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[channel]</div>
+            
+            
+            <div class="doc"><p>Returns a result-channel that will emit a result when <code>channel</code> is drained, or emit an error
+if <code>channel</code> goes into an error state.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-drained%3F" class="source var-name" href="/src/lamina/core/channel.clj">drained?</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[channel]</div>
+            
+            
+            <div class="doc"><p>Returns true if <code>channel</code> is drained, false otherwise.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-drop*" class="source var-name" href="/src/lamina/core/operators.clj">drop*</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[n ch]</div>
+            
+            
+            <div class="doc"><p>A dual to drop.</p>
 
-(drop* 2 (closed-channel 1 2 3 4) =&gt; [3 4]</pre></div><div class="public" id="var-drop-while*"><h3>drop-while*</h3><div class="usage"><code>(drop-while* f ch)</code></div><pre class="doc">A dual to drop-while.
+<p>(drop* 2 (closed-channel 1 2 3 4) =&gt; [3 4]</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-drop-while*" class="source var-name" href="/src/lamina/core/operators.clj">drop-while*</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[f ch]</div>
+            
+            
+            <div class="doc"><p>A dual to drop-while.</p>
 
-(drop-while* pos? (closed-channel 1 2 0 4) =&gt; [0 4]</pre></div><div class="public" id="var-emit-in-order"><h3>emit-in-order</h3><div class="usage"><code>(emit-in-order ch)</code></div><pre class="doc">Returns a channel that emits messages one at a time.
-</pre></div><div class="public" id="var-enqueue"><h3>enqueue</h3><div class="usage"><code>(enqueue channel message)</code><code>(enqueue channel message &amp; messages)</code></div><pre class="doc">Enqueues the message or messages into the channel.
-</pre></div><div class="public" id="var-enqueue-and-close"><h3>enqueue-and-close</h3><div class="usage"><code>(enqueue-and-close ch &amp; messages)</code></div><pre class="doc">Enqueues the message or messages into the channel, and then closes the channel.
-</pre></div><div class="public" id="var-error"><h3>error</h3><div class="usage"><code>(error channel err)</code></div><pre class="doc">Puts the channel or result-channel into an error state.
-</pre></div><div class="public" id="var-error-result"><h3>error-result</h3><div class="usage"><code>(error-result error)</code></div><pre class="doc">Returns a result already realized with an error.
-</pre></div><div class="public" id="var-error-value"><h3>error-value</h3><div class="usage"><code>(error-value x default-value)</code></div><pre class="doc">Returns the error-value of the channel or async-result if it's in an error state, and 'default-value'
-otherwise</pre></div><div class="public" id="var-expiring-result"><h3>expiring-result</h3><div class="usage"><code>(expiring-result interval)</code><code>(expiring-result interval task-queue)</code></div><pre class="doc">Returns a result-channel that will be realized as a 'lamina/timeout!' error if a value is not enqueued within
-'interval' milliseconds.</pre></div><div class="public" id="var-filter*"><h3>filter*</h3><div class="usage"><code>(filter* f channel)</code></div><pre class="doc">A dual to filter.
+<p>(drop-while* pos? (closed-channel 1 2 0 4) =&gt; [0 4]</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-emit-in-order" class="source var-name" href="/src/lamina/core/operators.clj">emit-in-order</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[ch]</div>
+            
+            
+            <div class="doc"><p>Returns a channel that emits messages one at a time.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-enqueue" class="source var-name" href="/src/lamina/core.clj">enqueue</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[channel message]</div><div class="usage">[channel message &amp; messages]</div>
+            
+            
+            <div class="doc"><p>Enqueues the message or messages into the channel.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-enqueue-and-close" class="source var-name" href="/src/lamina/core.clj">enqueue-and-close</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[ch &amp; messages]</div>
+            
+            
+            <div class="doc"><p>Enqueues the message or messages into the channel, and then closes the channel.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-error" class="source var-name" href="/src/lamina/core.clj">error</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[channel err]</div>
+            
+            
+            <div class="doc"><p>Puts the channel or result-channel into an error state.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-error-result" class="source var-name" href="/src/lamina/core/result.clj">error-result</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[error]</div>
+            
+            
+            <div class="doc"><p>Returns a result already realized with an error.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-error-value" class="source var-name" href="/src/lamina/core.clj">error-value</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[x default-value]</div>
+            
+            
+            <div class="doc"><p>Returns the error-value of the channel or async-result if it's in an error state, and 'default-value'
+otherwise</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-expiring-result" class="source var-name" href="/src/lamina/core/result.clj">expiring-result</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[interval]</div><div class="usage">[interval task-queue]</div>
+            
+            
+            <div class="doc"><p>Returns a result-channel that will be realized as a 'lamina/timeout!' error if a value is not enqueued within
+<code>interval</code> milliseconds.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-filter*" class="source var-name" href="/src/lamina/core/channel.clj">filter*</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[f channel]</div>
+            
+            
+            <div class="doc"><p>A dual to filter.</p>
 
-(filter* odd? (channel 1 2 3)) =&gt; [1 3]</pre></div><div class="public" id="var-force-close"><h3>force-close</h3><div class="usage"><code>(force-close channel)</code></div><pre class="doc">Closes the channel, even if it is permanent. Returns if successful, false if the channel is
-already closed or in an error state.</pre></div><div class="public" id="var-force-error"><h3>force-error</h3><div class="usage"><code>(force-error channel err)</code></div><pre class="doc">Puts the channel or result-channel into an error state, even if it's permanent.
-</pre></div><div class="public" id="var-fork"><h3>fork</h3><div class="usage"><code>(fork channel)</code></div><pre class="doc">Returns a channel which is an exact duplicate of the source channel, containing all messages
-in the source channel's queue, and emitting all messages emitted by the source channel.
+<p>(filter* odd? (channel 1 2 3)) =&gt; [1 3]</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-force-close" class="source var-name" href="/src/lamina/core/channel.clj">force-close</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[channel]</div>
+            
+            
+            <div class="doc"><p>Closes <code>channel</code>, even if it is permanent. Returns if successful, false if <code>channel</code> is
+already closed or in an error state.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-force-error" class="source var-name" href="/src/lamina/core.clj">force-error</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[channel err]</div>
+            
+            
+            <div class="doc"><p>Puts the channel or result-channel into an error state, even if it's permanent.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-fork" class="source var-name" href="/src/lamina/core/channel.clj">fork</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[channel]</div>
+            
+            
+            <div class="doc"><p>Returns a channel which is an exact duplicate of the source channel, containing all messages
+in the source channel's queue, and emitting all messages emitted by the source channel.</p>
 
-If the forked channel is closed, the source channel is unaffected.  However, if the source
+<p>If the forked channel is closed, the source channel is unaffected.  However, if the source
 channel is closed all forked channels are closed.  Similar propagation rules apply to error
-states.</pre></div><div class="public" id="var-ground"><h3>ground</h3><div class="usage"><code>(ground ch)</code></div><pre class="doc">Ensures that messages will not accumulate in the channel's queue.
-</pre></div><div class="public" id="var-grounded-channel"><h3>grounded-channel</h3><div class="usage"><code>(grounded-channel)</code></div><pre class="doc">Returns a channel that cannot accumulate messages.
-</pre></div><div class="public" id="var-idle-result"><h3>idle-result</h3><div class="usage"><code>(idle-result interval ch)</code><code>(idle-result interval task-queue ch)</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-join"><h3>join</h3><div class="usage"><code>(join src dst)</code><code>(join src dst &amp; rest)</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-join-%3E%3E"><h3>join-&gt;&gt;</h3><div class="usage"><code>(join-&gt;&gt; &amp; transforms+downstream-channel)</code></div><pre class="doc">A variant of sink-&gt;&gt; where the last argument is assumed to be a channel,
-and the transform chain is joined to it.
+states.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-ground" class="source var-name" href="/src/lamina/core/channel.clj">ground</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[ch]</div>
+            
+            
+            <div class="doc"><p>Ensures that messages will not accumulate in the channel's queue.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-grounded-channel" class="source var-name" href="/src/lamina/core/channel.clj">grounded-channel</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[]</div>
+            
+            
+            <div class="doc"><p>Returns a channel that cannot accumulate messages.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-idle-result" class="source var-name" href="/src/lamina/core/channel.clj">idle-result</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[interval channel]</div><div class="usage">[interval task-queue channel]</div>
+            
+            
+            <div class="doc"><p>A result which will be realized if <code>channel</code> doesn't emit a message for <code>interval</code> milliseconds.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-join" class="source var-name" href="/src/lamina/core.clj">join</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[src dst]</div><div class="usage">[src dst &amp; rest]</div>
+            
+            
+            <div class="doc"><p>Takes all messages from <code>src</code> and forwards them to <code>dst</code>.  If either channel closes or goes into an 
+error state, the same is done for the other channel.  This is useful for channels which have a 1-to-1 
+relationship.</p>
 
-(join-&gt;&gt; (map* inc) (map* dec) (named-channel :foo))
+<p>If more than two channels are specified, <code>join</code> becomes transitive.  <code>(join a b c)</code> is equivalent to
+<code>(join a b)</code> and <code>(join b c)</code>.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-join-%3E%3E" class="source var-name" href="/src/lamina/core.clj">join-&gt;&gt;</a></h3>
+            <h4 class="var-type macro" id="var-type">macro</h4>
+            <div class="usage">[&amp; transforms+downstream-channel]</div>
+            
+            
+            <div class="doc"><p>A variant of sink-&gt;&gt; where the last argument is assumed to be a channel,
+and the transform chain is joined to it.</p>
 
-expands to
+<p>(join-&gt;&gt; (map* inc) (map* dec) (named-channel :foo))</p>
 
-(let [ch (channel)]
+<p>expands to</p>
+
+<p>(let [ch (channel)]
   (join
     (-&gt;&gt; ch (map* inc) (map* dec))
     (named-channel :foo))
-  ch)</pre></div><div class="public" id="var-last*"><h3>last*</h3><div class="usage"><code>(last* ch)</code></div><pre class="doc">A dual to last.
-</pre></div><div class="public" id="var-lazy-seq-%3Echannel"><h3>lazy-seq-&gt;channel</h3><div class="usage"><code>(lazy-seq-&gt;channel s)</code></div><pre class="doc">Returns a channel representing the elements of the sequence.
-</pre></div><div class="public" id="var-map*"><h3>map*</h3><div class="usage"><code>(map* f channel)</code></div><pre class="doc">A dual to map.
+  ch)</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-last*" class="source var-name" href="/src/lamina/core/operators.clj">last*</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[ch]</div>
+            
+            
+            <div class="doc"><p>A dual to last.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-lazy-seq-%3Echannel" class="source var-name" href="/src/lamina/core.clj">lazy-seq-&gt;channel</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[s]</div>
+            
+            
+            <div class="doc"><p>Returns a channel representing the elements of the sequence.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-map*" class="source var-name" href="/src/lamina/core/channel.clj">map*</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[f channel]</div>
+            
+            
+            <div class="doc"><p>A dual to map.</p>
 
-(map* inc (channel 1 2 3)) =&gt; [2 3 4]</pre></div><div class="public" id="var-mapcat*"><h3>mapcat*</h3><div class="usage"><code>(mapcat* f ch)</code></div><pre class="doc">A dual to mapcat.
+<p>(map* inc (channel 1 2 3)) =&gt; [2 3 4]</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-mapcat*" class="source var-name" href="/src/lamina/core/operators.clj">mapcat*</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[f ch]</div>
+            
+            
+            <div class="doc"><p>A dual to mapcat.</p>
 
-(mapcat* reverse (channel [1 2] [3 4])) =&gt; [2 1 4 3]</pre></div><div class="public" id="var-merge-channels"><h3>merge-channels</h3><div class="usage"><code>(merge-channels &amp; channels)</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-merge-results"><h3>merge-results</h3><div class="usage"><code>(merge-results &amp; results)</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-named-channel"><h3>named-channel</h3><div class="usage"><code>(named-channel id on-create)</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-on-closed"><h3>on-closed</h3><div class="usage"><code>(on-closed channel callback)</code></div><pre class="doc">Registers a callback that will be invoked with no arguments when the channel is closed, or
-immediately if it has already been closed.  This callback will only be invoked once, and can
-be cancelled using cancel-callback.</pre></div><div class="public" id="var-on-drained"><h3>on-drained</h3><div class="usage"><code>(on-drained channel callback)</code></div><pre class="doc">Registers a callback that will be invoked with no arguments when the channel is drained, or
-immediately if it has already been drained.  This callback will only be invoked once, and can
-be cancelled using cancel-callback.</pre></div><div class="public" id="var-on-error"><h3>on-error</h3><div class="usage"><code>(on-error channel callback)</code></div><pre class="doc">Registers a callback that will be called with the error when the channel enters an error state,
-or immediately if it's already in an error state.  This callback will only be invoked once,
-and can be cancelled using cancel-callback.</pre></div><div class="public" id="var-on-realized"><h3>on-realized</h3><div class="usage"><code>(on-realized result-channel on-success on-error)</code></div><pre class="doc">Allows two callbacks to be registered on a result-channel, one in the case of a
-value, the other in case of an error.
+<p>(mapcat* reverse (channel [1 2] [3 4])) =&gt; [2 1 4 3]</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-merge-channels" class="source var-name" href="/src/lamina/core/operators.clj">merge-channels</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[&amp; channels]</div>
+            
+            
+            <div class="doc"><p>Combines n-many streams into a single stream.  The returned channel will be closed only
+once all source channels have been closed.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-merge-results" class="source var-name" href="/src/lamina/core/result.clj">merge-results</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[&amp; results]</div>
+            
+            
+            <div class="doc"><p>Given n <code>results</code> returns a single async-result which will be realized as a sequence of all the realized
+results.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-named-channel" class="source var-name" href="/src/lamina/core/named.clj">named-channel</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[id on-create]</div>
+            
+            
+            <div class="doc"><p>Returns a permanent channel keyed to <code>id</code>.  If the channel doesn't already exist and <code>on-create</code> is non-nil, 
+it will be invoked with zero parameters.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-on-closed" class="source var-name" href="/src/lamina/core/channel.clj">on-closed</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[channel callback]</div>
+            
+            
+            <div class="doc"><p>Registers a callback that will be invoked with no arguments when <code>channel</code> is closed, or
+immediately if it has already been closed.  <code>callback</code> will only be invoked once, and can
+be cancelled using <code>cancel-callback</code>.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-on-drained" class="source var-name" href="/src/lamina/core/channel.clj">on-drained</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[channel callback]</div>
+            
+            
+            <div class="doc"><p>Registers a callback that will be invoked with no arguments when <code>channel</code> is drained, or
+immediately if it has already been drained.  <code>callback</code> will only be invoked once, and can
+be cancelled using <code>cancel-callback</code>.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-on-error" class="source var-name" href="/src/lamina/core/channel.clj">on-error</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[channel callback]</div>
+            
+            
+            <div class="doc"><p>Registers a callback that will be called with the error when <code>channel</code> enters an error state,
+or immediately if it's already in an error state.  <code>callback</code> will only be invoked once,
+and can be cancelled using <code>cancel-callback</code>.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-on-realized" class="source var-name" href="/src/lamina/core.clj">on-realized</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[result-channel on-success on-error]</div>
+            
+            
+            <div class="doc"><p>Allows two callbacks to be registered on a result-channel, one in the case of a
+value, the other in case of an error.</p>
 
-This often can and should be replaced by a pipeline.</pre></div><div class="public" id="var-partition*"><h3>partition*</h3><div class="usage"><code>(partition* n ch)</code><code>(partition* n step ch)</code></div><pre class="doc">A dual to partition.
+<p>This often can and should be replaced by a pipeline.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-partition*" class="source var-name" href="/src/lamina/core/operators.clj">partition*</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[n ch]</div><div class="usage">[n step ch]</div>
+            
+            
+            <div class="doc"><p>A dual to partition.</p>
 
-(partition* 2 (channel 1 2 3)) =&gt; [[1 2]]</pre></div><div class="public" id="var-partition-all*"><h3>partition-all*</h3><div class="usage"><code>(partition-all* n ch)</code><code>(partition-all* n step ch)</code></div><pre class="doc">A dual to partition-all.
+<p>(partition* 2 (channel 1 2 3)) =&gt; [[1 2]]</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-partition-all*" class="source var-name" href="/src/lamina/core/operators.clj">partition-all*</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[n ch]</div><div class="usage">[n step ch]</div>
+            
+            
+            <div class="doc"><p>A dual to partition-all.</p>
 
-(partition-all* 2 (closed-channel 1 2 3)) =&gt; [[1 2] [3]]</pre></div><div class="public" id="var-partition-every"><h3>partition-every</h3><div class="usage"><code>(partition-every {:keys [period task-queue], :as options} ch)</code></div><pre class="doc">Takes a source channel, and returns a channel that repeatedly emits a collection
-of all messages from the source channel in the last 'period' milliseconds.</pre></div><div class="public" id="var-periodically"><h3>periodically</h3><div class="usage"><code>(periodically period f)</code><code>(periodically period f task-queue)</code></div><pre class="doc">Returns a channel.  Every 'period' milliseconds, 'f' is invoked with no arguments
-and the value is emitted as a message.</pre></div><div class="public" id="var-permanent-channel"><h3>permanent-channel</h3><div class="usage"><code>(permanent-channel &amp; messages)</code></div><pre class="doc">Returns a channel which cannot be closed or put into an error state.
-</pre></div><div class="public" id="var-pipeline"><h3>pipeline</h3><div class="usage"><code>(pipeline &amp; opts+stages)</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-read-channel"><h3>read-channel</h3><div class="usage"><code>(read-channel channel)</code></div><pre class="doc">Returns a result-channel representing the next message from the channel.  Only one
-result-channel can represent any given message; calling (read-channel ...) multiple times
-will always consume multiple messages.
+<p>(partition-all* 2 (closed-channel 1 2 3)) =&gt; [[1 2] [3]]</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-partition-every" class="source var-name" href="/src/lamina/core/operators.clj">partition-every</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[{:keys [period task-queue], :as options} ch]</div>
+            
+            
+            <div class="doc"><p>Takes a source channel, and returns a channel that repeatedly emits a collection
+of all messages from the source channel in the last <code>period</code> milliseconds.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-periodically" class="source var-name" href="/src/lamina/core/operators.clj">periodically</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[period f]</div><div class="usage">[period f task-queue]</div>
+            
+            
+            <div class="doc"><p>Returns a channel.  Every <code>period</code> milliseconds, <code>f</code> is invoked with no arguments
+and the value is emitted as a message.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-permanent-channel" class="source var-name" href="/src/lamina/core.clj">permanent-channel</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[&amp; messages]</div>
+            
+            
+            <div class="doc"><p>Returns a channel which cannot be closed or put into an error state.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-pipeline" class="source var-name" href="/src/lamina/core/pipeline.clj">pipeline</a></h3>
+            <h4 class="var-type macro" id="var-type">macro</h4>
+            <div class="usage">[&amp; opts+stages]</div>
+            
+            
+            <div class="doc"><p>A means for composing asynchronous functions.  Returns a function which will pass the value into the first
+function, the result from that function into the second, and so on.</p>
 
-Enqueueing a value into the result-channel before it is realized will prevent the message
-from being consumed, effectively cancelling the read-channel call.</pre></div><div class="public" id="var-read-channel*"><h3>read-channel*</h3><div class="usage"><code>(read-channel* ch &amp; {:keys [timeout predicate result listener-result on-timeout on-error on-false], :as options})</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-read-merge"><h3>read-merge</h3><div class="usage"><code>(read-merge read-fn merge-fn)</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-receive"><h3>receive</h3><div class="usage"><code>(receive channel callback)</code></div><pre class="doc">Registers a callback that will be invoked with the next message enqueued into the channel, or
+<p>If any function returns an unrealized async-result, the next function won't be called until that value is realized.
+The call into the pipeline itself returns an async-result, which won't be realized until all functions have completed.
+If any function throws an exception or returns an async-result that realizes as an error, this will short-circuit all
+calls to subsequent functions, and cause the pipeline's result to be realized as an error.</p>
+
+<p>Loops and other more complex flows may be created if any stage returns a redirect signal by returning the result of 
+invoking <code>restart</code>, <code>redirect</code>, or <code>complete</code>.  See these functions for more details.</p>
+
+<p>The first argument to <code>pipeline</code> may be a map of optional arguments:</p>
+
+<p>  <code>:error-handler</code> - a function which is called when an error occurs in the pipeline.  Takes a single argument, the <code>error</code>,
+                     and may optionally return a redirect signal to prevent the pipeline from returning the error.</p>
+
+<pre><code>                 If no `:error-handler` is specified, the error will be logged.  If pipelines are nested, this may result
+                 in the same error being logged multiple times.  To hide this error you may define a no-op handler, but
+                 only do this if you're sure there's an outer pipeline that will handle/log the error.
+</code></pre>
+
+<p>  <code>:finally</code> - a function wich is called with zero arguments when the pipeline completes, either due to success or error.</p>
+
+<p>  <code>:result</code> - the result into which the pipeline's result will be forwarded.  Causes the pipeline to not return any value.</p>
+
+<p>  <code>:timeout</code> - the max duration of the pipeline's invocation.  If pipeline times out in the middle of a stage it won't terminate
+               computation, but it will not continue onto the next stage.</p>
+
+<p>  <code>:implicit?</code> - describes whether the pipeline's execution should show up in higher-level instrumented functions calling into it.
+                 Defaults to false.</p>
+
+<p>  <code>:unwrap?</code> - if true, and the pipeline does not need to pause between streams, the pipeline will return an actual value 
+               rather than an async-result.</p>
+
+<p>  <code>:with-bindings</code> - if true, conveys the binding context of the initial invocation of the pipeline into any deferred stages.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-read-channel" class="source var-name" href="/src/lamina/core/channel.clj">read-channel</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[channel]</div>
+            
+            
+            <div class="doc"><p>Returns a result-channel representing the next message from the channel.  Only one
+result-channel can represent any given message; calling <code>(read-channel ...)</code> multiple times
+will always consume multiple messages.</p>
+
+<p>Enqueueing a value into the result-channel before it is realized will prevent the message
+from being consumed, effectively cancelling the <code>read-channel</code> call.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-read-channel*" class="source var-name" href="/src/lamina/core/channel.clj">read-channel*</a></h3>
+            <h4 class="var-type macro" id="var-type">macro</h4>
+            <div class="usage">[ch &amp; {:keys [timeout predicate result listener-result on-timeout on-error on-false], :as options}]</div>
+            
+            
+            <div class="doc"><p>A variant of <code>read-channel</code> with more options.</p>
+
+<p><code>:timeout</code> - the timeout, in milliseconds.  If this elapses, the next message will not be consumed.</p>
+
+<p><code>:predicate</code> - a function that takes the message, and returns true if it should be consumed.  If the
+               predicate returns false, the returned result will realize as value defined by <code>:on-false</code>.</p>
+
+<p><code>:result</code> - the result that the read message should be enqueued into.  If the same result is used for 
+            <code>read-channel</code> calls from multiple channels, this will have the effect of being realized
+            as the first message from any of the channels, and not consuming any messages from the other
+            channels.</p>
+
+<p> <code>:listener-result</code> - the result that will be returned to the emitter of the message, representing the
+                      outcome of the consumption.  This should only be done if there is a clear single
+                      outcome for this message (i.e. we're not just accumulating the entire stream.)</p>
+
+<p> <code>:on-timeout</code> - the result that will be realized if we timed out.  If not specified, the result will be
+                 realized as a <code>:lamina/timeout</code> error.</p>
+
+<p>  <code>:on-error</code> - the result that will be realized if the channel is in an error state.  If not specified,
+                the result will be realized as the channel's error.</p>
+
+<p>  <code>:on-false</code> - the result that will be realized if the <code>:predicate</code> returns false.  Defaults to <code>:lamina/false</code>.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-receive" class="source var-name" href="/src/lamina/core/channel.clj">receive</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[channel callback]</div>
+            
+            
+            <div class="doc"><p>Registers a callback that will be invoked with the next message enqueued into the channel, or
 the first message already in the queue.  Only one callback can consume any given message;
-registering multiple callbacks will consume multiple messages.
+registering multiple callbacks will consume multiple messages.</p>
 
-This can be cancelled using cancel-callback.</pre></div><div class="public" id="var-receive-all"><h3>receive-all</h3><div class="usage"><code>(receive-all channel callback)</code></div><pre class="doc">Registers a callback that will consume all messages currently in the queue, and all
-subsequent messages that are enqueued into the channel.
+<p>This can be cancelled using cancel-callback.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-receive-all" class="source var-name" href="/src/lamina/core/channel.clj">receive-all</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[channel callback]</div>
+            
+            
+            <div class="doc"><p>Registers a <code>callback</code> that will consume all messages currently in the queue, and all
+subsequent messages that are enqueued into <code>channel</code>.</p>
 
-This can be cancelled using cancel-callback.</pre></div><div class="public" id="var-receive-in-order"><h3>receive-in-order</h3><div class="usage"><code>(receive-in-order ch f)</code></div><pre class="doc">Consumes messages from the source channel, passing them to 'f' one at a time.  If
-'f' returns a result-channel, consumption of the next message is deferred until
-it's realized.
+<p>This can be cancelled using <code>cancel-callback</code>.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-receive-in-order" class="source var-name" href="/src/lamina/core/operators.clj">receive-in-order</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[ch f]</div>
+            
+            
+            <div class="doc"><p>Consumes messages from the source channel, passing them to <code>f</code> one at a time.  If
+<code>f</code> returns a result-channel, consumption of the next message is deferred until
+it's realized.</p>
 
-If an exception is thrown or the return result is realized as an error, the source
-channel is put into an error state.</pre></div><div class="public" id="var-redirect"><h3>redirect</h3><div class="usage"><code>(redirect pipeline value)</code></div><pre class="doc">If returned from a pipeline stage, redirects the pipeline flow to the beginning
-of 'pipeline', with an initial value of 'value'.</pre></div><div class="public" id="var-reduce*"><h3>reduce*</h3><div class="usage"><code>(reduce* f ch)</code><code>(reduce* f val ch)</code></div><pre class="doc">A dual to reduce.  Returns a result-channel that emits the final reduced value
-when the source channel has been drained.
+<p>If an exception is thrown or the return result is realized as an error, the source
+channel is put into an error state.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-redirect" class="source var-name" href="/src/lamina/core/pipeline.clj">redirect</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[pipeline value]</div>
+            
+            
+            <div class="doc"><p>Returns a redirect signal which causes the flow to start at the beginning of <code>pipeline</code>, with an input
+value of <code>value</code>.  The outcome of this new <code>pipeline</code> will be forwarded into the result returned by the
+original pipeline.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-reduce*" class="source var-name" href="/src/lamina/core/operators.clj">reduce*</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[f ch]</div><div class="usage">[f val ch]</div>
+            
+            
+            <div class="doc"><p>A dual to reduce.  Returns a result-channel that emits the final reduced value
+when the source channel has been drained.</p>
 
-(reduce* max (channel 1 3 2)) =&gt; 3</pre></div><div class="public" id="var-reductions*"><h3>reductions*</h3><div class="usage"><code>(reductions* f ch)</code><code>(reductions* f val ch)</code></div><pre class="doc">A dual to reductions.
+<p>(reduce* max (channel 1 3 2)) =&gt; 3</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-reductions*" class="source var-name" href="/src/lamina/core/operators.clj">reductions*</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[f ch]</div><div class="usage">[f val ch]</div>
+            
+            
+            <div class="doc"><p>A dual to reductions.</p>
 
-(reductions* max (channel 1 3 2)) =&gt; [1 3 3]</pre></div><div class="public" id="var-remove*"><h3>remove*</h3><div class="usage"><code>(remove* f channel)</code></div><pre class="doc">A dual to remove.
+<p>(reductions* max (channel 1 3 2)) =&gt; [1 3 3]</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-remove*" class="source var-name" href="/src/lamina/core/channel.clj">remove*</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[f channel]</div>
+            
+            
+            <div class="doc"><p>A dual to remove.</p>
 
-(remove* even? (channel 2 3 4)) =&gt; [3]</pre></div><div class="public" id="var-result-channel"><h3>result-channel</h3><div class="usage"><code>(result-channel)</code></div><pre class="doc">Returns a result-channel, representing an unrealized value or error.
-</pre></div><div class="public" id="var-run-pipeline"><h3>run-pipeline</h3><div class="usage"><code>(run-pipeline value &amp; opts+stages)</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-sample-every"><h3>sample-every</h3><div class="usage"><code>(sample-every {:keys [period task-queue], :as options} ch)</code></div><pre class="doc">Takes a source channel, and returns a channel that emits the most recent message
-from the source channel every 'period' milliseconds.</pre></div><div class="public" id="var-sink"><h3>sink</h3><div class="usage"><code>(sink callback)</code></div><pre class="doc">Creates a channel which will forward all messages to 'callback'.
-</pre></div><div class="public" id="var-sink-%3E%3E"><h3>sink-&gt;&gt;</h3><div class="usage"><code>(sink-&gt;&gt; &amp; transforms+callback)</code></div><pre class="doc">Creates a channel, pipes it through the -&gt;&gt; operator, and sends the
+<p>(remove* even? (channel 2 3 4)) =&gt; [3]</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-restart" class="source var-name" href="/src/lamina/core/pipeline.clj">restart</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[]</div><div class="usage">[value]</div>
+            
+            
+            <div class="doc"><p>A variant of <code>redirect</code> which redirects flow to the top of the current pipeline.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-result-channel" class="source var-name" href="/src/lamina/core/result.clj">result-channel</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[]</div>
+            
+            
+            <div class="doc"><p>Returns a result-channel, representing an unrealized value or error.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-run-pipeline" class="source var-name" href="/src/lamina/core/pipeline.clj">run-pipeline</a></h3>
+            <h4 class="var-type macro" id="var-type">macro</h4>
+            <div class="usage">[value &amp; opts+stages]</div>
+            
+            
+            <div class="doc"><p>Like <code>pipeline</code>, but simply invokes the pipeline with <code>value</code> and returns the result.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-sample-every" class="source var-name" href="/src/lamina/core/operators.clj">sample-every</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[{:keys [period task-queue], :as options} ch]</div>
+            
+            
+            <div class="doc"><p>Takes a source channel, and returns a channel that emits the most recent message
+from the source channel every <code>period</code> milliseconds.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-sink" class="source var-name" href="/src/lamina/core/channel.clj">sink</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[callback]</div>
+            
+            
+            <div class="doc"><p>Creates a channel which will forward all messages to <code>callback</code>.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-sink-%3E%3E" class="source var-name" href="/src/lamina/core.clj">sink-&gt;&gt;</a></h3>
+            <h4 class="var-type macro" id="var-type">macro</h4>
+            <div class="usage">[&amp; transforms+callback]</div>
+            
+            
+            <div class="doc"><p>Creates a channel, pipes it through the -&gt;&gt; operator, and sends the
 resulting stream into the callback. This can be useful when defining
-:probes for an instrumented function, among other places.
+:probes for an instrumented function, among other places.</p>
 
-(sink-&gt;&gt; (map* inc) (map* dec) println)
+<p>(sink-&gt;&gt; (map* inc) (map* dec) println)</p>
 
-expands to
+<p>expands to</p>
 
-(let [ch (channel)]
+<p>(let [ch (channel)]
   (receive-all
     (-&gt;&gt; ch (map* inc) (map* dec))
     println)
-  ch)</pre></div><div class="public" id="var-siphon"><h3>siphon</h3><div class="usage"><code>(siphon src dst)</code><code>(siphon src dst &amp; rest)</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-siphon-%3E%3E"><h3>siphon-&gt;&gt;</h3><div class="usage"><code>(siphon-&gt;&gt; &amp; transforms+downstream-channel)</code></div><pre class="doc">A variant of sink-&gt;&gt; where the last argument is assumed to be a channel,
-and the contents of the transform chain are siphoned into it.
+  ch)</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-siphon" class="source var-name" href="/src/lamina/core.clj">siphon</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[src dst]</div><div class="usage">[src dst &amp; rest]</div>
+            
+            
+            <div class="doc"><p>Takes all messages from <code>src</code> and forwards them to <code>dst</code>.  If <code>dst</code> closes, <code>src</code> is closed, but 
+not vise-versa.  Error states are similarly propagated.  This is useful for many transient channels 
+feeding into one channel.</p>
 
-(siphon-&gt;&gt; (map* inc) (map* dec) (named-channel :foo))
+<p>If more than two channels are specified, <code>siphon</code> becomes transitive.  <code>(siphon a b c)</code> is equivalent to
+<code>(siphon a b)</code> and <code>(siphon b c)</code>.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-siphon-%3E%3E" class="source var-name" href="/src/lamina/core.clj">siphon-&gt;&gt;</a></h3>
+            <h4 class="var-type macro" id="var-type">macro</h4>
+            <div class="usage">[&amp; transforms+downstream-channel]</div>
+            
+            
+            <div class="doc"><p>A variant of sink-&gt;&gt; where the last argument is assumed to be a channel,
+and the contents of the transform chain are siphoned into it.</p>
 
-expands to
+<p>(siphon-&gt;&gt; (map* inc) (map* dec) (named-channel :foo))</p>
 
-(let [ch (channel)]
+<p>expands to</p>
+
+<p>(let [ch (channel)]
   (siphon
     (-&gt;&gt; ch (map* inc) (map* dec))
     (named-channel :foo))
-  ch)</pre></div><div class="public" id="var-splice"><h3>splice</h3><div class="usage"><code>(splice emitter receiver)</code></div><pre class="doc">Returns a channel where all messages are enqueud into 'receiver', and
-consumed from 'emitter'.</pre></div><div class="public" id="var-split"><h3>split</h3><div class="usage"><code>(split &amp; downstream-channels)</code></div><pre class="doc">Returns a channel which will forward each message to all downstream-channels.
+  ch)</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-splice" class="source var-name" href="/src/lamina/core/channel.clj">splice</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[emitter receiver]</div>
+            
+            
+            <div class="doc"><p>Returns a channel where all messages are enqueud into <code>receiver</code>, and
+consumed from <code>emitter</code>.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-split" class="source var-name" href="/src/lamina/core.clj">split</a></h3>
+            <h4 class="var-type macro" id="var-type">macro</h4>
+            <div class="usage">[&amp; downstream-channels]</div>
+            
+            
+            <div class="doc"><p>Returns a channel which will forward each message to all downstream-channels.
 This can be used with sink-&gt;&gt;, siphon-&gt;&gt;, and join-&gt;&gt; to define complex
-message flows:
+message flows:</p>
 
-(join-&gt;&gt; (map* inc)
+<p>(join-&gt;&gt; (map* inc)
   (split
     (sink-&gt;&gt; (filter* even?) log-even)
-    (sink-&gt;&gt; (filter* odd?) log-odd)))</pre></div><div class="public" id="var-success-result"><h3>success-result</h3><div class="usage"><code>(success-result value)</code></div><pre class="doc">Returns a result already realized with a value.
-</pre></div><div class="public" id="var-take*"><h3>take*</h3><div class="usage"><code>(take* n ch)</code></div><pre class="doc">A dual to take.
+    (sink-&gt;&gt; (filter* odd?) log-odd)))</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-success-result" class="source var-name" href="/src/lamina/core/result.clj">success-result</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[value]</div>
+            
+            
+            <div class="doc"><p>Returns a result already realized with a value.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-take*" class="source var-name" href="/src/lamina/core/operators.clj">take*</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[n ch]</div>
+            
+            
+            <div class="doc"><p>A dual to take.</p>
 
-(take* 2 (channel 1 2 3)) =&gt; [1 2]</pre></div><div class="public" id="var-take-while*"><h3>take-while*</h3><div class="usage"><code>(take-while* f ch)</code></div><pre class="doc">A dual to take-while.
+<p>(take* 2 (channel 1 2 3)) =&gt; [1 2]</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-take-while*" class="source var-name" href="/src/lamina/core/operators.clj">take-while*</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[f ch]</div>
+            
+            
+            <div class="doc"><p>A dual to take-while.</p>
 
-(take-while* pos? (channel 1 2 0 4)) =&gt; [1 2]</pre></div><div class="public" id="var-tap"><h3>tap</h3><div class="usage"><code>(tap channel)</code></div><pre class="doc">Behaves like 'fork', except that the source channel will not remain open if only the tap
-exists downstream.
+<p>(take-while* pos? (channel 1 2 0 4)) =&gt; [1 2]</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-tap" class="source var-name" href="/src/lamina/core/channel.clj">tap</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[channel]</div>
+            
+            
+            <div class="doc"><p>Behaves like <code>fork</code>, except that the source channel will not remain open if only the tap
+exists downstream.</p>
 
-If the tap channel is closed, the source channel is unaffected.  However, if the source
+<p>If the tap channel is closed, the source channel is unaffected.  However, if the source
 channel is closed all tap channels are closed.  Similar propagation rules apply to error
-states.</pre></div><div class="public" id="var-timed-result"><h3>timed-result</h3><div class="usage"><code>(timed-result interval)</code><code>(timed-result interval value)</code><code>(timed-result interval value task-queue)</code></div><pre class="doc">Returns a result-channel that will be realized as 'value' (defaulting to nil) in 'interval' milliseconds.
-</pre></div><div class="public" id="var-transactional%3F"><h3>transactional?</h3><div class="usage"><code>(transactional? channel)</code></div><pre class="doc">Returns true if the channel's queue is transactional, false otherwise.
-</pre></div><div class="public" id="var-transitions"><h3>transitions</h3><div class="usage"><code>(transitions ch)</code></div><pre class="doc">Emits messages only when they differ from the preceding message.
-</pre></div><div class="public" id="var-wait-for-message"><h3>wait-for-message</h3><div class="usage"><code>(wait-for-message ch)</code><code>(wait-for-message ch timeout)</code></div><pre class="doc">Blocks for the next message from the channel. If the timeout elapses without a message,
-throws a java.util.concurrent.TimeoutException.</pre></div><div class="public" id="var-wait-for-result"><h3>wait-for-result</h3><div class="usage"><code>(wait-for-result result-channel)</code><code>(wait-for-result result-channel timeout)</code></div><pre class="doc">Waits for the result to be realized. If the timeout elapses without a value, throws a
-java.util.concurrent.TimeoutException.</pre></div><div class="public" id="var-wait-stage"><h3>wait-stage</h3><div class="usage"><code>(wait-stage interval)</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-watch-channel"><h3>watch-channel</h3><div class="usage"><code>(watch-channel reference)</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-with-timeout"><h3>with-timeout</h3><div class="usage"><code>(with-timeout interval result)</code></div><pre class="doc">Returns a new result that will mimic the original result, unless 'interval' milliseconds elapse, in which
-case it will realize as a 'lamina/timeout!' error.</pre></div><div class="public" id="var-zip"><h3>zip</h3><div class="usage"><code>(zip channels)</code><code>(zip most-frequent? channels)</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-zip-all"><h3>zip-all</h3><div class="usage"><code>(zip-all channels)</code></div><pre class="doc">something goes here
-</pre></div></div></body></html>
+states.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-timed-result" class="source var-name" href="/src/lamina/core/result.clj">timed-result</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[interval]</div><div class="usage">[interval value]</div><div class="usage">[interval value task-queue]</div>
+            
+            
+            <div class="doc"><p>Returns a result-channel that will be realized as <code>value</code> (defaulting to nil) in <code>interval</code> milliseconds.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-transactional%3F" class="source var-name" href="/src/lamina/core/channel.clj">transactional?</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[channel]</div>
+            
+            
+            <div class="doc"><p>Returns true if <code>channel</code> has a transactional queue, false otherwise.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-transitions" class="source var-name" href="/src/lamina/core/operators.clj">transitions</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[ch]</div>
+            
+            
+            <div class="doc"><p>Emits messages only when they differ from the preceding message.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-wait-for-message" class="source var-name" href="/src/lamina/core.clj">wait-for-message</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[ch]</div><div class="usage">[ch timeout]</div>
+            
+            
+            <div class="doc"><p>Blocks for the next message from the channel. If the timeout elapses without a message,
+throws a java.util.concurrent.TimeoutException.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-wait-for-result" class="source var-name" href="/src/lamina/core.clj">wait-for-result</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[result-channel]</div><div class="usage">[result-channel timeout]</div>
+            
+            
+            <div class="doc"><p>Waits for the result to be realized. If the timeout elapses without a value, throws a
+java.util.concurrent.TimeoutException.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-wait-stage" class="source var-name" href="/src/lamina/core/pipeline.clj">wait-stage</a></h3>
+            <h4 class="var-type macro" id="var-type">macro</h4>
+            <div class="usage">[interval]</div>
+            
+            
+            <div class="doc"><p>Creates a pipeline stage which simply waits for <code>interval</code> milliseconds before continuing onto the next stage.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-watch-channel" class="source var-name" href="/src/lamina/core/watch.clj">watch-channel</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[reference]</div>
+            
+            
+            <div class="doc"><p>Transforms a watchable <code>reference</code> into a channel of values.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-with-timeout" class="source var-name" href="/src/lamina/core/result.clj">with-timeout</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[interval result]</div>
+            
+            
+            <div class="doc"><p>Returns a new result that will mimic the original result, unless <code>interval</code> milliseconds elapse, in which
+case it will realize as a 'lamina/timeout!' error.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-zip" class="source var-name" href="/src/lamina/core/operators.clj">zip</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[channels]</div><div class="usage">[most-frequent? channels]</div>
+            
+            
+            <div class="doc"><p>Emits a tuple containing the most recent message from all <code>channels</code> once a single message has been received
+from each channel.</p>
+
+<p>Each stream in <code>channels</code> is assumed to be emitting at the same rate.  If this is not true, then the behavior
+for messages from higher-rate channels can be controlled via <code>most-frequent?</code>.</p>
+
+<p>Consider two channels, <code>a</code> and <code>b</code>, where <code>a</code> emits ascending numbers twice as fast as <code>b</code>. In this case, the output
+of each would look like this:</p>
+
+<p><code>a</code>      <code>b</code>
+ 1 <br />
+ 2        1
+ 3 <br />
+ 4        2</p>
+
+<p> If <code>most-frequent?</code> is true, we will emit at the tempo of the highest-frequency channel, giving us the sequence:</p>
+
+<p> <code>[2, 1]</code>, <code>[3, 1]</code>, <code>[4, 2]</code></p>
+
+<p> If <code>most-frequent?</code> is false, we will emit at the tempo of the lowest-frequency channel, giving us the sequence:</p>
+
+<p> <code>[2, 1]</code>, <code>[4, 2]</code></p>
+
+<p> By default, <code>most-frequent?</code> is false.    </p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-zip-all" class="source var-name" href="/src/lamina/core/operators.clj">zip-all</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[channels]</div>
+            
+            
+            <div class="doc"><p>For each message from one of the streams in <code>channels</code>, emits a tuple containing the most recent message
+from all streams.  In order for any tuple to be emitted, at least one message must have been emitted by
+all channels.</p>
+</div>
+          </div>
+        </div>
+      </div>
+    </article>
+  </body>
+
+</html>

@@ -1,125 +1,342 @@
-<!DOCTYPE html>
-<html><head><link href="css/default.css" rel="stylesheet" type="text/css"><script src="js/jquery.min.js" type="text/javascript"></script><script src="js/page_effects.js" type="text/javascript"></script><title>lamina.trace documentation</title></head><body><div id="header"><h1><a href="index.html">Lamina 0.5.0-SNAPSHOT API documentation</a></h1></div><div class="sidebar" id="namespaces"><h3><span>Namespaces</span></h3><ul><li><a href="lamina.api.html"><span>lamina.api</span></a></li><li><a href="lamina.core.html"><span>lamina.core</span></a></li><li><a href="lamina.executor.html"><span>lamina.executor</span></a></li><li><a href="lamina.stats.html"><span>lamina.stats</span></a></li><li><a href="lamina.time.html"><span>lamina.time</span></a></li><li class="current"><a href="lamina.trace.html"><span>lamina.trace</span></a></li><li><a href="lamina.viz.html"><span>lamina.viz</span></a></li><li><a href="lamina.walk.html"><span>lamina.walk</span></a></li></ul></div><div class="sidebar" id="vars"><h3>Public Vars</h3><ul><li><a href="lamina.trace.html#var-aggregating-trace-router"><span>aggregating-trace-router</span></a></li><li><a href="lamina.trace.html#var-analyze-timings"><span>analyze-timings</span></a></li><li><a href="lamina.trace.html#var-canonical-probe-name"><span>canonical-probe-name</span></a></li><li><a href="lamina.trace.html#var-defn-instrumented"><span>defn-instrumented</span></a></li><li><a href="lamina.trace.html#var-distill-timing"><span>distill-timing</span></a></li><li><a href="lamina.trace.html#var-error-probe-channel"><span>error-probe-channel</span></a></li><li><a href="lamina.trace.html#var-instrument"><span>instrument</span></a></li><li><a href="lamina.trace.html#var-instrumented-fn"><span>instrumented-fn</span></a></li><li><a href="lamina.trace.html#var-local-trace-router"><span>local-trace-router</span></a></li><li><a href="lamina.trace.html#var-merge-distilled-timings"><span>merge-distilled-timings</span></a></li><li><a href="lamina.trace.html#var-probe-channel"><span>probe-channel</span></a></li><li><a href="lamina.trace.html#var-probe-enabled%3F"><span>probe-enabled?</span></a></li><li><a href="lamina.trace.html#var-probe-names"><span>probe-names</span></a></li><li><a href="lamina.trace.html#var-query-seq"><span>query-seq</span></a></li><li><a href="lamina.trace.html#var-query-seqs"><span>query-seqs</span></a></li><li><a href="lamina.trace.html#var-query-stream"><span>query-stream</span></a></li><li><a href="lamina.trace.html#var-query-streams"><span>query-streams</span></a></li><li><a href="lamina.trace.html#var-register-context-builder"><span>register-context-builder</span></a></li><li><a href="lamina.trace.html#var-reset-probes"><span>reset-probes</span></a></li><li><a href="lamina.trace.html#var-select-probes"><span>select-probes</span></a></li><li><a href="lamina.trace.html#var-sympathetic-probe-channel"><span>sympathetic-probe-channel</span></a></li><li><a href="lamina.trace.html#var-time*"><span>time*</span></a></li><li><a href="lamina.trace.html#var-trace"><span>trace</span></a></li><li><a href="lamina.trace.html#var-trace*"><span>trace*</span></a></li><li><a href="lamina.trace.html#var-trace-router"><span>trace-router</span></a></li><li><a href="lamina.trace.html#var-tracing%3F"><span>tracing?</span></a></li><li><a href="lamina.trace.html#var-with-instrumentation"><span>with-instrumentation</span></a></li></ul></div><div class="namespace-docs" id="content"><h2>lamina.trace documentation</h2><pre class="doc"></pre><div class="public" id="var-aggregating-trace-router"><h3>aggregating-trace-router</h3><div class="usage"><code>(aggregating-trace-router endpoint-router)</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-analyze-timings"><h3>analyze-timings</h3><div class="usage"><code>(analyze-timings {:keys [period expiration analyses window], :as options} ch)</code></div><pre class="doc">Aggregates timings, and periodically emits statistical information about them.
-</pre></div><div class="public" id="var-canonical-probe-name"><h3>canonical-probe-name</h3><div class="usage"><code>(canonical-probe-name x)</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-defn-instrumented"><h3>defn-instrumented</h3><div class="usage"><code>(defn-instrumented fn-name &amp; body)</code></div><pre class="doc">A def form of (instrumented-fn...). Options can be defined in the function metadata:
+<html lang="en">
+  <head>
+    <title>lamina.trace documentation</title>
+    <link href="css/default.css" type="text/css" rel="stylesheet" />
+    <link href="css/codox-md.css" type="text/css" rel="stylesheet" />
+    <script type="text/javascript" src="js/jquery.min.js"></script>
+    <script type="text/javascript" src="js/page_effects.js"></script>
+  </head>
+  <body>
+    <header>
+      <div id="header">
+        <h1 class="project-title">Lamina 0.5.0-SNAPSHOT API documentation</h1>
+      </div>
+    </header>
+    <navigation>
+      <div id="namespaces" class="sidebar">
+        <h3>Namespaces</h3>
+        <ul class="ns-links">
+          <li class="ns-list"><a class="ns-link ns-name" href="lamina.api.html">lamina.api</a></li><li class="ns-list"><a class="ns-link ns-name" href="lamina.core.html">lamina.core</a></li><li class="ns-list"><a class="ns-link ns-name" href="lamina.executor.html">lamina.executor</a></li><li class="ns-list"><a class="ns-link ns-name" href="lamina.query.html">lamina.query</a></li><li class="ns-list"><a class="ns-link ns-name" href="lamina.stats.html">lamina.stats</a></li><li class="ns-list"><a class="ns-link ns-name" href="lamina.time.html">lamina.time</a></li><li class="ns-list"><a class="ns-link ns-name" href="lamina.trace.html">lamina.trace</a></li><li class="ns-list"><a class="ns-link ns-name" href="lamina.viz.html">lamina.viz</a></li><li class="ns-list"><a class="ns-link ns-name" href="lamina.walk.html">lamina.walk</a></li>
+        </ul>
+      </div>
+      <div id="vars" class="sidebar">
+        <h3>Public Vars</h3>
+        <ul class="ns-var-links">
+          <li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.trace.html#var-aggregating-trace-router">aggregating-trace-router</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.trace.html#var-analyze-timings">analyze-timings</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.trace.html#var-canonical-probe-name">canonical-probe-name</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.trace.html#var-defn-instrumented">defn-instrumented</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.trace.html#var-distill-timing">distill-timing</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.trace.html#var-error-probe-channel">error-probe-channel</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.trace.html#var-instrument">instrument</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.trace.html#var-instrumented-fn">instrumented-fn</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.trace.html#var-local-trace-router">local-trace-router</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.trace.html#var-merge-distilled-timings">merge-distilled-timings</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.trace.html#var-probe-channel">probe-channel</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.trace.html#var-probe-enabled%3F">probe-enabled?</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.trace.html#var-probe-names">probe-names</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.trace.html#var-register-context-builder">register-context-builder</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.trace.html#var-select-probes">select-probes</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.trace.html#var-subscribe">subscribe</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.trace.html#var-sympathetic-probe-channel">sympathetic-probe-channel</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.trace.html#var-time*">time*</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.trace.html#var-trace">trace</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.trace.html#var-trace*">trace*</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.trace.html#var-trace-router">trace-router</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.trace.html#var-tracing%3F">tracing?</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.trace.html#var-with-instrumentation">with-instrumentation</a></li>
+        </ul>
+      </div>
+    </navigation>
+    <article>
+      <div id="content" class="namespace-docs">
+        <h2 class="namespace-title">lamina.trace documentation</h2>
+        <div class="doc">
+</div>
+        <div class="ns-vars">
+          <div class="public">
+            <h3><a id="var-aggregating-trace-router" class="source var-name" href="/src/lamina/trace/router.clj">aggregating-trace-router</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[endpoint-router]</div>
+            
+            
+            <div class="doc"><p>A trace-router which splits the query into distributable and non-distributable portions, and forwards
+the distributable portion to <code>endpoint-router</code>.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-analyze-timings" class="source var-name" href="/src/lamina/trace.clj">analyze-timings</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[{:keys [period expiration analyses window], :as options} ch]</div>
+            
+            
+            <div class="doc"><p>Aggregates timings, and periodically emits statistical information about them.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-canonical-probe-name" class="source var-name" href="/src/lamina/trace/probe.clj">canonical-probe-name</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[x]</div>
+            
+            
+            <div class="doc"><p>Returns the canonical representation of a probe name.</p>
 
-(defn-instrumented foo
+<p><code>:foo:bar</code> =&gt; "foo:bar"
+`[:foo "bar:baz"] =&gt; "foo:bar:baz"</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-defn-instrumented" class="source var-name" href="/src/lamina/trace/instrument.clj">defn-instrumented</a></h3>
+            <h4 class="var-type macro" id="var-type">macro</h4>
+            <div class="usage">[fn-name &amp; body]</div>
+            
+            
+            <div class="doc"><p>A def form of (instrumented-fn...). Options can be defined in the function metadata:</p>
+
+<p>(defn-instrumented foo
   {:implicit? false
    :timeout (constantly 1000)}
-  &quot;Here's a doc-string&quot;
+  "Here's a doc-string"
   [x]
-  ...)
+  ...)</p>
 
-The :name can be explicitly defined, but will default to
+<p>The :name can be explicitly defined, but will default to</p>
 
-  the:function:namespace:the-function-name
+<p>  the:function:namespace:the-function-name</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-distill-timing" class="source var-name" href="/src/lamina/trace/timer.clj">distill-timing</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[timing]</div>
+            
+            
+            <div class="doc"><p>Returns a distillation of the timing object, containing only :task, :durations, :context, and :sub-tasks.
+This is an idempotent operation.</p>
 
-</pre></div><div class="public" id="var-distill-timing"><h3>distill-timing</h3><div class="usage"><code>(distill-timing timing)</code></div><pre class="doc">Returns a distillation of the timing object, containing only :task, :durations, :context, and :sub-tasks.
-This is an idempotent operation.
+<p>This data structure can be merged using merge-distilled-timings.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-error-probe-channel" class="source var-name" href="/src/lamina/trace/probe.clj">error-probe-channel</a></h3>
+            <h4 class="var-type var" id="var-type">var</h4>
+            
+            
+            
+            <div class="doc"><p>Like probe-channel, but if the probe is not active every message enqueued into the channe will be
+logged as an error.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-instrument" class="source var-name" href="/src/lamina/trace/instrument.clj">instrument</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[f {:keys [executor capture timeout probes implicit? with-bindings?], :as options, :or {implicit? true, capture :none, with-bindings? false}}]</div>
+            
+            
+            <div class="doc"><p>A general purpose transform for functions, allowing for tracing their execution,
+ defining timeouts, and deferring their execution onto a thread pool.</p>
 
-This data structure can be merged using merge-distilled-timings.</pre></div><div class="public" id="var-error-probe-channel"><h3>error-probe-channel</h3><div class="usage"></div><pre class="doc">Like probe-channel, but if the probe is not active every message enqueued into the channe will be
-logged as an error.</pre></div><div class="public" id="var-instrument"><h3>instrument</h3><div class="usage"><code>(instrument f {:keys [executor capture timeout probes implicit? with-bindings?], :as options, :or {implicit? true, capture :none, with-bindings? false}})</code></div><pre class="doc">A general purpose transform for functions, allowing for tracing their execution,
- defining timeouts, and deferring their execution onto a thread pool.
-
- Instrumenting a function does not change its behavior in any way (unless an
+<p> Instrumenting a function does not change its behavior in any way (unless an
  :executor is defined, see below).  This can be a powerful tool for both
  understanding complex tasks during development, and monitoring their behavior in
- production.
+ production.</p>
 
- ---------
+<p></p><hr />
  OVERHEAD
 
- Instrumenting adds some overhead to a function, equivalent to the performance
- difference between calling
+<p> Instrumenting adds some overhead to a function, equivalent to the performance
+ difference between calling</p>
 
-   (+ 1 2 3)
+<p>   (+ 1 2 3)</p>
 
- and
+<p> and</p>
 
-   (apply + [1 2 3])
+<p>   (apply + [1 2 3])</p>
 
- If you'd happily call 'apply' on the function being instrumented, chances are you
-  won't notice the difference.
+<p> If you'd happily call <code>apply</code> on the function being instrumented, chances are you
+  won't notice the difference.</p>
 
- ---------
+<p></p><hr />
  PROBES
 
- Instrumenting a function creates 'enter', 'return', and 'error' probes.  A :name
+<p> Instrumenting a function creates <code>enter</code>, <code>return</code>, and <code>error</code> probes.  A :name
  must be specified, and probe names will be of the structure name:enter,
  name:return, etc.  Data emitted by these probes may be captured by other functions
- if :implicit? is set to true, which is the default.
+ if :implicit? is set to true, which is the default.</p>
 
- When the function is invoked, the 'enter' probe emits a hash of the form
+<p> When the function is invoked, the <code>enter</code> probe emits a hash of the form</p>
 
-   :name        - the :name specified in the options
+<p>   :name        - the :name specified in the options
    :timestamp   - time of invocation in milliseconds since the epoch
-   :args        - a list of arguments passed to the function
+   :args        - a list of arguments passed to the function</p>
 
- When the function completes and the value is realized, the 'return' probe
- will emit the data above, and also:
+<p> When the function completes and the value is realized, the <code>return</code> probe
+ will emit the data above, and also:</p>
 
-   :duration    - the time elapsed since the invocation, in nanoseconds
+<p>   :duration    - the time elapsed since the invocation, in nanoseconds
    :result      - the value returned by the function
-   :sub-tasks   - 'return' probe data, less :result, for all implicit instrumented
-   sub-functions
+   :sub-tasks   - <code>return</code> probe data, less :result, for all implicit instrumented
+   sub-functions</p>
 
- If an error is thrown, or the value is realized as an error, :result is replaced by
+<p> If an error is thrown, or the value is realized as an error, :result is replaced by</p>
 
-   :error       - the exception thrown or realized error
+<p>   :error       - the exception thrown or realized error</p>
 
- A :probes option may be defined, giving a hash of probe names onto channels that
- will consume their data:
+<p> A :probes option may be defined, giving a hash of probe names onto channels that
+ will consume their data:</p>
 
-   {:error (channel-&gt;&gt; (sink #(println &quot;ERROR:&quot; %)))
-    :return (channel-&gt;&gt; (sink #(println &quot;Given&quot; (:args %) &quot;, returned&quot; (:result %))))}
+<p>   {:error (channel-&gt;&gt; (sink #(println "ERROR:" %)))
+    :return (channel-&gt;&gt; (sink #(println "Given" (:args %) ", returned" (:result %))))}</p>
 
-----------
-TIMEOUTS
+<h2></h2>
 
-A :timeout option may be specified, which should be a function that takes the
+<p>TIMEOUTS</p>
+
+<p>A :timeout option may be specified, which should be a function that takes the
 arguments passed to the function, and returns the timeout in milliseconds or nil
 for no timeout.  If the timeout elapses without any value, the returned result will
- be realized as an error of type 'lamina/timeout!'.
+ be realized as an error of type 'lamina/timeout!'.</p>
 
-----------
-EXECUTORS
+<h2></h2>
 
-If an :executor is specified, the function will be executed on that thread pool,
-and return an unrealized result representing its eventual value.
+<p>EXECUTORS</p>
 
-In this case, :timeout will also interrupt the thread if it is still actively
-computing the value, and the 'return' probe will include an :enqueued-duration
-parameter that describes the time, in nanoseconds, spent waiting to be executed.</pre></div><div class="public" id="var-instrumented-fn"><h3>instrumented-fn</h3><div class="usage"><code>(instrumented-fn fn-name {:keys [executor capture with-bindings? implicit? timeout probes], :or {capture :none, with-bindings? false, implicit? true}, :as options} &amp; fn-tail)</code></div><pre class="doc">A compile-time version of (instrument ...).
+<p>If an :executor is specified, the function will be executed on that thread pool,
+and return an unrealized result representing its eventual value.</p>
 
-(instrumented-fn
+<p>In this case, :timeout will also interrupt the thread if it is still actively
+computing the value, and the <code>return</code> probe will include an :enqueued-duration
+parameter that describes the time, in nanoseconds, spent waiting to be executed.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-instrumented-fn" class="source var-name" href="/src/lamina/trace/instrument.clj">instrumented-fn</a></h3>
+            <h4 class="var-type macro" id="var-type">macro</h4>
+            <div class="usage">[fn-name {:keys [executor capture with-bindings? implicit? timeout probes], :or {capture :none, with-bindings? false, implicit? true}, :as options} &amp; fn-tail]</div>
+            
+            
+            <div class="doc"><p>A compile-time version of (instrument ...).</p>
+
+<p>(instrumented-fn
   foo
   {:implicit? false}
   [x y]
-  (+ x y))
+  (+ x y))</p>
 
-The </pre></div><div class="public" id="var-local-trace-router"><h3>local-trace-router</h3><div class="usage"></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-merge-distilled-timings"><h3>merge-distilled-timings</h3><div class="usage"><code>(merge-distilled-timings &amp; distilled-timings)</code></div><pre class="doc">Returns a list of one or distilled timings, where :durations have been concatenated together for
-identical tasks.</pre></div><div class="public" id="var-probe-channel"><h3>probe-channel</h3><div class="usage"></div><pre class="doc">Returns a probe channel for the given name.  Keywords will be converted to simple strings, and
-sequences will be joined with ':' characters.
+<p>The </p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-local-trace-router" class="source var-name" href="/src/lamina/trace/router.clj">local-trace-router</a></h3>
+            <h4 class="var-type var" id="var-type">var</h4>
+            
+            
+            
+            <div class="doc"><p>A trace-router which can be used to consume and analyze probe-channels.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-merge-distilled-timings" class="source var-name" href="/src/lamina/trace/timer.clj">merge-distilled-timings</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[&amp; distilled-timings]</div>
+            
+            
+            <div class="doc"><p>Returns a list of one or distilled timings, where :durations have been concatenated together for
+identical tasks.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-probe-channel" class="source var-name" href="/src/lamina/trace/probe.clj">probe-channel</a></h3>
+            <h4 class="var-type var" id="var-type">var</h4>
+            
+            
+            
+            <div class="doc"><p>Returns a probe channel for the given name.  Keywords will be converted to simple strings, and
+sequences will be joined with ':' characters.</p>
 
-[:a &quot;b&quot; [1 2 3]] =&gt; &quot;a:b:1:2:3&quot;</pre></div><div class="public" id="var-probe-enabled%3F"><h3>probe-enabled?</h3><div class="usage"><code>(probe-enabled? _)</code></div><pre class="doc">Returns true if the probe has downstream channels.
-</pre></div><div class="public" id="var-probe-names"><h3>probe-names</h3><div class="usage"><code>(probe-names)</code></div><pre class="doc">Returns a list of all existing probes.
-</pre></div><div class="public" id="var-query-seq"><h3>query-seq</h3><div class="usage"><code>(query-seq descriptor {:keys [timestamp payload period seq-generator], :or {payload identity}, :as options} s)</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-query-seqs"><h3>query-seqs</h3><div class="usage"><code>(query-seqs descriptor-&gt;seq {:keys [timestamp payload period seq-generator], :or {payload identity}, :as options})</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-query-stream"><h3>query-stream</h3><div class="usage"><code>(query-stream descriptor {:keys [task-queue timestamp payload period stream-generator], :or {payload identity}, :as options} ch)</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-query-streams"><h3>query-streams</h3><div class="usage"><code>(query-streams descriptor-&gt;channel {:keys [task-queue timestamp payload period stream-generator], :or {payload identity}, :as options})</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-register-context-builder"><h3>register-context-builder</h3><div class="usage"><code>(register-context-builder f)</code></div><pre class="doc">Defines a function which is given a default context map, and returns a modified
-context map.</pre></div><div class="public" id="var-reset-probes"><h3>reset-probes</h3><div class="usage"><code>(reset-probes)</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-select-probes"><h3>select-probes</h3><div class="usage"><code>(select-probes &amp; wildcard-strings-or-regexes)</code></div><pre class="doc">Activates all probes that match the given strings or regexes, and returns a channel that will emit
-all messages from these probes.</pre></div><div class="public" id="var-sympathetic-probe-channel"><h3>sympathetic-probe-channel</h3><div class="usage"><code>(sympathetic-probe-channel ch)</code></div><pre class="doc">A channel that only lets messages through if 'ch' has downstream channels.
-</pre></div><div class="public" id="var-time*"><h3>time*</h3><div class="usage"><code>(time* &amp; body)</code></div><pre class="doc">A somewhat more useful variant of (time ...), which captures the sub-timings of all instrumented functions
-called within the scope.  If the body returns an unrealized value, time* will wait for it to become realized.</pre></div><div class="public" id="var-trace"><h3>trace</h3><div class="usage"><code>(trace probe &amp; body)</code></div><pre class="doc">Enqueues a value into the probe-channel described by 'probe'.  The body is executed only
+<p>[:a "b" [1 2 3]] =&gt; "a:b:1:2:3"</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-probe-enabled%3F" class="source var-name" href="/src/lamina/trace/probe.clj">probe-enabled?</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[_]</div>
+            
+            
+            <div class="doc"><p>Returns true if the probe has downstream channels.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-probe-names" class="source var-name" href="/src/lamina/trace/probe.clj">probe-names</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[]</div>
+            
+            
+            <div class="doc"><p>Returns a list of all existing probes.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-register-context-builder" class="source var-name" href="/src/lamina/trace/context.clj">register-context-builder</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[f]</div>
+            
+            
+            <div class="doc"><p>Defines a function which is given a default context map, and returns a modified
+context map.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-select-probes" class="source var-name" href="/src/lamina/trace/probe.clj">select-probes</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[&amp; wildcard-strings-or-regexes]</div>
+            
+            
+            <div class="doc"><p>Activates all probes that match the given strings or regexes, and returns a channel that will emit
+all messages from these probes.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-subscribe" class="source var-name" href="/src/lamina/cache.clj">subscribe</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[router topic options]</div>
+            
+            
+            <div class="doc"><p>Returns a channel corresponding to <code>topic</code>.  <code>options</code> are router-specific, and may be <code>nil</code>.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-sympathetic-probe-channel" class="source var-name" href="/src/lamina/trace/probe.clj">sympathetic-probe-channel</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[channel]</div>
+            
+            
+            <div class="doc"><p>A channel that only lets messages through if <code>channel</code> has downstream channels.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-time*" class="source var-name" href="/src/lamina/trace/utils.clj">time*</a></h3>
+            <h4 class="var-type macro" id="var-type">macro</h4>
+            <div class="usage">[&amp; body]</div>
+            
+            
+            <div class="doc"><p>A somewhat more useful variant of (time ...), which captures the sub-timings of all instrumented functions
+called within the scope.  If the body returns an unrealized value, time* will wait for it to become realized.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-trace" class="source var-name" href="/src/lamina/trace.clj">trace</a></h3>
+            <h4 class="var-type macro" id="var-type">macro</h4>
+            <div class="usage">[probe &amp; body]</div>
+            
+            
+            <div class="doc"><p>Enqueues a value into the probe-channel described by <code>probe</code>.  The body is executed only
 if there is a consumer for the probe channel; this is essentially a log statement that is
-only active if someone is paying attention.
+only active if someone is paying attention.</p>
 
-For performance reasons, the probe name must be something that can be resolved at compile-time.</pre></div><div class="public" id="var-trace*"><h3>trace*</h3><div class="usage"><code>(trace* probe &amp; body)</code></div><pre class="doc">A variant of trace that allows the probe name to be resolved at runtime.
-</pre></div><div class="public" id="var-trace-router"><h3>trace-router</h3><div class="usage"><code>(trace-router {:keys [generator topic-&gt;id on-subscribe on-unsubscribe timestamp payload task-queue], :or {payload identity, task-queue (time/task-queue)}, :as options})</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-tracing%3F"><h3>tracing?</h3><div class="usage"><code>(tracing?)</code></div><pre class="doc">Returns true when called inside an active function trace scope, false otherwise.
-</pre></div><div class="public" id="var-with-instrumentation"><h3>with-instrumentation</h3><div class="usage"><code>(with-instrumentation &amp; body)</code></div><pre class="doc">Returns the full timing data for all code called within the scope.
-</pre></div></div></body></html>
+<p>For performance reasons, the probe name must be something that can be resolved at compile-time.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-trace*" class="source var-name" href="/src/lamina/trace.clj">trace*</a></h3>
+            <h4 class="var-type macro" id="var-type">macro</h4>
+            <div class="usage">[probe &amp; body]</div>
+            
+            
+            <div class="doc"><p>A variant of trace that allows the probe name to be resolved at runtime.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-trace-router" class="source var-name" href="/src/lamina/trace/router.clj">trace-router</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[{:keys [generator topic-&gt;id on-subscribe on-unsubscribe timestamp payload task-queue], :or {payload identity, task-queue (time/task-queue)}, :as options}]</div>
+            
+            
+            <div class="doc"><p>Creates a router which can be queried via the default syntax and allows multiple queries to share sub-streams.</p>
+
+<p>Like <code>lamina.cache/router</code>, with the addition of:</p>
+
+<p><code>:timestamp</code> - a function which returns the logical time of each message, defaults to wall time.</p>
+
+<p><code>:payload</code> - a function which describes the content of each message, defaults to <code>identity</code>.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-tracing%3F" class="source var-name" href="/src/lamina/trace.clj">tracing?</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[]</div>
+            
+            
+            <div class="doc"><p>Returns true when called inside an active function trace scope, false otherwise.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-with-instrumentation" class="source var-name" href="/src/lamina/trace/utils.clj">with-instrumentation</a></h3>
+            <h4 class="var-type macro" id="var-type">macro</h4>
+            <div class="usage">[&amp; body]</div>
+            
+            
+            <div class="doc"><p>Returns the full timing data for all code called within the scope.</p>
+</div>
+          </div>
+        </div>
+      </div>
+    </article>
+  </body>
+
+</html>

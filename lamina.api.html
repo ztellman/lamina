@@ -1,8 +1,123 @@
-<!DOCTYPE html>
-<html><head><link href="css/default.css" rel="stylesheet" type="text/css"><script src="js/jquery.min.js" type="text/javascript"></script><script src="js/page_effects.js" type="text/javascript"></script><title>lamina.api documentation</title></head><body><div id="header"><h1><a href="index.html">Lamina 0.5.0-SNAPSHOT API documentation</a></h1></div><div class="sidebar" id="namespaces"><h3><span>Namespaces</span></h3><ul><li class="current"><a href="lamina.api.html"><span>lamina.api</span></a></li><li><a href="lamina.core.html"><span>lamina.core</span></a></li><li><a href="lamina.executor.html"><span>lamina.executor</span></a></li><li><a href="lamina.stats.html"><span>lamina.stats</span></a></li><li><a href="lamina.time.html"><span>lamina.time</span></a></li><li><a href="lamina.trace.html"><span>lamina.trace</span></a></li><li><a href="lamina.viz.html"><span>lamina.viz</span></a></li><li><a href="lamina.walk.html"><span>lamina.walk</span></a></li></ul></div><div class="sidebar" id="vars"><h3>Public Vars</h3><ul><li><a href="lamina.api.html#var-bridge"><span>bridge</span></a></li><li><a href="lamina.api.html#var-bridge-accumulate"><span>bridge-accumulate</span></a></li><li><a href="lamina.api.html#var-bridge-in-order"><span>bridge-in-order</span></a></li><li><a href="lamina.api.html#var-bridge-join"><span>bridge-join</span></a></li><li><a href="lamina.api.html#var-bridge-siphon"><span>bridge-siphon</span></a></li><li><a href="lamina.api.html#var-connect"><span>connect</span></a></li></ul></div><div class="namespace-docs" id="content"><h2>lamina.api documentation</h2><pre class="doc"></pre><div class="public" id="var-bridge"><h3>bridge</h3><div class="usage"><code>(bridge src dsts callback {:keys [description upstream? downstream?], :or {upstream? true, downstream? true}, :as options})</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-bridge-accumulate"><h3>bridge-accumulate</h3><div class="usage"><code>(bridge-accumulate src dst description {:keys [period task-queue accumulator emitter], :or {task-queue (t/task-queue), period (t/period)}})</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-bridge-in-order"><h3>bridge-in-order</h3><div class="usage"><code>(bridge-in-order src dst description &amp; {:keys [predicate callback on-complete close-on-complete? wait-on-callback?]})</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-bridge-join"><h3>bridge-join</h3><div class="usage"><code>(bridge-join src dst description callback)</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-bridge-siphon"><h3>bridge-siphon</h3><div class="usage"><code>(bridge-siphon src dst description callback)</code></div><pre class="doc">something goes here
-</pre></div><div class="public" id="var-connect"><h3>connect</h3><div class="usage"><code>(connect src dst upstream? downstream?)</code></div><pre class="doc">something goes here
-</pre></div></div></body></html>
+<html lang="en">
+  <head>
+    <title>lamina.api documentation</title>
+    <link href="css/default.css" type="text/css" rel="stylesheet" />
+    <link href="css/codox-md.css" type="text/css" rel="stylesheet" />
+    <script type="text/javascript" src="js/jquery.min.js"></script>
+    <script type="text/javascript" src="js/page_effects.js"></script>
+  </head>
+  <body>
+    <header>
+      <div id="header">
+        <h1 class="project-title">Lamina 0.5.0-SNAPSHOT API documentation</h1>
+      </div>
+    </header>
+    <navigation>
+      <div id="namespaces" class="sidebar">
+        <h3>Namespaces</h3>
+        <ul class="ns-links">
+          <li class="ns-list"><a class="ns-link ns-name" href="lamina.api.html">lamina.api</a></li><li class="ns-list"><a class="ns-link ns-name" href="lamina.core.html">lamina.core</a></li><li class="ns-list"><a class="ns-link ns-name" href="lamina.executor.html">lamina.executor</a></li><li class="ns-list"><a class="ns-link ns-name" href="lamina.query.html">lamina.query</a></li><li class="ns-list"><a class="ns-link ns-name" href="lamina.stats.html">lamina.stats</a></li><li class="ns-list"><a class="ns-link ns-name" href="lamina.time.html">lamina.time</a></li><li class="ns-list"><a class="ns-link ns-name" href="lamina.trace.html">lamina.trace</a></li><li class="ns-list"><a class="ns-link ns-name" href="lamina.viz.html">lamina.viz</a></li><li class="ns-list"><a class="ns-link ns-name" href="lamina.walk.html">lamina.walk</a></li>
+        </ul>
+      </div>
+      <div id="vars" class="sidebar">
+        <h3>Public Vars</h3>
+        <ul class="ns-var-links">
+          <li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.api.html#var-bridge">bridge</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.api.html#var-bridge-accumulate">bridge-accumulate</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.api.html#var-bridge-in-order">bridge-in-order</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.api.html#var-bridge-join">bridge-join</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.api.html#var-bridge-siphon">bridge-siphon</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.api.html#var-connect">connect</a></li>
+        </ul>
+      </div>
+    </navigation>
+    <article>
+      <div id="content" class="namespace-docs">
+        <h2 class="namespace-title">lamina.api documentation</h2>
+        <div class="doc">
+</div>
+        <div class="ns-vars">
+          <div class="public">
+            <h3><a id="var-bridge" class="source var-name" href="/src/lamina/core/channel.clj">bridge</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[src dsts callback {:keys [description upstream? downstream?], :or {upstream? true, downstream? true}, :as options}]</div>
+            
+            
+            <div class="doc"><p>A generalization of <code>bridge-join</code> and <code>bridge-siphon</code>.  Takes one <code>src</code> channel, and one or
+more downstream <code>dsts</code> channels.  All messages from <code>src</code> will be passed into <code>callback</code>, which 
+may or may not forward it to the downstream channels.</p>
+
+<p>This represents a relationship between channels which may or may not always result in messages
+propagating downstream.  This can be useful when certain channels are only used for specific
+types of messages, or there is an accumulation of messages, or anything else that is more complex
+than receive -&gt; emit.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-bridge-accumulate" class="source var-name" href="/src/lamina/core/operators.clj">bridge-accumulate</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[src dst description {:keys [period task-queue accumulator emitter], :or {task-queue (t/task-queue), period (t/period)}}]</div>
+            
+            
+            <div class="doc"><p>A variant of <code>bridge</code> which </p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-bridge-in-order" class="source var-name" href="/src/lamina/core/operators.clj">bridge-in-order</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[src dst description &amp; {:keys [predicate callback on-complete close-on-complete? wait-on-callback?], :or {close-on-complete? false, wait-on-callback? false}}]</div>
+            
+            
+            <div class="doc"><p>A variant of <code>bridge</code> which guarantees that messages will be processed one at a time.  Useful for
+any operation which is sensitive to ordering, or difficult to write concurrently.</p>
+
+<p>Returns <code>dst</code>, which may be nil if the operation doesn't result in a derived stream.</p>
+
+<p>By default, closing <code>src</code> will close <code>dst</code>, but not vise-versa.</p>
+
+<p>Required parameters:</p>
+
+<p>  <code>:callback</code> - the callback which receives each message, after <code>:predicate</code> returns true.</p>
+
+<p>Optional parameters:</p>
+
+<p>  <code>:predicate</code> - a predicate which takes the next message, and returns whether it should be consumed.  If false,
+                 <code>dst</code> is closed.</p>
+
+<p>  <code>:on-complete</code> - a callback which is invoked with zero parameters once the bridge is closed, but before <code>dst</code> is closed.</p>
+
+<p>  <code>:close-on-complete?</code> - if true, forces an upstream connection, where closing <code>dst</code> closes <code>src</code>.</p>
+
+<p>  <code>:wait-on-callback?</code> - if true, waits until the result from <code>callback</code> is realized before proceeding to the next message.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-bridge-join" class="source var-name" href="/src/lamina/core/channel.clj">bridge-join</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[src dst description callback]</div>
+            
+            
+            <div class="doc"><p>A <code>bridge</code> between one <code>src</code> and one <code>dst</code> channel which is bidirectional.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-bridge-siphon" class="source var-name" href="/src/lamina/core/channel.clj">bridge-siphon</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[src dst description callback]</div>
+            
+            
+            <div class="doc"><p>A <code>bridge</code> between one <code>src</code> and one <code>dst</code> channel only propagates closing upstream.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-connect" class="source var-name" href="/src/lamina/core/channel.clj">connect</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[src dst upstream? downstream?]</div>
+            
+            
+            <div class="doc"><p>A generalization of <code>siphon</code> and <code>join</code>, making sure that all messages in <code>src</code> will be forwarded
+to <code>dst</code>.</p>
+
+<p>If <code>upstream?</code> is true, when <code>dst</code> is closed, <code>src</code> will be closed.  This is true for <code>siphon</code> and <code>join</code>.</p>
+
+<p>If <code>downstream?</code> is true, when <code>src</code> is closed, <code>dst</code> will be closed.  This is true for <code>join</code>.</p>
+
+<p>The same behavior is also used for propagating error states.</p>
+</div>
+          </div>
+        </div>
+      </div>
+    </article>
+  </body>
+
+</html>

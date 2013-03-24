@@ -1,7 +1,69 @@
-<!DOCTYPE html>
-<html><head><link href="css/default.css" rel="stylesheet" type="text/css"><script src="js/jquery.min.js" type="text/javascript"></script><script src="js/page_effects.js" type="text/javascript"></script><title>lamina.viz documentation</title></head><body><div id="header"><h1><a href="index.html">Lamina 0.5.0-SNAPSHOT API documentation</a></h1></div><div class="sidebar" id="namespaces"><h3><span>Namespaces</span></h3><ul><li><a href="lamina.api.html"><span>lamina.api</span></a></li><li><a href="lamina.core.html"><span>lamina.core</span></a></li><li><a href="lamina.executor.html"><span>lamina.executor</span></a></li><li><a href="lamina.stats.html"><span>lamina.stats</span></a></li><li><a href="lamina.time.html"><span>lamina.time</span></a></li><li><a href="lamina.trace.html"><span>lamina.trace</span></a></li><li class="current"><a href="lamina.viz.html"><span>lamina.viz</span></a></li><li><a href="lamina.walk.html"><span>lamina.walk</span></a></li></ul></div><div class="sidebar" id="vars"><h3>Public Vars</h3><ul><li><a href="lamina.viz.html#var-render-propagation"><span>render-propagation</span></a></li><li><a href="lamina.viz.html#var-view-graph"><span>view-graph</span></a></li><li><a href="lamina.viz.html#var-view-propagation"><span>view-propagation</span></a></li></ul></div><div class="namespace-docs" id="content"><h2>lamina.viz documentation</h2><pre class="doc"></pre><div class="public" id="var-render-propagation"><h3>render-propagation</h3><div class="usage"><code>(render-propagation channel message)</code><code>(render-propagation options channel message)</code></div><pre class="doc">Given a channel and a message, renders a graph displaying the value of the message as
+<html lang="en">
+  <head>
+    <title>lamina.viz documentation</title>
+    <link href="css/default.css" type="text/css" rel="stylesheet" />
+    <link href="css/codox-md.css" type="text/css" rel="stylesheet" />
+    <script type="text/javascript" src="js/jquery.min.js"></script>
+    <script type="text/javascript" src="js/page_effects.js"></script>
+  </head>
+  <body>
+    <header>
+      <div id="header">
+        <h1 class="project-title">Lamina 0.5.0-SNAPSHOT API documentation</h1>
+      </div>
+    </header>
+    <navigation>
+      <div id="namespaces" class="sidebar">
+        <h3>Namespaces</h3>
+        <ul class="ns-links">
+          <li class="ns-list"><a class="ns-link ns-name" href="lamina.api.html">lamina.api</a></li><li class="ns-list"><a class="ns-link ns-name" href="lamina.core.html">lamina.core</a></li><li class="ns-list"><a class="ns-link ns-name" href="lamina.executor.html">lamina.executor</a></li><li class="ns-list"><a class="ns-link ns-name" href="lamina.query.html">lamina.query</a></li><li class="ns-list"><a class="ns-link ns-name" href="lamina.stats.html">lamina.stats</a></li><li class="ns-list"><a class="ns-link ns-name" href="lamina.time.html">lamina.time</a></li><li class="ns-list"><a class="ns-link ns-name" href="lamina.trace.html">lamina.trace</a></li><li class="ns-list"><a class="ns-link ns-name" href="lamina.viz.html">lamina.viz</a></li><li class="ns-list"><a class="ns-link ns-name" href="lamina.walk.html">lamina.walk</a></li>
+        </ul>
+      </div>
+      <div id="vars" class="sidebar">
+        <h3>Public Vars</h3>
+        <ul class="ns-var-links">
+          <li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.viz.html#var-render-propagation">render-propagation</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.viz.html#var-view-graph">view-graph</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.viz.html#var-view-propagation">view-propagation</a></li>
+        </ul>
+      </div>
+    </navigation>
+    <article>
+      <div id="content" class="namespace-docs">
+        <h2 class="namespace-title">lamina.viz documentation</h2>
+        <div class="doc">
+</div>
+        <div class="ns-vars">
+          <div class="public">
+            <h3><a id="var-render-propagation" class="source var-name" href="/src/lamina/viz.clj">render-propagation</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[channel message]</div><div class="usage">[options channel message]</div>
+            
+            
+            <div class="doc"><p>Given a channel and a message, renders a graph displaying the value of the message as
 it is propagated downstream.  This is safe to do while other threads are using the
-channel.</pre></div><div class="public" id="var-view-graph"><h3>view-graph</h3><div class="usage"><code>(view-graph &amp; options+channels)</code></div><pre class="doc">Given one or more channels, displays them and all downstream nodes.
-</pre></div><div class="public" id="var-view-propagation"><h3>view-propagation</h3><div class="usage"><code>(view-propagation channel message)</code><code>(view-propagation options channel message)</code></div><pre class="doc">Given a channel and a message, displays a graph displaying the value of the message as
+channel.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-view-graph" class="source var-name" href="/src/lamina/viz.clj">view-graph</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[&amp; options+channels]</div>
+            
+            
+            <div class="doc"><p>Given one or more channels, displays them and all downstream nodes.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-view-propagation" class="source var-name" href="/src/lamina/viz.clj">view-propagation</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[channel message]</div><div class="usage">[options channel message]</div>
+            
+            
+            <div class="doc"><p>Given a channel and a message, displays a graph displaying the value of the message as
 it is propagated downstream.  This is safe to do while other threads are using the
-channel.</pre></div></div></body></html>
+channel.</p>
+</div>
+          </div>
+        </div>
+      </div>
+    </article>
+  </body>
+
+</html>
