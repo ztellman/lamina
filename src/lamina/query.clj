@@ -22,6 +22,7 @@
    def-trace-operator])
 
 (defn parse-descriptor
+  "Parses the query descriptor down to the canonical representation."
   ([x]
      (parse-descriptor x nil))
   ([x {:as options}]

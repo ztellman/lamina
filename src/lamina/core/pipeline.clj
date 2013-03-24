@@ -37,12 +37,14 @@
   (error [_ result initial-value ex]))
  
 (defn redirect
-  "If returned from a pipeline stage, redirects the pipeline flow to the beginning
-   of 'pipeline', with an initial value of 'value'."
+  "Returns a redirect signal which causes the flow to start at the beginning of `pipeline`, with an input
+   value of `value`.  The outcome of this new `pipeline` will be forwarded into the result returned by the
+   original pipeline."
   [pipeline value]
   (Redirect. pipeline value))
 
 (defn restart
+  "A variant of `redirect` which redirects flow to the top of the current pipeline."
   ([]
      (Redirect. ::current ::initial))
   ([value]
@@ -229,7 +231,40 @@
              (r/error-result ex#)))))))
 
 (defmacro pipeline
-  "something goes here"
+  "A means for composing asynchronous functions.  Returns a function which will pass the value into the first
+   function, the result from that function into the second, and so on.
+
+   If any function returns an unrealized async-result, the next function won't be called until that value is realized.
+   The call into the pipeline itself returns an async-result, which won't be realized until all functions have completed.
+   If any function throws an exception or returns an async-result that realizes as an error, this will short-circuit all
+   calls to subsequent functions, and cause the pipeline's result to be realized as an error.
+
+   Loops and other more complex flows may be created if any stage returns a redirect signal by returning the result of 
+   invoking `restart`, `redirect`, or `complete`.  See these functions for more details.
+
+   The first argument to `pipeline` may be a map of optional arguments:
+
+     `:error-handler` - a function which is called when an error occurs in the pipeline.  Takes a single argument, the `error`,
+                        and may optionally return a redirect signal to prevent the pipeline from returning the error.
+
+                        If no `:error-handler` is specified, the error will be logged.  If pipelines are nested, this may result
+                        in the same error being logged multiple times.  To hide this error you may define a no-op handler, but
+                        only do this if you're sure there's an outer pipeline that will handle/log the error.
+
+     `:finally` - a function wich is called with zero arguments when the pipeline completes, either due to success or error.
+
+     `:result` - the result into which the pipeline's result will be forwarded.  Causes the pipeline to not return any value.
+
+     `:timeout` - the max duration of the pipeline's invocation.  If pipeline times out in the middle of a stage it won't terminate
+                  computation, but it will not continue onto the next stage.
+
+     `:implicit?` - describes whether the pipeline's execution should show up in higher-level instrumented functions calling into it.
+                    Defaults to false.
+
+     `:unwrap?` - if true, and the pipeline does not need to pause between streams, the pipeline will return an actual value 
+                  rather than an async-result.
+
+     `:with-bindings` - if true, conveys the binding context of the initial invocation of the pipeline into any deferred stages."
   [& opts+stages]
   (let [[options stages] (split-options opts+stages (meta &form))
         {:keys [result
@@ -360,7 +395,7 @@
                 `(start-pipeline this## nil val##))))))))
 
 (defmacro run-pipeline
-  "something goes here"
+  "Like `pipeline`, but simply invokes the pipeline with `value` and returns the result."
   [value & opts+stages]
   `(let [p# ~(with-meta `(pipeline ~@opts+stages) (meta &form))
          value# ~value]
@@ -368,16 +403,9 @@
 
 ;;;
 
-(defn read-merge
-  "something goes here"
-  [read-fn merge-fn]
-  (pipeline
-    (fn [val]
-      (run-pipeline (read-fn)
-        #(merge-fn val %)))))
-
 (defn complete
-  "something goes here"
+  "Returns a redirect signal which causes the pipeline's execution to stop, and simply return `value`.  If `value`
+   is a `Throwable`, then the pipeline will be realized as that error."
   [value]
   (redirect
     (if (instance? Throwable value)
@@ -386,7 +414,7 @@
     nil))
 
 (defmacro wait-stage
-  "something goes here"
+  "Creates a pipeline stage which simply waits for `interval` milliseconds before continuing onto the next stage."
   [interval]
   `(fn [x#]
      (r/timed-result ~interval x#)))

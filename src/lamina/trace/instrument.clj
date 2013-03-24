@@ -176,29 +176,29 @@
 
      (apply + [1 2 3])
 
-   If you'd happily call 'apply' on the function being instrumented, chances are you
+   If you'd happily call `apply` on the function being instrumented, chances are you
     won't notice the difference.
 
    ---------
    PROBES
 
-   Instrumenting a function creates 'enter', 'return', and 'error' probes.  A :name
+   Instrumenting a function creates `enter`, `return`, and `error` probes.  A :name
    must be specified, and probe names will be of the structure name:enter,
    name:return, etc.  Data emitted by these probes may be captured by other functions
    if :implicit? is set to true, which is the default.
 
-   When the function is invoked, the 'enter' probe emits a hash of the form
+   When the function is invoked, the `enter` probe emits a hash of the form
 
      :name        - the :name specified in the options
      :timestamp   - time of invocation in milliseconds since the epoch
      :args        - a list of arguments passed to the function
 
-   When the function completes and the value is realized, the 'return' probe
+   When the function completes and the value is realized, the `return` probe
    will emit the data above, and also:
 
      :duration    - the time elapsed since the invocation, in nanoseconds
      :result      - the value returned by the function
-     :sub-tasks   - 'return' probe data, less :result, for all implicit instrumented
+     :sub-tasks   - `return` probe data, less :result, for all implicit instrumented
      sub-functions
 
    If an error is thrown, or the value is realized as an error, :result is replaced by
@@ -226,7 +226,7 @@
   and return an unrealized result representing its eventual value.
 
   In this case, :timeout will also interrupt the thread if it is still actively
-  computing the value, and the 'return' probe will include an :enqueued-duration
+  computing the value, and the `return` probe will include an :enqueued-duration
   parameter that describes the time, in nanoseconds, spent waiting to be executed."
   
   [f {:keys [executor capture timeout probes implicit? with-bindings?]

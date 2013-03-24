@@ -36,7 +36,7 @@
 
 (defmacro bound-task
   "Executes the body on a separate thread, returning an unrealized result representing the eventual
-   value or error.  Unlike 'task', thread-local bindings are preserved when evaluating the body."
+   value or error.  Unlike `task`, thread-local bindings are preserved when evaluating the body."
   [& body]
   (let [explicit-name? (string? (first body))
         name (if explicit-name? (first body) "bound-task")

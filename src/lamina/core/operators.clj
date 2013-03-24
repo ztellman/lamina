@@ -43,13 +43,35 @@
 ;;;
 
 (defn bridge-in-order
-  "something goes here"
+  "A variant of `bridge` which guarantees that messages will be processed one at a time.  Useful for
+   any operation which is sensitive to ordering, or difficult to write concurrently.
+
+   Returns `dst`, which may be nil if the operation doesn't result in a derived stream.
+
+   By default, closing `src` will close `dst`, but not vise-versa.
+
+   Required parameters:
+
+     `:callback` - the callback which receives each message, after `:predicate` returns true.
+
+   Optional parameters:
+
+     `:predicate` - a predicate which takes the next message, and returns whether it should be consumed.  If false,
+                    `dst` is closed.
+                    
+     `:on-complete` - a callback which is invoked with zero parameters once the bridge is closed, but before `dst` is closed.
+
+     `:close-on-complete?` - if true, forces an upstream connection, where closing `dst` closes `src`.
+
+     `:wait-on-callback?` - if true, waits until the result from `callback` is realized before proceeding to the next message."
   [src dst description &
    {:keys [predicate
            callback
            on-complete
            close-on-complete?
-           wait-on-callback?]}]
+           wait-on-callback?]
+     :or {close-on-complete? false
+	      wait-on-callback? false}}]
 
   (p/run-pipeline (g/consume
                     (emitter-node src)
@@ -125,8 +147,8 @@
       (fn [_] @msg))))
 
 (defn receive-in-order
-  "Consumes messages from the source channel, passing them to 'f' one at a time.  If
-   'f' returns a result-channel, consumption of the next message is deferred until
+  "Consumes messages from the source channel, passing them to `f` one at a time.  If
+   `f` returns a result-channel, consumption of the next message is deferred until
    it's realized.
 
    If an exception is thrown or the return result is realized as an error, the source
@@ -363,7 +385,7 @@
    source channel are consumed.  If there are no messages are available to be
    consumed, execution will block until one is available.
 
-   A 'timeout' can be defined, either as a number or a no-arg function that returns a
+   A `timeout` can be defined, either as a number or a no-arg function that returns a
    number.  Each time the seq must wait for a message to consume, it will only wait
    that many milliseconds before giving up and ending the sequence."
   ([ch]
@@ -384,7 +406,7 @@
 
 (defn channel->seq
   "An eager variant of channel->lazy-seq.  Blocks until the channel has been drained,
-   or until 'timeout' milliseconds have elapsed."
+   or until `timeout` milliseconds have elapsed."
   ([ch]
      (g/drain (emitter-node ch)))
   ([ch timeout]
@@ -434,7 +456,7 @@
 ;;;
 
 (defn periodically
-  "Returns a channel.  Every 'period' milliseconds, 'f' is invoked with no arguments
+  "Returns a channel.  Every `period` milliseconds, `f` is invoked with no arguments
    and the value is emitted as a message."
   ([period f]
      (periodically period f (t/task-queue)))
@@ -456,7 +478,7 @@
        ch)))
 
 (defn bridge-accumulate
-  "something goes here"
+  "A variant of `bridge` which "
   [src dst description
    {:keys [period task-queue accumulator emitter]
     :or {task-queue (t/task-queue)
@@ -490,7 +512,7 @@
 
 (defn sample-every
   "Takes a source channel, and returns a channel that emits the most recent message
-   from the source channel every 'period' milliseconds."
+   from the source channel every `period` milliseconds."
   [{:keys [period task-queue] :as options} ch]
   (let [val (atom nil)]
     (bridge-accumulate ch (mimic ch) "sample-every"
@@ -500,7 +522,7 @@
 
 (defn partition-every
   "Takes a source channel, and returns a channel that repeatedly emits a collection
-   of all messages from the source channel in the last 'period' milliseconds."
+   of all messages from the source channel in the last `period` milliseconds."
   [{:keys [period task-queue] :as options} ch]
   (let [q (ConcurrentLinkedQueue.)]
     (bridge-accumulate ch (mimic ch) "partition-every"
@@ -519,14 +541,16 @@
 
 ;;;
 
-(defn create-bitset [n] ;; todo: typehint with 'long'
+(defn create-bitset [n] ;; todo: typehint with `long`
   (let [bitset (BitSet. (long n))]
     (dotimes [idx n]
       (.set ^BitSet bitset idx))
     bitset))
 
 (defn zip-all
-  "something goes here"
+  "For each message from one of the streams in `channels`, emits a tuple containing the most recent message
+   from all streams.  In order for any tuple to be emitted, at least one message must have been emitted by
+   all channels."
   [channels]
   (let [cnt (count channels)
         ^objects ary (object-array cnt)
@@ -534,7 +558,7 @@
         lock (l/lock)
         ch* (channel* :description "zip-all")]
     
-    (doseq [[idx ch] (map vector (range cnt) channels)] ;; todo: typehint with 'long'
+    (doseq [[^long idx ch] (map vector (range cnt) channels)]
       (bridge-join ch ch* ""
         (fn [msg]
           (if-let [ary* (l/with-exclusive-lock lock
@@ -552,7 +576,31 @@
     ch*))
 
 (defn zip
-  "something goes here"
+  "Emits a tuple containing the most recent message from all `channels` once a single message has been received
+   from each channel.
+
+   Each stream in `channels` is assumed to be emitting at the same rate.  If this is not true, then the behavior
+   for messages from higher-rate channels can be controlled via `most-frequent?`.
+
+   Consider two channels, `a` and `b`, where `a` emits ascending numbers twice as fast as `b`. In this case, the output
+   of each would look like this:
+
+   `a`      `b`
+    1        
+    2        1
+    3        
+    4        2
+
+    If `most-frequent?` is true, we will emit at the tempo of the highest-frequency channel, giving us the sequence:
+
+    `[2, 1]`, `[3, 1]`, `[4, 2]`
+
+    If `most-frequent?` is false, we will emit at the tempo of the lowest-frequency channel, giving us the sequence:
+
+    `[2, 1]`, `[4, 2]`
+
+    By default, `most-frequent?` is false.    
+   "
   ([channels]
      (zip false channels))
   ([most-frequent? channels]
@@ -568,7 +616,7 @@
                             (let [ary* (object-array cnt)]
                               (System/arraycopy ary 0 ary* 0 cnt)
                               ary*))]
-       (doseq [[idx ch] (map vector (range cnt) channels)] ;; todo: typehint with 'long'
+       (doseq [[^long idx ch] (map vector (range cnt) channels)]
          (bridge-join ch ch* ""
            (fn [msg]
              (let [curr-result @result]
@@ -599,13 +647,15 @@
        ch*)))
 
 (defn combine-latest
-  "something goes here"
+  "Given n-many `channels` and a function which takes n arguments, reevaluates the function for each new
+   value emitted by one of the channels.  Effectively a composition of `zip-all` and `map*`."
   [f & channels]
   (->> (zip-all channels)
     (map* #(apply f %))))
 
 (defn merge-channels
-  "something goes here"
+  "Combines n-many streams into a single stream.  The returned channel will be closed only
+   once all source channels have been closed."
   [& channels]
   (let [ch* (channel)
         cnt (atom (count channels))]
@@ -619,10 +669,14 @@
 ;;;
 
 (defn defer-onto-queue
-  "something goes here"
-  [task-queue time-facet ch]
-  (let [ch* (channel)]
-    (receive-in-order ch
+  "Takes an input `channel`, a `time-facet` which takes each message and returns the associated time, 
+   and a `task-queue`.
+
+   The returned channel will emit each message from `channel` only once the designated time has arrived.
+   This assumes the timestamp for each message is monotonically increasing."
+  [task-queue time-facet channel]
+  (let [ch* (lamina.core.channel/channel)]
+    (receive-in-order channel
       (fn [msg]
         (let [r (r/result-channel)]
           (t/invoke-at task-queue (time-facet msg)
@@ -684,7 +738,7 @@
     (Channel. receiver receiver {::propagator propagator})))
 
 (defn aggregate
-  "something goes here"
+  ""
   [{:keys [facet flush? task-queue period]
     :or {task-queue (t/task-queue)
          period (t/period)}}
@@ -727,12 +781,37 @@
     ch*))
 
 (defn distribute-aggregate
-  "something goes here"
+  "A mechanism similar to a SQL `group by` or the split-apply-combine strategy for data analysis.
+
+   For each message from `channel`, the value returned by `(facet msg)` will be examined, and the
+   message will be routed to a channel that consumes all messages with that facet value.  If no
+   such channel exists, it will be generated by `(generator facet-value facet-channel)`, which takes
+   the facet-value and associated channel, and returns an output channel which will be merged with
+   the output of all other facet channels.
+
+   The output of each facet channel is assumed to be periodic.  The `:period` may be specified, but
+   is not required.
+
+   Returns a channel which will periodically emit a map of facet-value onto the output of the generated
+   facet-channel.
+
+   Example:
+
+     (distribute-aggregate 
+	   {:facet     :uri
+		:generator (fn [uri ch]
+			          (rate ch))}
+	   ch)
+	
+   will return a channel which periodically emits a map of the form
+	
+	  {\"/abc\" 2
+	   \"/def\" 3}"
   [{:keys [facet generator period task-queue]
     :or {task-queue (t/task-queue)
          period (t/period)}}
-   ch]
-  (let [ch* (mimic ch)
+   channel]
+  (let [ch* (mimic channel)
         on-clearance (atom nil)
         dist (distributor
                {:facet facet
@@ -753,7 +832,7 @@
                            (= (keys %) (dist/facets dist-propagator)))}
                ch*)]
 
-    (join ch dist)
+    (join channel dist)
     (on-error aggr #(error dist % false))
     (on-closed aggr #(close dist))
     (reset! on-clearance #(close ch*))
@@ -765,7 +844,7 @@
           latch (atom true)]
 
       ;; emit nil if no messages have come in yet
-      (p/run-pipeline (read-channel* ch :on-drained nil)
+      (p/run-pipeline (read-channel* channel :on-drained nil)
         (fn [_]
           (reset! latch false)))
 

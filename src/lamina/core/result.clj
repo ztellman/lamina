@@ -504,7 +504,7 @@
   (ResultCallback. on-success on-error))
 
 (defn async-result?
-  "Returns true if 'x' is a result."
+  "Returns true if `x` is a result."
   [x]
   (or
     (instance? ResultChannel x)
@@ -518,7 +518,7 @@
   dst)
 
 (defn with-timeout
-  "Returns a new result that will mimic the original result, unless 'interval' milliseconds elapse, in which
+  "Returns a new result that will mimic the original result, unless `interval` milliseconds elapse, in which
    case it will realize as a 'lamina/timeout!' error."
   [interval result]
   (let [result* (siphon-result result (result-channel))]
@@ -529,7 +529,7 @@
 
 (defn expiring-result
   "Returns a result-channel that will be realized as a 'lamina/timeout!' error if a value is not enqueued within
-   'interval' milliseconds."
+   `interval` milliseconds."
   ([interval]
      (expiring-result interval (t/task-queue)))
   ([interval task-queue]
@@ -540,7 +540,7 @@
        result)))
 
 (defn timed-result
-  "Returns a result-channel that will be realized as 'value' (defaulting to nil) in 'interval' milliseconds."
+  "Returns a result-channel that will be realized as `value` (defaulting to nil) in `interval` milliseconds."
   ([interval]
      (timed-result interval nil))
   ([interval value]
@@ -553,7 +553,8 @@
        result)))
 
 (defn merge-results
-  "something goes here"
+  "Given n `results` returns a single async-result which will be realized as a sequence of all the realized
+   results."
   [& results]
   (let [cnt (count results)
         counter (AtomicInteger. (inc cnt))

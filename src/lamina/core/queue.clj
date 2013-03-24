@@ -229,7 +229,7 @@
         (doseq [^MessageConsumer c consumers]
           (u/error (.result-channel c) error false)))))
 
-  ;; this isn't super atomic (multiple calls can receive 'true'), but we
+  ;; this isn't super atomic (multiple calls can receive `true`), but we
   ;; don't much care 
   (close [_]
     (io! "Cannot modify non-transactional queues inside a transaction."

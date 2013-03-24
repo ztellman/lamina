@@ -171,8 +171,8 @@
   (g/ground (emitter-node ch)))
 
 (defn splice
-  "Returns a channel where all messages are enqueud into 'receiver', and
-   consumed from 'emitter'."
+  "Returns a channel where all messages are enqueud into `receiver`, and
+   consumed from `emitter`."
   [emitter receiver]
   (SplicedChannel.
     (if (instance? SplicedChannel receiver)
@@ -184,7 +184,7 @@
     nil))
 
 (defn channel?
-  "Returns true if 'x' is a channel.  This does not encompass result-channels."
+  "Returns true if `x` is a channel.  This does not encompass result-channels."
   [x]
   (instance? IChannelMarker x))
 
@@ -201,16 +201,38 @@
 
 (defn read-channel
   "Returns a result-channel representing the next message from the channel.  Only one
-   result-channel can represent any given message; calling (read-channel ...) multiple times
+   result-channel can represent any given message; calling `(read-channel ...)` multiple times
    will always consume multiple messages.
 
    Enqueueing a value into the result-channel before it is realized will prevent the message
-   from being consumed, effectively cancelling the read-channel call."
+   from being consumed, effectively cancelling the `read-channel` call."
   ([channel]
      (g/read-node (emitter-node channel))))
 
 (defmacro read-channel*
-  "something goes here"
+  "A variant of `read-channel` with more options.
+
+  `:timeout` - the timeout, in milliseconds.  If this elapses, the next message will not be consumed.
+
+  `:predicate` - a function that takes the message, and returns true if it should be consumed.  If the
+                 predicate returns false, the returned result will realize as value defined by `:on-false`.
+
+  `:result` - the result that the read message should be enqueued into.  If the same result is used for 
+              `read-channel` calls from multiple channels, this will have the effect of being realized
+              as the first message from any of the channels, and not consuming any messages from the other
+              channels.
+
+   `:listener-result` - the result that will be returned to the emitter of the message, representing the
+                        outcome of the consumption.  This should only be done if there is a clear single
+                        outcome for this message (i.e. we're not just accumulating the entire stream.)
+
+   `:on-timeout` - the result that will be realized if we timed out.  If not specified, the result will be
+                   realized as a `:lamina/timeout` error.
+
+    `:on-error` - the result that will be realized if the channel is in an error state.  If not specified,
+                  the result will be realized as the channel's error.
+
+    `:on-false` - the result that will be realized if the `:predicate` returns false.  Defaults to `:lamina/false`."
   [ch &
    {:keys [timeout
            predicate
@@ -223,10 +245,10 @@
   `(g/read-node* (emitter-node ~ch) ~@(apply concat options)))
 
 (defn receive-all
-  "Registers a callback that will consume all messages currently in the queue, and all
-   subsequent messages that are enqueued into the channel.
+  "Registers a `callback` that will consume all messages currently in the queue, and all
+   subsequent messages that are enqueued into `channel`.
 
-   This can be cancelled using cancel-callback."
+   This can be cancelled using `cancel-callback`."
   [channel callback]
   (g/link (emitter-node channel)
     callback
@@ -235,79 +257,79 @@
     nil))
 
 (defn cancel-callback
-  "Cancels a callback registered with receive, receive-all, on-closed, on-drained, or on-error."
+  "Cancels a callback registered with `receive`, `receive-all`, `on-closed`, `on-drained`, or `on-error`."
   ([channel callback]
      (g/cancel (emitter-node channel) callback)))
 
 (defn sink
-  "Creates a channel which will forward all messages to 'callback'."
+  "Creates a channel which will forward all messages to `callback`."
   [callback]
   (let [ch (channel)]
     (receive-all ch callback)
     ch))
 
 (defn close
-  "Closes the channel. Returns if successful, false if the channel is permanent, already closed,
+  "Closes the `channel`. Returns if successful, false if `channel` is permanent, already closed,
    or in an error state."
   [channel]
   (g/close (receiver-node channel) false))
 
 (defn force-close
-  "Closes the channel, even if it is permanent. Returns if successful, false if the channel is
+  "Closes `channel`, even if it is permanent. Returns if successful, false if `channel` is
    already closed or in an error state."
   [channel]
   (g/close (receiver-node channel) true))
 
 (defn closed?
-  "Returns true if the channel is closed, false otherwise. "
+  "Returns true if `channel` is closed, false otherwise. "
   [channel]
   (g/closed? (receiver-node channel)))
 
 (defn drained?
-  "Returns true if the channel is drained, false otherwise."
+  "Returns true if `channel` is drained, false otherwise."
   [channel]
   (g/drained? (emitter-node channel)))
 
 (defn transactional?
-  "Returns true if the channel's queue is transactional, false otherwise."
+  "Returns true if `channel` has a transactional queue, false otherwise."
   [channel]
   (g/transactional? (receiver-node channel)))
 
 (defn on-closed
-  "Registers a callback that will be invoked with no arguments when the channel is closed, or
-   immediately if it has already been closed.  This callback will only be invoked once, and can
-   be cancelled using cancel-callback."
+  "Registers a callback that will be invoked with no arguments when `channel` is closed, or
+   immediately if it has already been closed.  `callback` will only be invoked once, and can
+   be cancelled using `cancel-callback`."
   [channel callback]
   (g/on-closed (receiver-node channel) callback))
 
 (defn on-drained
-  "Registers a callback that will be invoked with no arguments when the channel is drained, or
-   immediately if it has already been drained.  This callback will only be invoked once, and can
-   be cancelled using cancel-callback."
+  "Registers a callback that will be invoked with no arguments when `channel` is drained, or
+   immediately if it has already been drained.  `callback` will only be invoked once, and can
+   be cancelled using `cancel-callback`."
   [channel callback]
   (g/on-drained (emitter-node channel) callback))
 
 (defn on-error
-  "Registers a callback that will be called with the error when the channel enters an error state,
-   or immediately if it's already in an error state.  This callback will only be invoked once,
-   and can be cancelled using cancel-callback."
+  "Registers a callback that will be called with the error when `channel` enters an error state,
+   or immediately if it's already in an error state.  `callback` will only be invoked once,
+   and can be cancelled using `cancel-callback`."
   [channel callback]
   (g/on-error (emitter-node channel) callback))
 
 (defn error-value
-  "Returns the error value of the channel, returning 'default-value' if it's not an error state."
+  "Returns the error value of `channel`, returning 'default-value' if it's not an error state."
   [channel default-value]
   (g/error-value (emitter-node channel) default-value))
 
 (defn closed-result
-  "Returns a result-channel that will emit a result when the channel is closed, or emit an error
-   if the channel goes into an error state."
+  "Returns a result-channel that will emit a result when `channel` is closed, or emit an error
+   if `channel` goes into an error state."
   [channel]
   (g/closed-result (receiver-node channel)))
 
 (defn drained-result
-  "Returns a result-channel that will emit a result when the channel is drained, or emit an error
-   if the channel goes into an error state."
+  "Returns a result-channel that will emit a result when `channel` is drained, or emit an error
+   if `channel` goes into an error state."
   [channel]
   (g/drained-result (emitter-node channel)))
 
@@ -344,7 +366,7 @@
   (split channel "fork" false))
 
 (defn tap
-  "Behaves like 'fork', except that the source channel will not remain open if only the tap
+  "Behaves like `fork`, except that the source channel will not remain open if only the tap
    exists downstream.
 
    If the tap channel is closed, the source channel is unaffected.  However, if the source
@@ -354,7 +376,14 @@
   (split channel "tap" true))
 
 (defn connect
-  "something goes here"
+  "A generalization of `siphon` and `join`, making sure that all messages in `src` will be forwarded
+   to `dst`.
+
+   If `upstream?` is true, when `dst` is closed, `src` will be closed.  This is true for `siphon` and `join`.
+
+   If `downstream?` is true, when `src` is closed, `dst` will be closed.  This is true for `join`.
+
+   The same behavior is also used for propagating error states."
   [src dst upstream? downstream?]
   (g/connect (emitter-node src) (receiver-node dst) upstream? downstream?)
   dst)
@@ -368,7 +397,14 @@
   dst)
 
 (defn bridge
-  "something goes here"
+  "A generalization of `bridge-join` and `bridge-siphon`.  Takes one `src` channel, and one or
+   more downstream `dsts` channels.  All messages from `src` will be passed into `callback`, which 
+   may or may not forward it to the downstream channels.
+
+   This represents a relationship between channels which may or may not always result in messages
+   propagating downstream.  This can be useful when certain channels are only used for specific
+   types of messages, or there is an accumulation of messages, or anything else that is more complex
+   than receive -> emit."
   [src dsts callback
    {:keys [description upstream? downstream?]
     :or {upstream? true, downstream? true}
@@ -382,12 +418,12 @@
     (assoc options :node-description description)))
 
 (defn bridge-join
-  "something goes here"
+  "A `bridge` between one `src` and one `dst` channel which is bidirectional."
   [src dst description callback]
   (bridge src [dst] callback {:description description}))
 
 (defn bridge-siphon
-  "something goes here"
+  "A `bridge` between one `src` and one `dst` channel only propagates closing upstream."
   [src dst description callback]
   (bridge src [dst] callback {:description description, :downstream? false}))
 
@@ -425,34 +461,36 @@
           (check-idle last-message interval result task-queue))))))
 
 (defn idle-result
-  "something goes here"
-  ([interval ch]
-     (idle-result interval (t/task-queue) ch))
-  ([interval task-queue ch]
+  "A result which will be realized if `channel` doesn't emit a message for `interval` milliseconds."
+  ([interval channel]
+     (idle-result interval (t/task-queue) channel))
+  ([interval task-queue channel]
      (let [last-message (AtomicLong. (System/currentTimeMillis))
            result (r/result-channel)
            callback (fn [_] (.set last-message (System/currentTimeMillis)))]
 
-       (receive-all ch callback)
+       (receive-all (tap channel) callback)
        (r/subscribe result
          (r/result-callback
-           (fn [_] (cancel-callback ch callback))
-           (fn [_] (cancel-callback ch callback))))
+           (fn [_] (cancel-callback channel callback))
+           (fn [_] (cancel-callback channel callback))))
     
        (check-idle last-message interval result task-queue)
 
        result)))
 
 (defn close-on-idle
-  "something goes here"
-  ([interval ch]
-     (close-on-idle interval (t/task-queue) ch))
-  ([interval task-queue ch]
-     (r/subscribe (idle-result interval task-queue ch)
+  "Sets up a watcher which will close `channel` if it doesn't emit a message for `interval` milliseconds.
+
+   Returns `channel`, for chaining convenience."
+  ([interval channel]
+     (close-on-idle interval (t/task-queue) channel))
+  ([interval task-queue channel]
+     (r/subscribe (idle-result interval task-queue channel)
        (r/result-callback
-         (fn [_] (close ch))
+         (fn [_] (close channel))
          (fn [_])))
-     ch))
+     channel))
 
 ;;;
 

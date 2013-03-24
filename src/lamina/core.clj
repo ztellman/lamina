@@ -95,7 +95,6 @@
    defer-onto-queue
 
    distributor
-   aggregate
    distribute-aggregate]
 
   [lamina.core.named
@@ -191,7 +190,12 @@
   (u/error channel err true))
 
 (defn siphon
-  "something goes here"
+  "Takes all messages from `src` and forwards them to `dst`.  If `dst` closes, `src` is closed, but 
+   not vise-versa.  Error states are similarly propagated.  This is useful for many transient channels 
+   feeding into one channel.
+
+   If more than two channels are specified, `siphon` becomes transitive.  `(siphon a b c)` is equivalent to
+   `(siphon a b)` and `(siphon b c)`."
   ([src dst]
      (if (async-result? src)
        (r/siphon-result src dst)
@@ -201,7 +205,12 @@
      (apply siphon dst rest)))
 
 (defn join
-  "something goes here"
+  "Takes all messages from `src` and forwards them to `dst`.  If either channel closes or goes into an 
+   error state, the same is done for the other channel.  This is useful for channels which have a 1-to-1 
+   relationship.
+
+   If more than two channels are specified, `join` becomes transitive.  `(join a b c)` is equivalent to
+   `(join a b)` and `(join b c)`."
   ([src dst]
      (if (async-result? src)
        (do
@@ -241,7 +250,6 @@
    restart
    redirect
    complete
-   read-merge
    wait-stage])
 
 (defmacro sink->>

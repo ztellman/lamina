@@ -18,11 +18,12 @@
 (def named-channels (cache/channel-cache #(channel* :description (pr-str %) :permanent? true)))
 
 (defn named-channel
-  "something goes here"
+  "Returns a permanent channel keyed to `id`.  If the channel doesn't already exist and `on-create` is non-nil, 
+   it will be invoked with zero parameters."
   [id on-create]
   (cache/get-or-create named-channels id on-create))
 
 (defn release-named-channel
-  "something goes here"
+  "Removes the named channel keyed to `id` from the cache."
   [id]
   (cache/release named-channels id))

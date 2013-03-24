@@ -71,20 +71,20 @@
   *task-queue*)
 
 (defmacro with-task-queue
-  "Executes the body within a context where 'q' is the task-queue."
+  "Executes the body within a context where `q` is the task-queue."
   [q & body]
   `(binding [lamina.time.queue/*task-queue* ~q]
      ~@body))
 
 (defn invoke-in
-  "Delays invocation of a function by 'delay' milliseconds."
+  "Delays invocation of a function by `delay` milliseconds."
   ([delay f]
      (invoke-in (task-queue) delay f))
   ([task-queue delay f]
      (invoke-in- task-queue delay f)))
 
 (defn invoke-at
-  "Delays invocation of a function until 'timestamp'."
+  "Delays invocation of a function until `timestamp`."
   ([timestamp f]
      (invoke-at (task-queue) timestamp f))
   ([task-queue timestamp f]
@@ -93,7 +93,7 @@
        f)))
 
 (defn invoke-repeatedly
-  "Repeatedly invokes a function every 'period' milliseconds, but ensures that the function cannot
+  "Repeatedly invokes a function every `period` milliseconds, but ensures that the function cannot
    overlap its own invocation if it takes more than the period to complete.
 
    The function will be given a single parameter, which is a callback that can be invoked to cancel

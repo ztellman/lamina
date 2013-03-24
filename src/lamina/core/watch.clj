@@ -13,19 +13,19 @@
      [utils :only (enqueue)]]))
 
 (defn watch-channel
-  "something goes here"
+  "Transforms a watchable `reference` into a channel of values."
   [reference]
-  (let [ch (channel)
-        callback #(enqueue ch %)]
+  (let [ch (channel @reference)
+        callback (fn [_ _ _ val] (enqueue ch val))]
     (add-watch reference callback callback)
     (on-closed ch #(remove-watch reference callback))
     ch))
 
 (defn atom-sink
-  "something goes here"
-  ([ch]
-     (atom-sink nil ch))
+  "Transforms a `channel` into an atom which updated with the value of each new message."
+  ([channel]
+     (atom-sink nil channel))
   ([initial-value ch]
      (let [a (atom initial-value)]
-       (receive-all ch #(reset! a %))
+       (receive-all channel #(reset! a %))
        a)))

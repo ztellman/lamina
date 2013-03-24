@@ -120,9 +120,7 @@
 (import-fn pr/error-probe-channel)
 (import-fn pr/sympathetic-probe-channel)
 (import-fn pr/probe-enabled?)
-(import-fn pr/probe-result)
 (import-fn pr/select-probes)
-(import-fn pr/reset-probes)
 (import-fn pr/probe-names)
 
 (defmacro trace*
@@ -139,7 +137,7 @@
          false))))
 
 (defmacro trace
-  "Enqueues a value into the probe-channel described by 'probe'.  The body is executed only
+  "Enqueues a value into the probe-channel described by `probe`.  The body is executed only
    if there is a consumer for the probe channel; this is essentially a log statement that is
    only active if someone is paying attention.
 

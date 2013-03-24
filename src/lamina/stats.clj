@@ -60,7 +60,7 @@
 
 (defn sum
   "Returns a channel that will periodically emit the sum of all messages emitted by the source
-   channel over the last 'period' milliseconds, with a default of 1000.
+   channel over the last `period` milliseconds, with a default of 1000.
 
    It is assumed that all numbers emitted by the source channel are integral values."
   ([ch]
@@ -84,7 +84,7 @@
 
 (defn rate
   "Returns a channel that will periodically emit the number of messages emitted by the source
-   channel over the last 'period' milliseconds, with a default of 1000."
+   channel over the last `period` milliseconds, with a default of 1000."
   ([ch]
      (rate nil ch))
   ([{:keys [period task-queue] :as options} ch]
@@ -96,8 +96,8 @@
 
 (defn moving-average
   "Returns a channel that will periodically emit the moving average over all messages emitted by
-   the source channel every 'period' milliseconds, defaulting to once every five seconds.  This
-   moving average is exponentially weighted to the last 'window' milliseconds, defaulting to the
+   the source channel every `period` milliseconds, defaulting to once every five seconds.  This
+   moving average is exponentially weighted to the last `window` milliseconds, defaulting to the
    last five minutes."
   ([ch]
      (moving-average nil ch))
@@ -113,7 +113,7 @@
            {:emitter #(deref avg)})))))
 
 (defn moving-quantiles
-  "Returns a channel that will periodically emit a map of quantile values every 'period'
+  "Returns a channel that will periodically emit a map of quantile values every `period`
    millseconds, which represent the statistical distribution of values emitted by the source
    channel over the last five minutes.
 
@@ -146,7 +146,7 @@
 
 (defn variance
   "Returns a channel that will periodically emit the variance of all values emitted by the source
-   channel every 'period' milliseconds."
+   channel every `period` milliseconds."
   ([ch]
      (variance nil ch))
   ([{:keys [period task-queue]
@@ -169,7 +169,7 @@
    than three.
 
    For instance, to monitor function calls that take an unusually long or short time via a
-   'return' probe:
+   `return` probe:
 
      (outliers :duration (probe-channel :name:return))
 

@@ -89,7 +89,10 @@
   (.add ^CopyOnWriteArrayList (.callbacks p) callback))
 
 (defn canonical-probe-name
-  "something goes here"
+  "Returns the canonical representation of a probe name.
+
+   `:foo:bar` => \"foo:bar\"
+   `[:foo \"bar:baz\"] => \"foo:bar:baz\""
   [x]
   (cond
     (string? x) x
@@ -102,11 +105,6 @@
 
 (defn on-new-probe [callback]
   (c/receive-all new-probe-broadcaster callback))
-
-(defn reset-probes
-  "something goes here"
-  []
-  (.clear probes))
 
 (defn probe-channel-generator [f]
   (fn [id]
@@ -161,6 +159,8 @@
 ;;;
 
 (defn probe-result
+  "Allows an async-result to be treated like a probe-channel that only accepts a single value
+   before deactivating."
   [result]
   (when-not (r/async-result? result)
     (throw (IllegalArgumentException. "probe-result must be given a result-channel")))
@@ -195,15 +195,15 @@
     (str emitter)))
 
 (defn sympathetic-probe-channel
-  "A channel that only lets messages through if 'ch' has downstream channels."
-  [ch]
+  "A channel that only lets messages through if `channel` has downstream channels."
+  [channel]
   (let [receiver-channel (c/channel* :grounded? true)
         receiver (c/receiver-node receiver-channel)
         emitter (g/node* :permanent? true)
         enabled? (AtomicBoolean. false)]
 
     ;; bridge the upstream and downstream nodes whenever the source channel is active
-    (g/on-state-changed (c/emitter-node ch) nil
+    (g/on-state-changed (c/emitter-node channel) nil
       (fn [_ downstream _]
         (if (zero? downstream)
           (when (.compareAndSet enabled? true false)
