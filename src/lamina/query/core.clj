@@ -6,13 +6,11 @@
 ;;   the terms of this license.
 ;;   You must not remove this notice, or any other, from this software.
 
-(ns lamina.trace.router.core
+(ns lamina.query.core
   (:use
-    [lamina.cache :only (subscribe)]
     [potemkin :only (definterface+)])
   (:require
-    [lamina.time :as t]
-    [lamina.trace.context])
+    [lamina.time :as t])
   (:import
     [java.util.concurrent
      ConcurrentHashMap]))
@@ -75,7 +73,7 @@
                  (getName [_] ~(str name))
                  (getNamespace [_] ~ns-str)
                  
-                 lamina.trace.router.core.ITraceOperator
+                 lamina.query.core.ITraceOperator
 
                  (periodic? [_]
                    periodic#)
@@ -85,20 +83,20 @@
                    (boolean pre-aggregate#))
                  
                  (transform [this# desc# ch#]
-                   (let [desc# (lamina.trace.router.core/populate-desc this# desc#)]
+                   (let [desc# (lamina.query.core/populate-desc this# desc#)]
                      (transform# desc# ch#)))
                  (pre-aggregate [this# desc# ch#]
-                   (let [desc# (lamina.trace.router.core/populate-desc this# desc#)]
+                   (let [desc# (lamina.query.core/populate-desc this# desc#)]
                      (if pre-aggregate#
                        (pre-aggregate# desc# ch#)
                        (transform# desc# ch#))))
                  (intra-aggregate [this# desc# ch#]
-                   (let [desc# (lamina.trace.router.core/populate-desc this# desc#)]
+                   (let [desc# (lamina.query.core/populate-desc this# desc#)]
                      (if intra-aggregate#
                        (intra-aggregate# desc# ch#)
                        ch#)))
                  (aggregate [this# desc# ch#]
-                   (let [desc# (lamina.trace.router.core/populate-desc this# desc#)]
+                   (let [desc# (lamina.query.core/populate-desc this# desc#)]
                      (if aggregate#
                        (aggregate# desc# ch#)
                        (transform# desc# ch#)))))]

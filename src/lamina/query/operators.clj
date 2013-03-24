@@ -6,14 +6,13 @@
 ;;   the terms of this license.
 ;;   You must not remove this notice, or any other, from this software.
 
-(ns lamina.trace.router.operators
+(ns lamina.query.operators
   (:use
     [lamina core])
   (:require
-    [lamina.trace.router.core :as r]
+    [lamina.query.core :as q]
     [clojure.string :as str]
     [clojure.tools.logging :as log]
-    [lamina.trace.context]
     [lamina.time :as t]
     [lamina.stats])
   (:import
@@ -69,7 +68,7 @@
         ks
         (map #(% m) vs)))))
 
-(r/def-trace-operator lookup
+(q/def-trace-operator lookup
   :periodic? false
   :distribute? true
 
@@ -77,7 +76,7 @@
   (fn [{:keys [options] :as desc} ch]
     (map* (getter (get options :field)) ch)))
 
-(r/def-trace-operator select
+(q/def-trace-operator select
   :periodic? false
   :distribute? true
 
@@ -87,7 +86,7 @@
 
 ;;; merge, zip
 
-(r/def-trace-operator merge
+(q/def-trace-operator merge
   :periodic? false
   :distribute? false
 
@@ -99,11 +98,11 @@
         (map
           (fn [{:keys [operators pattern] :as desc}]
             (if pattern
-              (r/generate-stream desc)
-              (r/transform-trace-stream desc (fork ch))))
+              (q/generate-stream desc)
+              (q/transform-trace-stream desc (fork ch))))
           descs)))))
 
-(r/def-trace-operator zip
+(q/def-trace-operator zip
   :periodic? true
   :distribute? false
 
@@ -117,8 +116,8 @@
                   (map
                     (fn [{:keys [operators pattern] :as desc}]
                       (if pattern
-                        (r/generate-stream desc)
-                        (r/transform-trace-stream desc (fork ch)))))
+                        (q/generate-stream desc)
+                        (q/transform-trace-stream desc (fork ch)))))
                   zip
                   (map* #(zipmap ks %)))]
         (ground ch)
@@ -148,7 +147,7 @@
 (defn filters [filters]
   (fn [x] (->> filters (map #(% x)) (every? identity))))
 
-(r/def-trace-operator where
+(q/def-trace-operator where
   :periodic? false
   :distribute? true
   
@@ -161,9 +160,9 @@
 ;;; group-by
 
 (defn group-by-op [{:keys [options operators] :as desc} ch]
-  (let [facet (or (:facet options)
+  (let [facet (or (get options :facet)
                 (get options 0))
-        periodic? (r/periodic-chain? operators)
+        periodic? (q/periodic-chain? operators)
         period (or (get options :period)
                  (t/period))
         expiration (get options :expiration (max (t/minutes 1) (* 10 period)))]
@@ -175,7 +174,7 @@
        :generator (fn [k ch]
                     (let [ch (->> ch
                                (close-on-idle expiration)
-                               (r/transform-trace-stream (dissoc desc :name)))]
+                               (q/transform-trace-stream (dissoc desc :name)))]
                       (if-not periodic?
                         (partition-every {:period period} ch)
                         ch)))
@@ -183,7 +182,7 @@
       ch)))
 
 (defn merge-group-by [{:keys [options operators] :as desc} ch]
-  (let [periodic? (r/periodic-chain? operators)
+  (let [periodic? (q/periodic-chain? operators)
         period (or (get options :period)
                  (t/period))
         expiration (get options :expiration (max (t/minutes 1) (* 10 period)))]
@@ -198,13 +197,13 @@
                             ch (if-not periodic?
                                  (concat* ch)
                                  ch)
-                            ch (r/transform-trace-stream (dissoc desc :name) ch)]
+                            ch (q/transform-trace-stream (dissoc desc :name) ch)]
                         (if-not periodic?
                           (partition-every {:period period} ch)
                           ch)))
          :period period}))))
 
-(r/def-trace-operator group-by
+(q/def-trace-operator group-by
   :periodic? true
   :distribute? false
   
@@ -219,13 +218,13 @@
 (defn sum-op [desc ch]
   (lamina.stats/sum (normalize-options desc) ch))
 
-(r/def-trace-operator sum
+(q/def-trace-operator sum
   :periodic? true
   :distribute? false
   
   (:transform :pre-aggregate :aggregate) sum-op)
 
-(r/def-trace-operator rolling-sum
+(q/def-trace-operator rolling-sum
   :periodic? true
   :distribute? false
   
@@ -238,7 +237,7 @@
 (defn rate-op [desc ch]
   (lamina.stats/rate (normalize-options desc) ch))
 
-(r/def-trace-operator rate
+(q/def-trace-operator rate
   :periodic? true
   :distribute? false
   
@@ -249,7 +248,7 @@
       (sum-op desc)
       (map* long))))
 
-(r/def-trace-operator moving-average
+(q/def-trace-operator moving-average
   :periodic? true
   :distribute? false
 
@@ -257,7 +256,7 @@
   (fn [desc ch]
     (lamina.stats/moving-average (normalize-options desc) ch)))
 
-(r/def-trace-operator moving-quantiles
+(q/def-trace-operator moving-quantiles
   :periodic? true
   :distribute? false
 
@@ -267,7 +266,7 @@
 
 ;;;
 
-(r/def-trace-operator sample-every
+(q/def-trace-operator sample-every
   :periodic? true
   :distribute? true
 
@@ -285,7 +284,7 @@
                  (t/period))]
     (partition-every {:period period} ch)))
 
-(r/def-trace-operator partition-every
+(q/def-trace-operator partition-every
   :periodic? true
   :distribute? true
 

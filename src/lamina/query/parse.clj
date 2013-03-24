@@ -6,7 +6,7 @@
 ;;   the terms of this license.
 ;;   You must not remove this notice, or any other, from this software.
 
-(ns lamina.trace.router.parse
+(ns lamina.query.parse
   (:require
     [lamina.time :as t]
     [clojure.string :as str])
@@ -290,7 +290,7 @@
   (->> s
     str/split-lines
     (map str/trim)
-    ;(interpose " ")
+    (interpose " ")
     (apply str)
     ((parser stream))))
 

@@ -14,6 +14,7 @@
   (:require
     [clojure.tools.logging :as log]
     [lamina.cache :as c]
+    [lamina.query :as q]
     [lamina.time :as time]
     [lamina.stats :as stats]
     [lamina.trace.router :as r]
@@ -38,8 +39,6 @@
 (import-fn t/add-to-last-sub-timing)
 
 (import-fn c/subscribe)
-
-(import-macro r/def-trace-operator)
 
 (defn tracing?
   "Returns true when called inside an active function trace scope, false otherwise."
@@ -105,7 +104,7 @@
                               ;; all per-task analyses
                               (map #(% ch) (vals analyses))))))})))))
 
-(def-trace-operator analyze-timings
+(q/def-trace-operator analyze-timings
   :periodic? true
   :distribute? false
   :transform
@@ -155,11 +154,6 @@
   `(trace* ~probe ~@body))
 
 ;;;
-
-(import-fn r/query-streams)
-(import-fn r/query-stream)
-(import-fn r/query-seqs)
-(import-fn r/query-seq)
 
 (import-fn r/trace-router)
 (import-fn r/local-trace-router)

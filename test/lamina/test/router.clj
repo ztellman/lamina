@@ -9,11 +9,11 @@
 (ns lamina.test.router
   (:use
     [clojure.test]
-    [lamina.trace.router]
     [lamina core viz]
-    [lamina.cache :only (get-or-create)]
-    [lamina.trace :only (subscribe trace select-probes probe-channel)])
+    [lamina.cache :only (get-or-create)])
   (:require
+    [lamina.trace :as tr]
+    [lamina.query :as q]
     [lamina.time :as t]))
 
 (defn next-msg [ch]
@@ -140,12 +140,12 @@
 
 (deftest test-operators
   (let [ch (channel)
-        sub #(query-stream % {:period 100} ch)
+        sub #(q/query-stream % {:period 100} ch)
         enq #(enqueue ch %)]
     (run-basic-operator-test sub enq nil)
     (close ch))
   (let [ch (channel)
-        sub #(query-stream % {:period 100} ch)
+        sub #(q/query-stream % {:period 100} ch)
         enq #(enqueue ch %)]
     (run-group-by-test sub enq nil)
     (close ch))
@@ -153,31 +153,31 @@
 
 (deftest test-non-realtime-router
   (let [q (t/non-realtime-task-queue)
-        router (trace-router
+        router (tr/trace-router
                  {:generator (fn [{:keys [pattern]}]
-                               (select-probes pattern))
+                               (tr/select-probes pattern))
                   :task-queue q
                   :payload :value
                   :timestamp :timestamp})
-        sub #(subscribe router (str "abc" %) {:period 1e5})
-        enq #(trace :abc {:timestamp 0, :value %})]
+        sub #(tr/subscribe router (str "abc" %) {:period 1e5})
+        enq #(tr/trace :abc {:timestamp 0, :value %})]
     (run-basic-operator-test sub enq #(t/advance-until q 2e5))
     (run-group-by-test sub enq #(t/advance-until q 5e5))
     (run-merge-streams-test sub enq #(t/advance-until q 5e5))
     (println)))
 
 (deftest test-local-router
-  (let [sub #(subscribe local-trace-router (str "abc" %) {:period 100})
-        enq #(trace :abc %)]
+  (let [sub #(tr/subscribe tr/local-trace-router (str "abc" %) {:period 100})
+        enq #(tr/trace :abc %)]
     (run-basic-operator-test sub enq nil)
     (run-group-by-test sub enq nil)
     (run-merge-streams-test sub enq nil)
     (println)))
 
 (deftest test-split-router
-  (let [router (aggregating-trace-router local-trace-router)
-        sub #(subscribe router (str "abc" %) {:period 100})
-        enq #(trace :abc %)]
+  (let [router (tr/aggregating-trace-router tr/local-trace-router)
+        sub #(tr/subscribe router (str "abc" %) {:period 100})
+        enq #(tr/trace :abc %)]
     (run-basic-operator-test sub enq nil)
     (run-group-by-test sub enq nil)
     (run-merge-streams-test sub enq nil)

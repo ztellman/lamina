@@ -9,7 +9,7 @@
 (ns lamina.test.stats
   (:use
     [clojure test]
-    [lamina stats core trace]
+    [lamina stats core trace query]
     [lamina.test utils])
   (:require
     [lamina.time :as t]))
