@@ -53,7 +53,8 @@ than receive -&gt; emit.</p>
             <div class="usage">[src dst description {:keys [period task-queue accumulator emitter], :or {task-queue (t/task-queue), period (t/period)}}]</div>
             
             
-            <div class="doc"><p>A variant of <code>bridge</code> which </p>
+            <div class="doc"><p>A variant of <code>bridge</code> which is designed to handle functions which accumulate multiple
+messages via <code>:accumulator</code> and periodically emit a value via <code>:emitter</code>.</p>
 </div>
           </div><div class="public">
             <h3><a id="var-bridge-in-order" class="source var-name" href="/src/lamina/core/operators.clj">bridge-in-order</a></h3>
