@@ -10,7 +10,7 @@
   (:use
     [lamina.core.utils]
     [lamina.executor.utils]
-    [lamina.time :only (invoke-in invoke-repeatedly)])
+    [lamina.time :only (invoke-in invoke-repeatedly now)])
   (:require
     [lamina.trace.probe :as pr]
     [lamina.core.pipeline :as p]
@@ -65,17 +65,18 @@
         cnt (atom 0)
         return-probe (pr/probe-channel [nm :return])
         error-probe (pr/probe-channel [nm :error])
+        result-meta {:description {:type :executor, :name nm}}
         pool (ThreadPoolExecutor.
-                (int min-thread-count)
-                (int min-thread-count)
-                (long idle-timeout)
-                TimeUnit/MILLISECONDS
-                (LinkedBlockingQueue.)
-                (reify ThreadFactory
-                  (newThread [_ f]
-                    (doto
-                      (Thread. f)
-                      (.setName (str nm "-" (swap! cnt inc)))))))
+               (int min-thread-count)
+               (int min-thread-count)
+               (long idle-timeout)
+               TimeUnit/MILLISECONDS
+               (LinkedBlockingQueue.)
+               (reify ThreadFactory
+                 (newThread [_ f]
+                   (doto
+                     (Thread. f)
+                     (.setName (str nm "-" (swap! cnt inc)))))))
         stats (fn []
                 {:completed-tasks (.getCompletedTaskCount pool)
                  :pending-tasks (- (.getTaskCount pool) (.getCompletedTaskCount pool))
@@ -114,7 +115,10 @@
         (let [result (if timeout
                        (r/expiring-result timeout)
                        (r/result-channel))
+              _ (reset-meta! result (assoc result-meta :timestamp (now)))
+              
               complete? (when interrupt? (atom false))
+
               f (fn []
 
                   ;; set up the thread interruption

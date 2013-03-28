@@ -669,17 +669,20 @@
 ;;;
 
 (defn defer-onto-queue
-  "Takes an input `channel`, a `time-facet` which takes each message and returns the associated time, 
-   and a `task-queue`.
+  "Takes an input `channel`, a `timestamp` which takes each message and returns the associated time, 
+   and a `task-queue`.  If `auto-advance?` is true, then enqueueing a message will automatically
+   advance `task-queue` to that time.
 
    The returned channel will emit each message from `channel` only once the designated time has arrived.
    This assumes the timestamp for each message is monotonically increasing."
-  [task-queue time-facet channel]
+  [{:keys [timestamp task-queue auto-advance?]} channel]
   (let [ch* (lamina.core.channel/channel)]
     (receive-in-order channel
       (fn [msg]
-        (let [r (r/result-channel)]
-          (t/invoke-at task-queue (time-facet msg)
+        (let [r (r/result-channel)
+              t (timestamp msg)]
+
+          (t/invoke-at task-queue t
             (with-meta
               (fn []
                 (try
@@ -687,6 +690,10 @@
                   (finally
                     (r/success r :lamina/consumed))))
               {:priority Integer/MAX_VALUE}))
+
+          (when auto-advance?
+            (t/advance-until task-queue t))
+
           r)))
     ch*))
 

@@ -37,7 +37,7 @@
          :downstream-count (-> n .state .downstream-count)
          :queue-size (count n)
          :operator (or (operator-predicate f) f)
-         :messages (when (queue n) (-> n queue q/messages))
+         :messages (when (queue n false) (-> n (queue false) q/messages))
          :predicate? (boolean (operator-predicate f))
          :consumed? (consumed? n)
          :closed? (closed? n)

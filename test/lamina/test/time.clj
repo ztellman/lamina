@@ -27,7 +27,9 @@
   (let [q (non-realtime-task-queue)
         ch (channel)
         ch* (->> ch
-              (defer-onto-queue q :timestamp)
+              (defer-onto-queue
+                {:task-queue q
+                 :timestamp :timestamp})
               (map* :timestamp))]
 
     (dotimes [i 10]
@@ -37,6 +39,25 @@
     (is (= (range 0 5) (channel->seq ch*)))
 
     (advance-until q 100)
+    (is (= (range 5 10) (channel->seq ch*))))
+
+  (let [q (non-realtime-task-queue)
+        ch (channel)
+        ch* (->> ch
+              (defer-onto-queue
+                {:task-queue q
+                 :timestamp :timestamp
+                 :auto-advance? true})
+              (map* :timestamp))]
+    
+    (doseq [i (range 0 5)]
+      (enqueue ch {:timestamp i}))
+    
+    (is (= (range 0 5) (channel->seq ch*)))
+
+    (doseq [i (range 5 10)]
+      (enqueue ch {:timestamp i}))
+    
     (is (= (range 5 10) (channel->seq ch*)))))
 
 ;;;

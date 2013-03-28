@@ -41,15 +41,24 @@
            timestamp
            payload
            period
-           stream-generator]
+           stream-generator
+           auto-advance?]
     :or {payload identity}
     :as options}]
-  (let [;; make sure inner-streams are properly deferred
+  (let [auto-advance? (or auto-advance? (not task-queue))
+        task-queue (or task-queue
+                     (and timestamp
+                       (time/non-realtime-task-queue)))
+
+        ;; make sure inner-streams are properly deferred
         stream-generator (if timestamp
                            #(->> %
                               stream-generator
                               (map* identity)
-                              (defer-onto-queue task-queue timestamp)
+                              (defer-onto-queue
+                                {:task-queue task-queue
+                                 :timestamp timestamp
+                                 :auto-advance? auto-advance?})
                               (map* payload))
                            stream-generator)
 
@@ -61,7 +70,10 @@
                                   vals
                                   (map
                                     #(->> %
-                                       (defer-onto-queue task-queue timestamp)
+                                       (defer-onto-queue
+                                         {:task-queue task-queue
+                                          :timestamp timestamp
+                                          :auto-advance? auto-advance?})
                                        (map* payload))))
                                 (vals descriptor->channel)))
 
@@ -98,7 +110,8 @@
            timestamp
            payload
            period
-           stream-generator]
+           stream-generator
+           auto-advance?]
     :or {payload identity}
     :as options}
    ch]

@@ -12,7 +12,8 @@
     [flatland.useful.datatypes :only (make-record assoc-record)]
     [lamina.core.threads :only (enqueue-cleanup)]
     [lamina.core.graph.core]
-    [lamina.core utils])
+    [lamina.core utils]
+    [lamina.time :only (now)])
   (:require
     [lamina.core.result :as r]
     [lamina.core.queue :as q]
@@ -347,7 +348,16 @@
                                     (enqueue-and-release (.lock node) state msg true))))))))))
 
                   0
-                  (enqueue-and-release lock (ensure-queue this state state) msg (not grounded?))
+                  (let [result (enqueue-and-release lock
+                                 (ensure-queue this state state)
+                                 msg
+                                 (not grounded?))]
+
+                    (when (r/async-result? result)
+                      (reset-meta! result
+                        {:description {:type :queue, :name description}, :timestamp (now)}))
+
+                    result)
 
                   ;; more than one node
                   (do
@@ -380,7 +390,15 @@
                   :lamina/error!)
 
                 ::consumed
-                (enqueue-and-release lock state msg true))))))))
+                (let [^Edge e (.get edges 0)
+                      consumer-description (.description e)
+                      result (enqueue-and-release lock state msg true)]
+
+                  #_(when (r/async-result? result)
+                    (reset-meta! result
+                      {:description {:type queue, :name consumer-description}}))
+                  
+                  result))))))))
 
   ;;
   (transactional [this]

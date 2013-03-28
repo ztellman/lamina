@@ -8,18 +8,23 @@
 
 (ns lamina.flow
   (:use
-    [lamina core
-     lamina.core.utils :only (result-seq)]))
+    [lamina core api]))
+
+
+(defn with-concurrency-threshold
+  [{:keys [metric max-in-flight on-transition]
+    :or {metrix (constantly 1)}}
+   ch]
+
+  )
 
 (defn batch
   [{:keys [metric max-size max-latency]
     :or {metric (constantly 1)}}
    ch]
-  (let []))
 
-(defn monitor-flow-threshold
-  [{:keys [metric max-in-flight]
-    :or {metric (constantly 1)}}]
   )
+
+
 
 

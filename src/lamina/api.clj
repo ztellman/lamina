@@ -7,10 +7,15 @@
 ;;   You must not remove this notice, or any other, from this software.
 
 (ns lamina.api
-  (:use [potemkin])
+  (:use
+    [potemkin])
   (:require
+    lamina.core.utils
     lamina.core.channel
-    lamina.core.operators))
+    lamina.core.operators)
+  (:import
+    [java.util.concurrent
+     BlockingQueue]))
 
 (import-vars
   [lamina.core.channel
@@ -23,5 +28,9 @@
   [lamina.core.operators
 
    bridge-accumulate
-   bridge-in-order])
+   bridge-in-order]
+
+  [lamina.core.utils
+   
+   result-seq])
 

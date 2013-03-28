@@ -38,16 +38,21 @@
            on-unsubscribe
            timestamp
            payload
-           task-queue]
+           task-queue
+           auto-advance?]
     :or {payload identity
-         task-queue (time/task-queue)}
+         task-queue (time/task-queue)
+         auto-advance? false}
     :as options}]
 
   (let [generator (if timestamp
                     #(->> %
                        generator
                        (map* identity)
-                       (defer-onto-queue task-queue timestamp)
+                       (defer-onto-queue
+                         {:task-queue task-queue
+                          :timestamp timestamp
+                          :auto-advance? auto-advance?})
                        (map* payload))
                     generator)
 
