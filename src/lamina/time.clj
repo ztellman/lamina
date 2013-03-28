@@ -17,13 +17,6 @@
      Calendar
      TimeZone]))
 
-(defn now
-  "Returns the current time, in milliseconds since the epoch."
-  (^long []
-     (System/currentTimeMillis))
-  (^long [clock]
-     (q/now clock)))
-
 (defn nanoseconds
   "Converts nanoseconds -> milliseconds"
   [n]
@@ -143,3 +136,10 @@
   [period & body]
   `(binding [lamina.time/*period* ~period]
      ~@body))
+
+(defn now
+  "Returns the current time, in milliseconds since the epoch."
+  (^long []
+    (System/currentTimeMillis))
+  (^long [clock]
+     (q/now clock)))

@@ -45,7 +45,9 @@
            auto-advance?]
     :or {payload identity}
     :as options}]
-  (let [auto-advance? (or auto-advance? (not task-queue))
+  (let [advance-latch (when (or auto-advance? (not task-queue))
+                        (result-channel))
+
         task-queue (or task-queue
                      (and timestamp
                        (time/non-realtime-task-queue)))
@@ -58,7 +60,7 @@
                               (defer-onto-queue
                                 {:task-queue task-queue
                                  :timestamp timestamp
-                                 :auto-advance? auto-advance?})
+                                 :auto-advance? advance-latch})
                               (map* payload))
                            stream-generator)
 
@@ -73,21 +75,30 @@
                                        (defer-onto-queue
                                          {:task-queue task-queue
                                           :timestamp timestamp
-                                          :auto-advance? auto-advance?})
+                                          :auto-advance? advance-latch})
                                        (map* payload))))
                                 (vals descriptor->channel)))
 
         ;; parse and apply descriptors
-        f #(zipmap
-             (keys descriptor->channel)
-             (map
-               (fn [[descriptor ch]]
-                 (if (ifn? descriptor)
-                   (descriptor ch)
-                   (let [desc (parse-descriptor descriptor options)
-                         ch (or ch (stream-generator (desc "pattern")))]
-                     (c/transform-trace-stream desc ch))))
-               descriptor->channel))
+        f #(try
+
+             ;; set up topologies
+             (zipmap
+               (keys descriptor->channel)
+               (map
+                 (fn [[descriptor ch]]
+                   (if (ifn? descriptor)
+                     (descriptor ch)
+                     (let [desc (parse-descriptor descriptor options)
+                           ch (or ch (stream-generator (desc "pattern")))]
+                       (c/transform-trace-stream desc ch))))
+                 descriptor->channel))
+             
+             (finally
+
+               ;; enable auto-advance
+               (when advance-latch
+                 (enqueue advance-latch true))))
 
         ;; set up evaluation scopes
         f #(with-bindings

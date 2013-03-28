@@ -478,7 +478,8 @@
        ch)))
 
 (defn bridge-accumulate
-  "A variant of `bridge` which "
+  "A variant of `bridge` which is designed to handle functions which accumulate multiple
+   messages via `:accumulator` and periodically emit a value via `:emitter`."
   [src dst description
    {:keys [period task-queue accumulator emitter]
     :or {task-queue (t/task-queue)
@@ -487,15 +488,25 @@
   (let [begin-latch (AtomicBoolean. false)
         close-latch (atom false)
         close-callback #(close dst)]
+
+    ;; set up callback to handle zero-message case
     (on-closed src close-callback)
+
     (bridge-siphon src dst description
       (fn [msg]
         (try
+
           (accumulator msg)
           :lamina/accumulated
+
           (finally
+            
+            ;; prime emitter, if we haven't already
             (when (.compareAndSet begin-latch false true)
+
+              ;; we've gotten a message, so cancel the zero-message callback
               (cancel-callback src close-callback)
+
               (join
                 (periodically period
                   (with-meta
@@ -503,7 +514,7 @@
                       (try
                         (emitter)
                         (finally
-                          (when (closed? src)
+                          (when (drained? src)
                             (reset! close-latch true)))))
                     {:close-latch close-latch})
                   task-queue)
@@ -677,24 +688,32 @@
    This assumes the timestamp for each message is monotonically increasing."
   [{:keys [timestamp task-queue auto-advance?]} channel]
   (let [ch* (lamina.core.channel/channel)]
-    (receive-in-order channel
-      (fn [msg]
-        (let [r (r/result-channel)
-              t (timestamp msg)]
 
-          (t/invoke-at task-queue t
-            (with-meta
-              (fn []
-                (try
-                  (enqueue ch* msg)
-                  (finally
-                    (r/success r :lamina/consumed))))
-              {:priority Integer/MAX_VALUE}))
+    (p/run-pipeline auto-advance?
 
-          (when auto-advance?
-            (t/advance-until task-queue t))
+      ;; allow for consumption to be deferred until the topology is built
+      (fn [auto-advance?]
 
-          r)))
+        (receive-in-order channel
+          (fn [msg]
+            (let [r (r/result-channel)
+                  t (timestamp msg)]
+              
+              (t/invoke-at task-queue t
+                (with-meta
+                  (fn []
+                    (try
+                      (enqueue ch* msg)
+                      (finally
+                        (r/success r :lamina/consumed))))
+                  {:priority Integer/MAX_VALUE}))
+
+              ;; advance to the message entering the topology
+              (when auto-advance?
+                (t/advance-until task-queue t))
+
+              ;; if we've auto-advanced, this should always be realized
+              r)))))
     ch*))
 
 ;;;
