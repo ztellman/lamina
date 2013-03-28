@@ -4,7 +4,8 @@
   :dependencies [[org.clojure/tools.logging "0.2.4"]
                  [org.flatland/useful "0.9.0"]
                  [potemkin "0.2.1"]]
-  :exclusions [org.clojure/contrib
+  :exclusions [org.clojure/clojure
+               org.clojure/contrib
                org.clojure/clojure-contrib]
   :profiles {:dev {:dependencies [[org.clojure/clojure "1.5.1"]
                                   [criterium "0.3.1"]
