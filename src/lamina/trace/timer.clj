@@ -19,8 +19,13 @@
     [lamina.core.context :as context]
     [lamina.executor.utils :as ex])
   (:import
+    [clojure.lang
+     ITransientCollection]
     [java.io
      Writer]
+    [java.util
+     Collections
+     HashMap]
     [java.util.concurrent
      ConcurrentLinkedQueue
      ConcurrentHashMap]))
@@ -111,6 +116,7 @@
                    :result ~'result
                    :sub-tasks (when-not (.isEmpty ~'sub-tasks)
                                 (doall (map #(timing % root-start#) ~'sub-tasks)))
+                   :counts ~'counts
                    ~@extras)]
      (if-not (neg? ~'start-stage)
        (assoc timing# :start-stage ~'start-stage)
@@ -130,7 +136,8 @@
    ^{:volatile-mutable true, :tag long} enter
    ^{:volatile-mutable true, :tag long} waiting
    ^{:volatile-mutable true, :tag long} return
-   ^ConcurrentLinkedQueue sub-tasks]
+   ^ConcurrentLinkedQueue sub-tasks
+   ^HashMap counts]
   ITimed
   (timing [_ start]
     (make-timing EnqueuedTiming start enqueued
@@ -200,7 +207,8 @@
                     Long/MIN_VALUE
                     Long/MIN_VALUE
                     Long/MIN_VALUE
-                    (ConcurrentLinkedQueue.))]
+                    (ConcurrentLinkedQueue.)
+                    (Collections/synchronizedMap (HashMap. 0)))]
         (when parent
           (add-sub-task parent timer))
         timer)
@@ -240,6 +248,7 @@
    ^long compute-duration
    ^long duration
    sub-tasks
+   counts
    args
    result])
 
@@ -255,7 +264,8 @@
    ^long enter
    ^{:volatile-mutable true, :tag long} waiting
    ^{:volatile-mutable true, :tag long} return
-   ^ConcurrentLinkedQueue sub-tasks]
+   ^ConcurrentLinkedQueue sub-tasks
+   ^HashMap counts]
   ITimed
   (timing [_ start]
     (make-timing Timing start enter))
@@ -312,7 +322,8 @@
                     (System/nanoTime)
                     Long/MIN_VALUE
                     Long/MIN_VALUE
-                    (ConcurrentLinkedQueue.))]
+                    (ConcurrentLinkedQueue.)
+                    (Collections/synchronizedMap (HashMap. 0)))]
         (when parent
           (add-sub-task parent timer))
         timer)
@@ -404,7 +415,6 @@
 
 (definterface+ IDistilledTiming
   (add-sub-timing! [_ x])
-  (merge-distilled-timing! [_ x])
   (set-context-visible! [_ visible?]))
 
 (declare distilled-timing)
@@ -412,7 +422,8 @@
 (def-map-type DistilledTiming
   [task-name
    durations ;; todo: make this some sort of primitive collection
-   ^ConcurrentHashMap sub-tasks
+   ^HashMap sub-tasks
+   ^HashMap counts
    context
    ^{:volatile-mutable true} context-visible?]
 
@@ -422,6 +433,7 @@
       :task task-name
       :durations @durations
       :sub-tasks (or (seq (.values sub-tasks)) default)
+      :counts counts
       :context (if context-visible? context default)
       default))
   (keys* [_]
@@ -430,7 +442,9 @@
       (when context-visible?
         [:context])
       (when-not (.isEmpty sub-tasks)
-        [:sub-tasks])))
+        [:sub-tasks])
+      (when-not (.isEmpty counts)
+        [:counts])))
   (assoc* [this k v]
     (assoc (into {} this) k v))
   (dissoc* [this k]
@@ -438,34 +452,49 @@
 
   IDistilledTiming
   (add-sub-timing! [_ timing]
-    (let [^DistilledTiming timing timing
-          k [(:task timing) (:context timing)]]
-      (if-let [sub-timing (.get sub-tasks k)]
-        
-        ;; already registered, just merge this in
-        (merge-distilled-timing! sub-timing timing)
+    (let [^DistilledTiming timing timing]
 
-        ;; create and put, allowing for race conditions
-        (let [sub-timing (distilled-timing (.task-name timing) (.context timing))]
-          (when (= (.context timing) context)
-            (set-context-visible! sub-timing false))
-          (merge-distilled-timing!
-            (or (.putIfAbsent sub-tasks k sub-timing) sub-timing)
-            timing)))))
-  
-  (merge-distilled-timing! [this timing]
-    (swap! durations #(concat %2 %1) (:durations timing))
-    (doseq [t (:sub-tasks timing)]
-      (add-sub-timing! this t)))
+      ;; merge sub-tasks
+      (let [k [(:task timing) (:context timing)]]
+        (if-let [sub-timing (get sub-tasks k)]
+          
+          ;; already registered, just merge this in
+          (conj! sub-timing timing)
+          
+          ;; create and put, allowing for race conditions
+          (let [sub-timing (distilled-timing (.task-name timing) (.context timing))]
+            (when (= (.context timing) context)
+              (set-context-visible! sub-timing false))
+            (.put sub-tasks k sub-timing)
+            (conj! sub-timing timing))))))
 
   (set-context-visible! [_ visible?]
-    (set! context-visible? visible?)))
+    (set! context-visible? visible?))
+
+  ITransientCollection
+  (conj [this timing]
+    (swap! durations #(concat %2 %1) (:durations timing))
+
+    ;; merge counts
+    (doseq [[k v] (:counts timing)]
+      (.put counts k (+ (long (.get counts k)) (long v))))
+    
+    (doseq [t (:sub-tasks timing)]
+      (add-sub-timing! this t))
+
+    this))
 
 (defn distilled-timing
   ([name context]
-     (DistilledTiming. name (atom []) (ConcurrentHashMap.) context true))
+     (distilled-timing name context nil))
   ([name context durations]
-     (DistilledTiming. name (atom (vec durations)) (ConcurrentHashMap.) context true)))
+     (DistilledTiming.
+       name
+       (atom (vec durations))
+       (HashMap. 2)
+       (HashMap. 0)
+       context
+       true)))
 
 (defn distill-timing
   "Returns a distillation of the timing object, containing only :task, :durations, :context, and :sub-tasks.

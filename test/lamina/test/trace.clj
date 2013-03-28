@@ -120,6 +120,23 @@
     (is (= "countdown" (first (name-seq (test-capture semi-silent-countdown 1)))))
     ))
 
+(deftest test-distilled-timing
+
+  (let [t (distill-timing (first (test-capture countdown 2)))]
+    (is (= "countdown" (-> t :task)))
+    (is (= "countdown*" (-> t :sub-tasks first :task)))
+    (is (= "countdown*" (-> t :sub-tasks first :sub-tasks first :task))))
+
+  (let [t (->> (test-capture countdown 2)
+            first
+            (repeat 10)
+            (map distill-timing)
+            (reduce conj!))]
+    
+    (is (= "countdown" (-> t :task)))
+    (is (= "countdown*" (-> t :sub-tasks first :task)))
+    (is (= "countdown*" (-> t :sub-tasks first :sub-tasks first :task)))))
+
 (def ^{:dynamic true} n 10)
 
 (defn-instrumented unbound-add

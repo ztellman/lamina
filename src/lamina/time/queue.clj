@@ -29,7 +29,7 @@
 
 ;;;
 
-(defonce default-task-queue
+(def default-task-queue
   (let [queue-factory (thread-factory (constantly "lamina-scheduler-queue"))
         task-queue    (ScheduledThreadPoolExecutor. 1 ^ThreadFactory queue-factory)
         
@@ -137,40 +137,49 @@
             (- c)))
         c))))
 
+(deftype+ NonRealTimeTaskQueue
+  [^ConcurrentSkipListSet tasks
+   now
+   ^boolean discard-past-events?]
+  
+  ITaskQueue
+  (invoke-in- [_ delay f]
+    (if (and discard-past-events? (neg? delay))
+      false
+      (do
+        (.add tasks (TaskTuple. (+ @now delay) f))
+        true)))
+
+  IClock
+  (now [_]
+    @now)
+  
+  INonRealTimeTaskQueue
+  (advance [_]
+    (when-let [^TaskTuple task (.pollFirst tasks)]
+      (let [timestamp (.timestamp task)]
+        (reset! now timestamp)
+        ((.f task))
+        timestamp)))
+  
+  (advance-until [this timestamp]
+    (loop []
+      (when-not (.isEmpty tasks)
+        (let [^TaskTuple task (.first tasks)]
+          (when (<= (.timestamp task) timestamp)
+            (advance this)
+            (recur)))))))
+
 (defn non-realtime-task-queue
   "A task queue which can be used to schedule timed or periodic tasks at something
    other than realtime."
   ([]
      (non-realtime-task-queue 0 false))
   ([start-time discard-past-events?]
-     (let [tasks (ConcurrentSkipListSet.)
-           now (atom start-time)]
-       (reify
-         ITaskQueue
-         (invoke-in- [_ delay f]
-           (if (and discard-past-events? (neg? delay))
-             false
-             (do
-               (.add tasks (TaskTuple. (+ @now delay) f))
-               true)))
-         IClock
-         (now [_]
-           @now)
-         INonRealTimeTaskQueue
-         (advance [_]
-           (when-let [^TaskTuple task (.pollFirst tasks)]
-             (let [timestamp (.timestamp task)]
-               (reset! now timestamp)
-               ((.f task))
-               timestamp)))
-
-         (advance-until [this timestamp]
-           (loop []
-             (when-not (.isEmpty tasks)
-               (let [^TaskTuple task (.first tasks)]
-                 (when (<= (.timestamp task) timestamp)
-                   (advance this)
-                   (recur))))))))))
+     (NonRealTimeTaskQueue.
+       (ConcurrentSkipListSet.)
+       (atom start-time)
+       discard-past-events?)))
 
 ;;;
 

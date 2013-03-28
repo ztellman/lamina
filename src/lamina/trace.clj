@@ -118,7 +118,6 @@
 (import-fn pr/canonical-probe-name)
 (import-fn pr/probe-channel)
 (import-fn pr/error-probe-channel)
-(import-fn pr/sympathetic-probe-channel)
 (import-fn pr/probe-enabled?)
 (import-fn pr/select-probes)
 (import-fn pr/probe-names)
