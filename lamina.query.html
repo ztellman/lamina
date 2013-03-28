@@ -76,7 +76,7 @@ the origin and transform (i.e. <code>{"abc.rate()" nil}</code> is valid, `{".rat
           </div><div class="public">
             <h3><a id="var-query-stream" class="source var-name" href="/src/lamina/query.clj">query-stream</a></h3>
             <h4 class="var-type fn" id="var-type">fn</h4>
-            <div class="usage">[descriptor {:keys [task-queue timestamp payload period stream-generator], :or {payload identity}, :as options} ch]</div>
+            <div class="usage">[descriptor {:keys [task-queue timestamp payload period stream-generator auto-advance?], :or {payload identity}, :as options} ch]</div>
             
             
             <div class="doc"><p>A function which applies a transform to a stream, with some convenience methods for dealing with non-wall clock analysis.</p>
@@ -84,7 +84,7 @@ the origin and transform (i.e. <code>{"abc.rate()" nil}</code> is valid, `{".rat
           </div><div class="public">
             <h3><a id="var-query-streams" class="source var-name" href="/src/lamina/query.clj">query-streams</a></h3>
             <h4 class="var-type fn" id="var-type">fn</h4>
-            <div class="usage">[descriptor-&gt;channel {:keys [task-queue timestamp payload period stream-generator], :or {payload identity}, :as options}]</div>
+            <div class="usage">[descriptor-&gt;channel {:keys [task-queue timestamp payload period stream-generator auto-advance?], :or {payload identity}, :as options}]</div>
             
             
             <div class="doc"><p>A variant of query-stream, wihch takes a map of multiple descriptors onto the source channels,

@@ -306,7 +306,7 @@ only active if someone is paying attention.</p>
           </div><div class="public">
             <h3><a id="var-trace-router" class="source var-name" href="/src/lamina/trace/router.clj">trace-router</a></h3>
             <h4 class="var-type fn" id="var-type">fn</h4>
-            <div class="usage">[{:keys [generator topic-&gt;id on-subscribe on-unsubscribe timestamp payload task-queue], :or {payload identity, task-queue (time/task-queue)}, :as options}]</div>
+            <div class="usage">[{:keys [generator topic-&gt;id on-subscribe on-unsubscribe timestamp payload task-queue auto-advance?], :or {payload identity, task-queue (time/task-queue), auto-advance? false}, :as options}]</div>
             
             
             <div class="doc"><p>Creates a router which can be queried via the default syntax and allows multiple queries to share sub-streams.</p>

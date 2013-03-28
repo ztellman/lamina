@@ -197,11 +197,12 @@ is a <code>Throwable</code>, then the pipeline will be realized as that error.</
           </div><div class="public">
             <h3><a id="var-defer-onto-queue" class="source var-name" href="/src/lamina/core/operators.clj">defer-onto-queue</a></h3>
             <h4 class="var-type fn" id="var-type">fn</h4>
-            <div class="usage">[task-queue time-facet channel]</div>
+            <div class="usage">[{:keys [timestamp task-queue auto-advance?]} channel]</div>
             
             
-            <div class="doc"><p>Takes an input <code>channel</code>, a <code>time-facet</code> which takes each message and returns the associated time, 
-and a <code>task-queue</code>.</p>
+            <div class="doc"><p>Takes an input <code>channel</code>, a <code>timestamp</code> which takes each message and returns the associated time, 
+and a <code>task-queue</code>.  If <code>auto-advance?</code> is true, then enqueueing a message will automatically
+advance <code>task-queue</code> to that time.</p>
 
 <p>The returned channel will emit each message from <code>channel</code> only once the designated time has arrived.
 This assumes the timestamp for each message is monotonically increasing.</p>
