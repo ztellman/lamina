@@ -137,6 +137,19 @@
     (is (= "countdown*" (-> t :sub-tasks first :task)))
     (is (= "countdown*" (-> t :sub-tasks first :sub-tasks first :task)))))
 
+(deftest test-trace-counters
+  (let [timing (with-instrumentation
+                 (increment-trace-counter :foo)
+                 (increment-trace-counter :foo)
+                 (increment-trace-counter :bar))
+        distilled (distill-timing timing)]
+    (is (= {:foo 2 :bar 1} (:counts timing) (:counts distilled)))
+    (is (= {:foo 20 :bar 10} (->> timing
+                               (repeat 10)
+                               (map distill-timing)
+                               (reduce conj!)
+                               :counts)))))
+
 (def ^{:dynamic true} n 10)
 
 (defn-instrumented unbound-add

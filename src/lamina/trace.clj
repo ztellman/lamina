@@ -9,8 +9,7 @@
 (ns lamina.trace
   (:use
     [potemkin]
-    [lamina.core]
-    [clojure.walk :only [keywordize-keys]])
+    [lamina.core])
   (:require
     [clojure.tools.logging :as log]
     [lamina.cache :as c]
@@ -108,19 +107,27 @@
   :periodic? true
   :distribute? false
   :transform
-  (fn [{:strs [options]} ch]
-    (analyze-timings (keywordize-keys options) ch)))
+  (fn [{:keys [options]} ch]
+    (analyze-timings options ch)))
 
 ;;;
 
-(import-fn pr/on-enabled-changed)
-(import-fn pr/on-new-probe)
-(import-fn pr/canonical-probe-name)
-(import-fn pr/probe-channel)
-(import-fn pr/error-probe-channel)
-(import-fn pr/probe-enabled?)
-(import-fn pr/select-probes)
-(import-fn pr/probe-names)
+(import-vars
+  [lamina.trace.probe
+
+   on-enabled-changed
+   on-new-probe
+   canonical-probe-name
+   probe-channel
+   error-probe-channel
+   probe-enabled?
+   select-probes
+   probe-names]
+
+  [lamina.trace.timer
+
+   add-to-trace-counter
+   increment-trace-counter])
 
 (defmacro trace*
   "A variant of trace that allows the probe name to be resolved at runtime."

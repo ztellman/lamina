@@ -41,7 +41,8 @@
   (mark-waiting [_])
   (mark-return [_ val])
   (add-sub-task [_ timer])
-  (add-to-last-sub-task [_ timer]))
+  (add-to-last-sub-task [_ timer])
+  (add-to-counter [_ k n]))
 
 (defn dummy-timer [name enqueue-error?]
   (reify
@@ -55,7 +56,8 @@
     (mark-waiting [_])
     (mark-return [_ _])
     (add-sub-task [_ _] )
-    (add-to-last-sub-task [_ _])))
+    (add-to-last-sub-task [_ _])
+    (add-to-counter [_ k n])))
 
 (defn timing-wrapper [t]
   (let [sub-tasks (ConcurrentLinkedQueue.)]
@@ -80,6 +82,16 @@
   (if-let [timer (context/timer)]
     (boolean (add-to-last-sub-task timer (timing-wrapper timing)))
     false))
+
+(defn add-to-trace-counter [k n]
+  (if-let [timer (context/timer)]
+    (do
+      (add-to-counter timer k n)
+      true)
+    false))
+
+(defn increment-trace-counter [k]
+  (add-to-trace-counter k 1))
 
 ;;;
 
@@ -150,6 +162,9 @@
   (add-to-last-sub-task [_ timer]
     (when-let [task (last (seq sub-tasks))]
       (add-sub-task task timer)))
+  (add-to-counter [_ k n]
+    (locking counts
+      (.put counts k (+ (long (or (.get counts k) 0)) (long n)))))
   (mark-enter [this]
     (set! enter (System/nanoTime)))
   (mark-error [this err]
@@ -208,7 +223,7 @@
                     Long/MIN_VALUE
                     Long/MIN_VALUE
                     (ConcurrentLinkedQueue.)
-                    (Collections/synchronizedMap (HashMap. 0)))]
+                    (HashMap. 0))]
         (when parent
           (add-sub-task parent timer))
         timer)
@@ -275,6 +290,9 @@
   (add-to-last-sub-task [_ timer]
     (when-let [task (last (seq sub-tasks))]
       (add-sub-task task timer)))
+  (add-to-counter [_ k n]
+    (locking counts
+      (.put counts k (+ (long (or (.get counts k) 0)) (long n)))))
   (mark-enter [_]
     )
   (mark-waiting [this]
@@ -323,7 +341,7 @@
                     Long/MIN_VALUE
                     Long/MIN_VALUE
                     (ConcurrentLinkedQueue.)
-                    (Collections/synchronizedMap (HashMap. 0)))]
+                    (HashMap. 0))]
         (when parent
           (add-sub-task parent timer))
         timer)
@@ -477,7 +495,7 @@
 
     ;; merge counts
     (doseq [[k v] (:counts timing)]
-      (.put counts k (+ (long (.get counts k)) (long v))))
+      (.put counts k (+ (long (or (.get counts k) 0)) (long v))))
     
     (doseq [t (:sub-tasks timing)]
       (add-sub-timing! this t))
@@ -486,13 +504,15 @@
 
 (defn distilled-timing
   ([name context]
-     (distilled-timing name context nil))
-  ([name context durations]
+     (distilled-timing name context nil nil))
+  ([name context counts durations]
      (DistilledTiming.
        name
        (atom (vec durations))
        (HashMap. 2)
-       (HashMap. 0)
+       (if counts
+         (HashMap. ^HashMap counts)
+         (HashMap. 0))
        context
        true)))
 
@@ -507,6 +527,7 @@
     (let [^DistilledTiming timing* (distilled-timing
                                      (or (:task timing) (:name timing))
                                      (:context timing)
+                                     (:counts timing)
                                      (or (:durations timing)
                                        (if-let [d (:duration timing)]
                                          [d]
