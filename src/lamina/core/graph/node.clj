@@ -21,12 +21,16 @@
     [lamina.core.threads :as t]
     [clojure.tools.logging :as log])
   (:import
+    [lamina.core.utils
+     IError]
     [lamina.core.queue
      Message]
     [lamina.core.lock
+     ILock
      AsymmetricLock]
     [lamina.core.graph.core
-     Edge]
+     Edge
+     IPropagator]
     [lamina.core.result
      SuccessResult
      ErrorResult
@@ -212,10 +216,10 @@
       (count q)
       0))
 
-  lamina.core.utils.IDescribed
+  IDescribed
   (description [_] description)
 
-  lamina.core.lock.ILock
+  ILock
   (acquire [_] (l/acquire lock))
   (acquire-exclusive [_] (l/acquire-exclusive lock))
   (release [_] (l/release lock))
@@ -223,7 +227,7 @@
   (try-acquire [_] (l/try-acquire lock))
   (try-acquire-exclusive [_] (l/try-acquire-exclusive lock))
 
-  lamina.core.utils.IError
+  IError
   
   (error [this err force?]
     (r/defer-within-transaction (error this err force?)
@@ -256,7 +260,7 @@
         ;; state has already been permanently changed or cannot be changed
         false)))
 
-  lamina.core.graph.core.IPropagator
+  IPropagator
 
   ;;
   (downstream [_]

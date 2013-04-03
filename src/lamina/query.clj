@@ -112,21 +112,6 @@
         f (if task-queue
             #(time/with-task-queue task-queue (f))
             f)]
-
-    ;; finalize all pending results when the channels are drained
-    (when (and task-queue advance-latch)
-      (run-pipeline
-        (->> descriptor->channel
-          vals
-          (map drained-result)
-          (apply merge-results))
-
-        (fn [_]
-          ;; advance until every last event is squeezed out
-          (loop []
-            (when-let [t (time/advance task-queue)]
-              (recur))))))
-    
     (f)))
 
 (defn query-stream

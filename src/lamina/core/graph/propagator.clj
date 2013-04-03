@@ -17,21 +17,24 @@
     [lamina.core.graph.node :as n]
     [clojure.tools.logging :as log])
   (:import
+    [lamina.core.utils
+     IError]
     [lamina.core.lock
      AsymmetricLock]
     [lamina.core.graph.core
-     Edge]
+     Edge
+     IPropagator]
     [java.util.concurrent.atomic
      AtomicBoolean]
     [java.util.concurrent
      ConcurrentHashMap]))
 
 (deftype+ CallbackPropagator [callback]
-  lamina.core.utils.IDescribed
+  IDescribed
   (description [_] (describe-fn callback))
-  lamina.core.utils.IError
+  IError
   (error [_ _ force?])
-  lamina.core.graph.core.IPropagator
+  IPropagator
   (close [_ force?])
   (transactional [_] false)
   (downstream [_] nil)
@@ -45,13 +48,13 @@
   (CallbackPropagator. callback))
 
 (deftype+ BridgePropagator [description callback downstream]
-  lamina.core.utils.IDescribed
+  IDescribed
   (description [_] description)
-  lamina.core.utils.IError
+  IError
   (error [_ err force?]
     (doseq [^Edge e downstream]
       (error (.next e) err force?)))
-  lamina.core.graph.core.IPropagator
+  IPropagator
   (close [_ force?]
     (doseq [^Edge e downstream]
       (close (.next e) force?)))
@@ -62,11 +65,11 @@
       (transactional n))))
 
 (deftype+ TerminalPropagator [description]
-  lamina.core.utils.IDescribed
+  IDescribed
   (description [_] description)
-  lamina.core.utils.IError
+  IError
   (error [_ err force?])
-  lamina.core.graph.core.IPropagator
+  IPropagator
   (close [_ force?])
   (downstream [_] nil)
   (propagate [_ _ _] nil)
@@ -103,13 +106,13 @@
       (close @n force?)))
   (facets [_]
     (keys downstream-map))
-  lamina.core.utils.IDescribed
+  IDescribed
   (description [_] "distributor")
-  lamina.core.utils.IError
+  IError
   (error [_ err force?]
     (doseq [n (close-and-clear lock closed? downstream-map)]
       (error n err force?)))
-  lamina.core.graph.core.IPropagator
+  IPropagator
   (close [_ force?]
     (doseq [n (close-and-clear lock closed? downstream-map)]
       (close n force?)))

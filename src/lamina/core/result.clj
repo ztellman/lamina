@@ -17,6 +17,9 @@
     [lamina.time :as t]
     [clojure.tools.logging :as log])
   (:import
+    [lamina.core.utils
+     IEnqueue
+     IError]
     [lamina.core.lock
      Lock]
     [java.util.concurrent
@@ -85,11 +88,11 @@
   [value
    ^{:volatile-mutable true} metadata
    ^CopyOnWriteArrayList listeners]
-  lamina.core.utils.IEnqueue
+  IEnqueue
   (enqueue [_ _]
     :lamina/already-realized!)
 
-  lamina.core.utils.IError
+  IError
   (error [_ _ _]
     :lamina/already-realized!)
 
@@ -136,11 +139,11 @@
    ^{:volatile-mutable true} metadata
    ^CopyOnWriteArrayList listeners]
 
-  lamina.core.utils.IEnqueue
+  IEnqueue
   (enqueue [_ _]
     :lamina/already-realized!)
 
-  lamina.core.utils.IError
+  IError
   (error [_ _ _]
     :lamina/already-realized!)
 
@@ -321,12 +324,12 @@
    ^{:volatile-mutable true} metadata
    ^LinkedList subscribers]
 
-  lamina.core.utils.IEnqueue
+  IEnqueue
 
   (enqueue [this msg]
     (success this msg))
 
-  lamina.core.utils.IError
+  IError
   
   (error [this err _]
     (compare-and-trigger

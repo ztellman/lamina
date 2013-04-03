@@ -15,6 +15,8 @@
     [lamina.core.lock :as l]
     [lamina.time :as t])
   (:import
+    [lamina.stats.utils
+     IUpdatable]
     [java.util.concurrent
      ConcurrentSkipListMap]
     [java.util.concurrent.atomic
@@ -55,7 +57,7 @@
     (l/with-lock lock
       (vals samples)))
   
-  lamina.stats.utils.IUpdatable
+  IUpdatable
   (update [this val]
     (let [now (t/now task-queue)]
       (if (>= now (.get next-rescale))
@@ -102,7 +104,7 @@
    ^AtomicLong counter
    ^long sample-size]
 
-  lamina.stats.utils.IUpdatable
+  IUpdatable
   (update [_ val]
     (let [cnt (.incrementAndGet counter)]
       (if (<= cnt sample-size)

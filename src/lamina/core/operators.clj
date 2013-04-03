@@ -713,11 +713,7 @@
                 (t/advance-until task-queue t))
 
               ;; if we've auto-advanced, this should always be realized
-              r))))
-
-      (fn [_]
-        (close ch*)))
-    
+              r)))))
     ch*))
 
 ;;;

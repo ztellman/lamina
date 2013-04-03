@@ -16,7 +16,10 @@
     [lamina.time :as time]
     [lamina.cache :as cache]
     [lamina.query :as q]
-    [lamina.query.core :as c]))
+    [lamina.query.core :as c])
+  (:import
+    [lamina.cache
+     IRouter]))
 
 ;;;
 
@@ -66,7 +69,7 @@
                    :generator generator
                    :cache+topic->topic-descriptor topic-fn))]
 
-    (reify lamina.cache.IRouter
+    (reify IRouter
       (inner-cache [_]
         (cache/inner-cache router))
       (subscribe [this topic options]
@@ -95,7 +98,7 @@
                  {:generator
                   (fn [{:keys [endpoint]}]
                     (cache/subscribe endpoint-router endpoint {}))})]
-    (reify lamina.cache.IRouter
+    (reify IRouter
       (inner-cache [_]
         (cache/inner-cache router))
       (subscribe [this topic options]
