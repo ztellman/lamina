@@ -163,7 +163,7 @@
     lamina.core.utils.IEnqueue
     (enqueue [_ msg]
       (enqueue result msg))
-    lamina.trace.probe.IProbe
+    IProbe
     (probe-enabled? [_]
       (not (r/result result)))))
 

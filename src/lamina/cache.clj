@@ -37,7 +37,7 @@
    necessary."
   [generator]
   (let [m (ConcurrentHashMap.)]
-    (reify lamina.cache.IChannelCache
+    (reify IChannelCache
       (get-or-create [this id on-create]
         (let [id* (if (nil? id) ::nil id)]
           (if-let [thunk (.get m id*)]
@@ -85,9 +85,9 @@
 
     (reify
 
-      lamina.cache.ITopicChannelCache
+      ITopicChannelCache
 
-      lamina.cache.IChannelCache
+      IChannelCache
 
       (get-or-create [this topic callback]
         (get-or-create cache topic
@@ -142,8 +142,8 @@
 
     (reify
 
-      lamina.cache.ITopicChannelCache
-      lamina.cache.IChannelCache
+      ITopicChannelCache
+      IChannelCache
       
       (get-or-create [this topic callback]
         (let [created? (atom false)
@@ -222,7 +222,7 @@
                   :cache+topic->topic-descriptor
                   cache+topic->topic-descriptor))]
 
-      (reify lamina.cache.IRouter
+      (reify IRouter
         (inner-cache [_]
           cache)
         (subscribe [_ topic options]
