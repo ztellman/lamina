@@ -11,8 +11,6 @@
     [potemkin]
     [lamina.stats.utils])
   (:import
-    [lamina.stats.utils
-     IUpdatable]
     [java.util.concurrent.atomic
      AtomicReference]))
 
@@ -29,7 +27,7 @@
    ^AtomicReference counter
    ^double alpha
    ^double interval]
-  IUpdatable
+  lamina.stats.utils.IUpdatable
   (update [_ value]
     (loop []
       (let [cnt (.get counter)]

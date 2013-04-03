@@ -24,6 +24,8 @@
     (is (= (range 6 11) (channel->seq ch)))))
 
 (deftest test-defer-onto-queue
+
+  ;; without auto-advance
   (let [q (non-realtime-task-queue)
         ch (channel)
         ch* (->> ch
@@ -35,12 +37,17 @@
     (dotimes [i 10]
       (enqueue ch {:timestamp i}))
 
+    (close ch)
+
     (advance-until q 4)
     (is (= (range 0 5) (channel->seq ch*)))
 
     (advance-until q 100)
-    (is (= (range 5 10) (channel->seq ch*))))
+    (is (= (range 5 10) (channel->seq ch*)))
 
+    (is (drained? ch)))
+
+  ;; with auto-advance
   (let [q (non-realtime-task-queue)
         ch (channel)
         ch* (->> ch
@@ -57,8 +64,12 @@
 
     (doseq [i (range 5 10)]
       (enqueue ch {:timestamp i}))
+
+    (close ch)
     
-    (is (= (range 5 10) (channel->seq ch*)))))
+    (is (= (range 5 10) (channel->seq ch*)))
+
+    (is (drained? ch))))
 
 ;;;
 

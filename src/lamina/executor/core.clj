@@ -18,8 +18,6 @@
     [lamina.trace.timer :as t]
     [lamina.core.context :as context])
   (:import
-    [lamina.executor.utils
-     IExecutor]
     [java.util.concurrent
      LinkedBlockingQueue
      ThreadPoolExecutor
@@ -98,7 +96,7 @@
       (deref [_]
         (stats))
 
-      IExecutor
+      lamina.executor.utils.IExecutor
       (probe-enabled? [_]
         (or
           (pr/probe-enabled? return-probe)

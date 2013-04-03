@@ -17,11 +17,6 @@
     [lamina.core.result :as r]
     [clojure.tools.logging :as log])
   (:import
-    [lamina.core.utils
-     IChannelMarker
-     IEnqueue]
-    [lamina.core.channel
-     IChannel]
     [java.io
      Writer]
     [java.util.concurrent
@@ -40,7 +35,7 @@
    channel
    log-on-disabled?
    description]
-  IEnqueue
+  lamina.core.utils.IEnqueue
   (enqueue [_ msg]
     (let [result (g/propagate (c/receiver-node channel) msg true)]
       (when (and log-on-disabled? (identical? :lamina/grounded result))
@@ -56,8 +51,8 @@
         (catch Exception e
           (log/error e "Error in on-enabled-changed callback.")))))
 
-  IChannelMarker
-  IChannel
+  lamina.core.utils.IChannelMarker
+  lamina.core.channel.IChannel
   (receiver-node [_]
     (c/receiver-node channel))
   (emitter-node [_]
@@ -165,7 +160,7 @@
   (when-not (r/async-result? result)
     (throw (IllegalArgumentException. "probe-result must be given a result-channel")))
   (reify
-    IEnqueue
+    lamina.core.utils.IEnqueue
     (enqueue [_ msg]
       (enqueue result msg))
     IProbe
@@ -178,13 +173,13 @@
   [^AtomicBoolean enabled?
    receiver
    emitter]
-  IEnqueue
+  lamina.core.utils.IEnqueue
   (enqueue [_ msg]
     (g/propagate (c/receiver-node receiver) msg true))
   IProbe
   (probe-enabled? [_]
     (.get enabled?))
-  IChannel
+  lamina.core.channel.IChannel
   (receiver-node [_]
     (c/receiver-node receiver))
   (emitter-node [_]

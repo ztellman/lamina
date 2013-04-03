@@ -52,6 +52,7 @@
     (is (= [200] (map :timestamp val2)))
     (is (= [(range 100 120)] (map :value val2))))
 
+  ;; with seq-generator
   (let [s (range 100 120)
         f1 "abc.partition-every(period: 10ms)"
         f2 "def.partition-every(period: 100ms)"
@@ -77,8 +78,8 @@
   (let [val (query-stream
               #(partition-every {:period 10} %)
               {:timestamp identity}
-              (apply closed-channel (range 21)))]
-    (is (= [(range 11) (range 11 21)]
+              (apply closed-channel (range 18)))]
+    (is (= [(range 11) (range 11 18)]
           (channel->seq val)))))
 
 (deftest test-group-by

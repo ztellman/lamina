@@ -19,10 +19,6 @@
     [clojure.string :as str]
     [clojure.tools.logging :as log])
   (:import
-    [lamina.core.utils
-     IChannelMarker
-     IEnqueue
-     IError]
     [lamina.core.lock
      AsymmetricLock]
     [lamina.core.graph.node
@@ -51,7 +47,7 @@
    ^{:volatile-mutable true :tag Node} emitter
    metadata]
 
-  IError
+  lamina.core.utils.IError
   (error [_ err force?]
     (error receiver err force?))
 
@@ -59,11 +55,11 @@
   (count [_]
     (count emitter))
 
-  IEnqueue
+  lamina.core.utils.IEnqueue
   (enqueue [_ msg]
     (g/propagate receiver msg true))
 
-  IChannelMarker
+  lamina.core.utils.IChannelMarker
   IChannel
   (receiver-node [_]
     receiver)
@@ -107,11 +103,11 @@
   (count [_]
     (count emitter))
 
-  IEnqueue
+  lamina.core.utils.IEnqueue
   (enqueue [_ msg]
     (g/propagate (receiver-node receiver) msg true))
 
-  IChannelMarker
+  lamina.core.utils.IChannelMarker
   IChannel
   (receiver-node [_]
     (receiver-node receiver))
@@ -186,7 +182,7 @@
 (defn channel?
   "Returns true if `x` is a channel.  This does not encompass result-channels."
   [x]
-  (instance? IChannelMarker x))
+  (instance? lamina.core.utils.IChannelMarker x))
 
 ;;;
 

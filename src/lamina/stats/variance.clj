@@ -11,8 +11,6 @@
     [potemkin]
     [lamina.stats.utils])
   (:import
-    [lamina.stats.utils
-     IUpdatable]
     [java.util.concurrent.atomic
      AtomicLong]))
 
@@ -27,7 +25,7 @@
   [^double mean
    ^double m2
    ^long count]
-  IUpdatable
+  lamina.stats.utils.IUpdatable
   (update [_ value]
     (let [count (inc count)
           delta (- value mean)
