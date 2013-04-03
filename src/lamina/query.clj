@@ -71,13 +71,26 @@
                                 (->> descriptor->channel
                                   vals
                                   (map
-                                    #(->> %
-                                       (defer-onto-queue
-                                         {:task-queue task-queue
-                                          :timestamp timestamp
-                                          :auto-advance? advance-latch})
-                                       (map* payload))))
+                                    #(when %
+                                       (->> %
+                                         (defer-onto-queue
+                                           {:task-queue task-queue
+                                            :timestamp timestamp
+                                            :auto-advance? advance-latch})
+                                         (map* payload)))))
                                 (vals descriptor->channel)))
+
+        ;; fill in nil channels
+        descriptor->channel (zipmap
+                              (keys descriptor->channel)
+                              (map
+                                (fn [[descriptor ch]]
+                                  (or ch
+                                    (-> descriptor
+                                      (parse-descriptor options)
+                                      (get "pattern")
+                                      stream-generator)))
+                                descriptor->channel))
 
         ;; parse and apply descriptors
         f #(try
@@ -89,8 +102,7 @@
                  (fn [[descriptor ch]]
                    (if (ifn? descriptor)
                      (descriptor ch)
-                     (let [desc (parse-descriptor descriptor options)
-                           ch (or ch (stream-generator (desc "pattern")))]
+                     (let [desc (parse-descriptor descriptor options)]
                        (c/transform-trace-stream desc ch))))
                  descriptor->channel))
              
@@ -112,6 +124,21 @@
         f (if task-queue
             #(time/with-task-queue task-queue (f))
             f)]
+
+    ;; finalize all pending results when the channels are drained
+    (when (and task-queue advance-latch)
+      (run-pipeline
+        (->> descriptor->channel
+          vals
+          (map drained-result)
+          (apply merge-results))
+
+        (fn [_]
+          ;; advance until every last event is squeezed out
+          (loop []
+            (when-let [t (time/advance task-queue)]
+              (recur))))))
+
     (f)))
 
 (defn query-stream

@@ -74,12 +74,51 @@
 (deftest test-query-stream-partition-every
 
   ;; smaller period than interval of data
-  (let [val (query-stream
-              #(partition-every {:period 10} %)
-              {:timestamp identity}
-              (apply closed-channel (range 21)))]
-    (is (= [(range 11) (range 11 21)]
-          (channel->seq val)))))
+  (let [ch (query-stream
+             #(partition-every {:period 10} %)
+             {:timestamp identity}
+             (apply closed-channel (range 20)))]
+    (is (= [(range 11) (range 11 20)]
+          (channel->lazy-seq ch))))
+
+  ;; larger period than interval of data
+  (let [ch (query-stream
+             #(partition-every {:period 100} %)
+             {:timestamp identity}
+             (apply closed-channel (range 20)))]
+    (is (= [(range 20)] (channel->lazy-seq ch))))
+
+  ;; both at once
+  (let [s (range 100 120)
+        f1 ".partition-every(period: 10ms)"
+        f2 ".partition-every(period: 100ms)"
+        val (query-streams
+              {f1 (apply closed-channel s)
+               f2 (apply closed-channel s)}
+              {:timestamp identity})
+        ch1 (get val f1)
+        ch2 (get val f2)]
+
+    (is (= [(range 100 111) (range 111 120)]
+          (channel->seq ch1)))
+    (is (= [(range 100 120)]
+          (channel->seq ch2))))
+
+  (let [s (range 100 120)
+        f1 "abc.partition-every(period: 10ms)"
+        f2 "def.partition-every(period: 100ms)"
+        val (query-streams
+              {f1 nil
+               f2 nil}
+              {:timestamp identity
+               :stream-generator (fn [_] (apply closed-channel s))})
+        ch1 (get val f1)
+        ch2 (get val f2)]
+
+    (is (= [(range 100 111) (range 111 120)]
+          (channel->seq ch1)))
+    (is (= [(range 100 120)]
+          (channel->seq ch2)))))
 
 (deftest test-group-by
   (let [val (query-seq
