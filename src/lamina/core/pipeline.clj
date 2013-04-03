@@ -302,7 +302,7 @@
                            (comp potemkin/fast-bound-fn* fn-transform#)
                            fn-transform#)
            ~fn-transform fn-transform#]
-       (reify IPipeline
+       (reify lamina.core.pipeline.IPipeline
 
          (implicit? [_#]
            ~implicit?)

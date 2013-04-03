@@ -46,7 +46,7 @@
 
 (defn dummy-timer [name enqueue-error?]
   (reify
-    ITimed
+    lamina.trace.timer.ITimed
     (timing [_ start]
       {})
     (mark-error [_ err]
@@ -61,12 +61,13 @@
 
 (defn timing-wrapper [t]
   (let [sub-tasks (ConcurrentLinkedQueue.)]
-    (reify ITimed
+    (reify
+      lamina.trace.timer.ITimed
       (timing [_ start]
         (update-in t [:sub-tasks]
           #(map
              (fn [t]
-               (if (instance? ITimed t)
+               (if (instance? lamina.trace.timer.ITimed t)
                  (timing t start)
                  t))
              (concat % (seq sub-tasks)))))

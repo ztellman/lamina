@@ -44,7 +44,7 @@
                         ^ThreadFactory task-factory)]
     
     (reify
-      ITaskQueue
+      lamina.time.queue.ITaskQueue
       (invoke-in- [_ delay f]
         (let [enqueue-fn (fn []
                            (.execute task-executor
@@ -59,7 +59,7 @@
               (long (* 1e6 delay))
               TimeUnit/NANOSECONDS)))
         true)
-      IClock
+      lamina.time.queue.IClock
       (now [_]
         (System/currentTimeMillis)))))
 
