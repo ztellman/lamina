@@ -140,7 +140,8 @@
           window (t/minutes 5)}
      :as options}
     ch]
-     (let [sampler (sample/moving-sampler options)
+     (let [quantiles (map #(double (/ % 100)) quantiles)
+           sampler (sample/moving-sampler options)
            ch* (bridge-accumulate ch (mimic ch) "moving-quantiles"
                  (merge options
                    (number-accumulator "moving-quantiles" #(update sampler %))
