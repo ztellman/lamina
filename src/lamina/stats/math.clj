@@ -24,16 +24,19 @@
   (+ lower (* t (- upper lower))))
 
 (defn lerp-array ^double [^doubles ary ^double t]
-  (if (== 1.0 t)
-    (aget ary (dec (Array/getLength ary)))
-    (let [cnt (dec (Array/getLength ary))
-          idx (* cnt t)
-          idx-floor (int idx)
-          sub-t (- idx idx-floor)]
-      (lerp
-        (aget ary idx-floor)
-        (aget ary (inc idx-floor))
-        sub-t))))
+  (let [len (Array/getLength ary)]
+    (if (== 0 len)
+      0.0
+      (if (== 1.0 t)
+        (aget ary (dec len))
+        (let [cnt (dec len)
+              idx (* cnt t)
+              idx-floor (int idx)
+              sub-t (- idx idx-floor)]
+          (lerp
+            (aget ary idx-floor)
+            (aget ary (inc idx-floor))
+            sub-t))))))
 
 (defn quantiles [s quantiles]
   (let [ary (->sorted-double-array s)]
