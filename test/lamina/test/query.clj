@@ -53,8 +53,8 @@
     (is (= [(range 100 120)] (map :value val2))))
 
   (let [s (range 100 120)
-        f1 "abc.partition-every(period: 10ms)"
-        f2 "def.partition-every(period: 100ms)"
+        f1 "&abc.partition-every(period: 10ms)"
+        f2 "&def.partition-every(period: 100ms)"
         val (query-seqs
               {f1 nil
                f2 nil}
@@ -105,8 +105,8 @@
           (channel->seq ch2))))
 
   (let [s (range 100 120)
-        f1 "abc.partition-every(period: 10ms)"
-        f2 "def.partition-every(period: 100ms)"
+        f1 "&abc.partition-every(period: 10ms)"
+        f2 "&def.partition-every(period: 100ms)"
         val (query-streams
               {f1 nil
                f2 nil}

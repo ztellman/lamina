@@ -19,38 +19,21 @@
     [java.util.regex
      Pattern]))
 
+;;
+
+(defn ordered-vals [m]
+  (->> m keys sort (map #(get m %))))
+
 ;; lookups
 
-(defn getter [lookup]
-  (if (coll? lookup)
-
-    ;; do tuple lookup
-    (let [fs (map getter lookup)]
-      (fn [m]
-        (vec (map #(% m) fs))))
-
-    ;; do field lookup
-    (let [str-facet (-> lookup name)]
+(defn getter [x]
+  (if (map? x)
+    (q/query-lookup x)
+    (let [str-facet (name x)]
       (cond
         (= "_" str-facet)
         identity
         
-        #_(= "_origin" str-facet)
-        #_(fn [m]
-          (origin))
-        
-        ;; do path lookup
-        (re-find #"\." str-facet)
-        (let [fields (map getter (str/split str-facet #"\."))]
-          (fn [m]
-            (reduce
-              (fn [m f]
-                (when (map? m)
-                  (f m)))
-              m
-              fields)))
-        
-        ;; do normal lookup
         :else
         (let [key-facet (keyword str-facet)]
           (fn [m]
@@ -62,21 +45,86 @@
   (let [ignore-key? number?
         ks (map (fn [[k v]] (if (ignore-key? k) v k)) m)
         vs (->> m vals (map getter))]
-    (assert (every? #(not (re-find #"\." (name %))) ks))
     (fn [m]
       (zipmap
         ks
         (map #(% m) vs)))))
 
-(q/def-trace-operator lookup
+(q/def-query-lookup lookup
+
+  (fn [{:keys [options] :as desc}]
+    (-> options first val getter)))
+
+(q/def-query-lookup tuple
+
+  (fn [{:keys [options]}]
+    (let [fs (->> options ordered-vals (map getter))]
+      (fn [m]
+        (vec (map #(% m) fs))))))
+
+(q/def-query-lookup get-in
+
+  (fn [{:keys [options]}]
+    (let [fs (->> options
+               ordered-vals
+               (map getter))]
+      (fn [m]
+        (loop [x m, fs fs]
+          (if (empty? fs)
+            x
+            (if (map? x)
+              (recur ((first fs) x) (rest fs))
+              nil)))))))
+
+;; comparators
+
+(defn normalize-for-comparison [x]
+  (if (keyword? x)
+    (name x)
+    x))
+
+(q/def-query-comparator <
+  (fn [a b]
+    (let [f (comp normalize-for-comparison (getter a))]
+      #(< (f %) b))))
+
+(q/def-query-comparator =
+  (fn [a b]
+    (let [f (comp normalize-for-comparison (getter a))]
+      #(= (f %) b))))
+
+(q/def-query-comparator >
+  (fn [a b]
+    (let [f (comp normalize-for-comparison (getter a))]
+      #(> (f %) b))))
+
+(q/def-query-comparator "~="
+  (fn [a b]
+    (let [f (getter a)
+          b (-> b (str/replace "*" ".*") Pattern/compile)]
+      #(->> %
+         f
+         normalize-for-comparison
+         str
+         (re-find b)
+         boolean))))
+
+;;;
+
+(q/def-query-operator lookup
   :periodic? false
   :distribute? true
 
   :transform
   (fn [{:keys [options] :as desc} ch]
-    (map* (getter (get options :field)) ch)))
+    (map*
+      (getter
+        (or
+          (get options :field)
+          (get options 0)))
+      ch)))
 
-(q/def-trace-operator select
+(q/def-query-operator select
   :periodic? false
   :distribute? true
 
@@ -86,7 +134,7 @@
 
 ;;; merge, zip
 
-(q/def-trace-operator merge
+(q/def-query-operator merge
   :periodic? false
   :distribute? false
 
@@ -102,7 +150,7 @@
               (q/transform-trace-stream desc (fork ch))))
           descs)))))
 
-(q/def-trace-operator zip
+(q/def-query-operator zip
   :periodic? true
   :distribute? false
 
@@ -125,36 +173,23 @@
 
 ;;; where
 
-(defn normalize-for-comparison [x]
-  (if (keyword? x)
-    (name x)
-    x))
-
-(defn comparison-filter [[a comparison b]]
-  (assert (and a comparison b))
-  (let [a (getter a)]
-    (case comparison
-      "=" #(= (normalize-for-comparison (a %)) b)
-      "<" #(< (a %) b)
-      ">" #(> (a %) b)
-      "~=" (let [b (-> b (str/replace "*" ".*") Pattern/compile)]
-             #(->> (a %)
-                normalize-for-comparison
-                str
-                (re-find b)
-                boolean)))))
-
 (defn filters [filters]
-  (fn [x] (->> filters (map #(% x)) (every? identity))))
+  (fn [x]
+    (->> filters
+      (map #(% x))
+      (every? identity))))
 
-(q/def-trace-operator where
+(q/def-query-operator where
   :periodic? false
   :distribute? true
   
   :transform
   (fn [{:keys [options]} ch]
     (filter*
-      (->> options vals (map comparison-filter) filters)
+      (->> options
+        vals
+        (map q/query-comparator)
+        filters)
       ch)))
 
 ;;; group-by
@@ -203,7 +238,7 @@
                           ch)))
          :period period}))))
 
-(q/def-trace-operator group-by
+(q/def-query-operator group-by
   :periodic? true
   :distribute? false
   
@@ -218,13 +253,13 @@
 (defn sum-op [desc ch]
   (lamina.stats/sum (normalize-options desc) ch))
 
-(q/def-trace-operator sum
+(q/def-query-operator sum
   :periodic? true
   :distribute? false
   
   (:transform :pre-aggregate :aggregate) sum-op)
 
-(q/def-trace-operator rolling-sum
+(q/def-query-operator rolling-sum
   :periodic? true
   :distribute? false
   
@@ -237,7 +272,7 @@
 (defn rate-op [desc ch]
   (lamina.stats/rate (normalize-options desc) ch))
 
-(q/def-trace-operator rate
+(q/def-query-operator rate
   :periodic? true
   :distribute? false
   
@@ -248,7 +283,7 @@
       (sum-op desc)
       (map* long))))
 
-(q/def-trace-operator moving-average
+(q/def-query-operator moving-average
   :periodic? true
   :distribute? false
 
@@ -256,7 +291,7 @@
   (fn [desc ch]
     (lamina.stats/moving-average (normalize-options desc) ch)))
 
-(q/def-trace-operator moving-quantiles
+(q/def-query-operator moving-quantiles
   :periodic? true
   :distribute? false
 
@@ -266,7 +301,7 @@
 
 ;;;
 
-(q/def-trace-operator sample-every
+(q/def-query-operator sample-every
   :periodic? true
   :distribute? true
 
@@ -284,7 +319,7 @@
                  (t/period))]
     (partition-every {:period period} ch)))
 
-(q/def-trace-operator partition-every
+(q/def-query-operator partition-every
   :periodic? true
   :distribute? true
 

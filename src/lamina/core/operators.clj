@@ -698,7 +698,7 @@
           (fn [msg]
             (let [r (r/result-channel)
                   t (timestamp msg)]
-              
+
               (t/invoke-at task-queue t
                 (with-meta
                   (fn []

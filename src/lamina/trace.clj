@@ -103,7 +103,7 @@
                               ;; all per-task analyses
                               (map #(% ch) (vals analyses))))))})))))
 
-(q/def-trace-operator analyze-timings
+(q/def-query-operator analyze-timings
   :periodic? true
   :distribute? false
   :transform

@@ -32,7 +32,14 @@
       (take 1e3 (map-seq ch identity))
       last
       (receive-all (fn [_])))
-    (bench "map* chain"
+    (bench "1e3 node map* chain"
+      (enqueue ch 1)))
+  (let [ch (channel)]
+    (->
+      (take 1e6 (map-seq ch identity))
+      last
+      (receive-all (fn [_])))
+    (bench "1e6 node map* chain"
       (enqueue ch 1)))
   (let [ch (probe-channel :abc)]
     (bench "inactive probe channel"

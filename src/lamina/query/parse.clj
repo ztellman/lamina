@@ -15,8 +15,9 @@
 
 ;;;
 
-(def ^{:dynamic true} *input*)
-(def ^{:dynamic true} *offset* 0)
+(def ^:dynamic *input*)
+(def ^:dynamic *offset* 0)
+(def ^:dynamic *comparator-regex* nil)
 
 (defn raise
   ([s]
@@ -29,6 +30,13 @@
            msg)))))
 
 ;;;
+
+(defn parse-lookup [s]
+  (if (re-find #"\." s)
+    (->> (str/split s #"\.")
+      (map keyword)
+      (list* 'get-in))
+    (keyword s)))
 
 (defn token
   ([x]
@@ -67,7 +75,7 @@
                            [m s]))
                        matchers)]
         ((lookup m) s)
-        (raise (->> patterns (interpose ", ") (str "Expected one of ") (apply str)))))))
+        (raise (apply str "Expected one of " (->> patterns (map pr-str) (interpose ", "))))))))
 
 (defn ignore [p]
   (let [t (token p)]
@@ -137,23 +145,7 @@
 
 (declare stream)
 (declare pair)
-(declare inner-stream)
-(declare transform)
-
-(def interval->fn
-  {"d" t/days
-   "h" t/hours
-   "m" t/minutes
-   "s" t/seconds
-   "ms" t/milliseconds
-   "us" t/microseconds
-   "ns" t/nanoseconds})
-
-(defn parse-time-interval [s]
-  (let [num (re-find #"^[0-9\.]+" s)
-        interval (re-find #"d|h|ms|m|s|us|ns" s)]
-    ((interval->fn interval)
-     (read-string num))))
+(declare operators)
 
 (deftoken time-unit #"d|h|s|ms|m|us|ns")
 (deftoken transform-prefix #"\.")
@@ -161,7 +153,7 @@
 (deftoken pattern #"[a-zA-Z0-9:_\-\*]*")
 (deftoken id #"[_a-zA-Z][a-zA-Z0-9\-_]*")
 (deftoken comparison #"<|>|=|~=")
-(deftoken field #"[_a-zA-Z][a-zA-Z0-9\-_\.]*")
+(deftoken field #"[_a-zA-Z][a-zA-Z0-9\-_\.]*" parse-lookup)
 (deftoken number #"[0-9\.]+" read-string)
 (deftoken string #"'[a-zA-Z0-9\-\*_ ]+'" #(.substring ^String % 1 (dec (count %))))
 (deftoken whitespace #"[ \t,]*")
@@ -171,16 +163,19 @@
 (def time-interval
   (token
     (chain number time-unit)
-    #(parse-time-interval (apply str %))))
+    #(keyword (apply str %))))
 
 (def relationship
-  (chain
-    (ignore whitespace)
-    field
-    (ignore whitespace)
-    comparison
-    (ignore whitespace)
-    (one-of number string)))
+  (token
+    (chain
+      (ignore whitespace)
+      field
+      (ignore whitespace)
+      comparison
+      (ignore whitespace)
+      (one-of number string))
+    (fn [[a b c]]
+      (list b a c))))
 
 (def tuple
   (token
@@ -191,9 +186,10 @@
       (ignore whitespace)
       (expect #"\]"))
     (fn [[[a b]]]
-      (vec (list* a b)))))
+      (let [fields (map keyword (list* a b))]
+        (list* 'tuple fields)))))
 
-(let [t (delay (one-of tuple pair relationship transform field time-interval number inner-stream))]
+(let [t (delay (one-of tuple pair relationship operators field time-interval number stream))]
   (defn param [s]
     (@t s)))
 
@@ -219,22 +215,6 @@
 
 ;;;
 
-(defn collapsible-map? [x]
-  (and
-    (map? x)
-    (= 1 (count x))
-    (not (contains? x :operators))
-    (not (contains? x :pattern))))
-
-(defn collapse-options [s]
-  (map
-    (fn [idx v]
-      (if (collapsible-map? v)
-        v
-        {idx v}))
-    (iterate inc 0)
-    s))
-
 (def operator
   (token
     (chain id
@@ -242,57 +222,60 @@
         #"\(" (token (chain params (ignore whitespace) (expect #"\)\.?")) first)
         #"\.|" (token empty-token (constantly ::none))))
     (fn [[name options]]
-      (if (= options ::none)
-        {:name "lookup"
-         :options {:field name}}
-        {:name name
-         :options (apply merge {} (collapse-options options))}))))
+      (if (= ::none options)
+        (keyword name)
+        (list* (symbol name) options)))))
 
 (defn collapse-group-bys [s]
-  (let [pre (take-while #(not= "group-by" (:name %)) s)]
-    (if (= pre s)
+  (let [pre (take-while
+              #(or
+                 (not (sequential? %))
+                 (not= 'group-by (first %)))
+              s)]
+    (if (= (count pre) (count s))
       s
       (concat
         pre
-        (let [s (drop (count pre) s)]
-          [(assoc (first s)
-             :operators (collapse-group-bys (rest s)))])))))
-
-(def transform
-  (token
-    (second*
-      transform-prefix
-      (many operator))
-    (fn [operators]
-      {:operators (collapse-group-bys operators)})))
+        (let [[[_ facet] & operators] (drop (count pre) s)
+              facet (if (string? facet)
+                      (keyword facet)
+                      facet)]
+          [(list 'group-by facet (vec (collapse-group-bys operators)))])))))
 
 ;;;
+
+(def operators
+  (token
+    (chain transform-prefix (many operator))
+    (fn [[_ operators]]
+      (vec (collapse-group-bys operators)))))
 
 (def stream
   (token
-    (chain pattern
+    (chain
+      stream-prefix
+      pattern
       (route
         #"\." (many operator)
-        #"" (token empty-token (constantly []))))
-    (fn [[pattern operators]]
-      {:pattern pattern
-       :operators (collapse-group-bys operators)})))
+        #"" (token empty-token (constantly nil))))
+    (fn [[_ pattern operators]]
+      (vec (list* pattern (collapse-group-bys operators))))))
 
-(def inner-stream
-  (token
-    (second*
-      stream-prefix
-      stream)))
 
 ;;;
 
-(defn parse-stream [s]
-  (->> s
+(defn parse-string-query [q]
+
+  (when-not (re-find #"^[&\.]" q)
+    (throw
+      (IllegalArgumentException.
+        "queries must start with either '&' or '.'")))
+  
+  (->> q
     str/split-lines
     (map str/trim)
-    (interpose " ")
     (apply str)
-    ((parser stream))))
+    ((parser (one-of stream operators)))))
 
 
 

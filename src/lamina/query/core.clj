@@ -25,10 +25,25 @@
 ;;;
 
 (defonce ^ConcurrentHashMap operators (ConcurrentHashMap.))
+(defonce ^ConcurrentHashMap comparators (ConcurrentHashMap.))
+(defonce ^ConcurrentHashMap lookups (ConcurrentHashMap.))
 
-(defn operator [name]
+(defn query-operator [name]
   (when name
     (.get operators name)))
+
+(defn query-comparator [{:keys [name options] :as desc}]
+  (when name
+    (apply
+      (second (.get comparators name))
+      (->> options
+        keys
+        sort
+        (map #(get options %))))))
+
+(defn query-lookup [{:keys [name] :as desc}]
+  (when name
+    ((second (.get lookups name)) desc)))
 
 ;;;
 
@@ -51,10 +66,7 @@
   (intra-aggregate [_ desc ch])
   (aggregate [_ desc ch]))
 
-(defn populate-desc [operator desc]
-  desc)
-
-(defmacro def-trace-operator [name & {:as args}]
+(defmacro def-query-operator [name & {:as args}]
   (let [{:keys [transform
                 pre-aggregate
                 intra-aggregate
@@ -62,7 +74,8 @@
                 periodic?
                 distribute?]} (unwrap-key-vals args)
         ns-str (str (ns-name *ns*))]
-    `(let [transform# ~transform
+    `(let [name# ~(str name)
+           transform# ~transform
            pre-aggregate# ~pre-aggregate
            intra-aggregate# ~intra-aggregate
            aggregate# ~aggregate
@@ -70,7 +83,7 @@
            distribute# ~(boolean distribute?)
            op# (reify
                  clojure.lang.Named
-                 (getName [_] ~(str name))
+                 (getName [_] name#)
                  (getNamespace [_] ~ns-str)
                  
                  lamina.query.core.ITraceOperator
@@ -83,30 +96,42 @@
                    (boolean pre-aggregate#))
                  
                  (transform [this# desc# ch#]
-                   (let [desc# (lamina.query.core/populate-desc this# desc#)]
-                     (transform# desc# ch#)))
+                   (transform# desc# ch#))
                  (pre-aggregate [this# desc# ch#]
-                   (let [desc# (lamina.query.core/populate-desc this# desc#)]
-                     (if pre-aggregate#
-                       (pre-aggregate# desc# ch#)
-                       (transform# desc# ch#))))
+                   (if pre-aggregate#
+                     (pre-aggregate# desc# ch#)
+                     (transform# desc# ch#)))
                  (intra-aggregate [this# desc# ch#]
-                   (let [desc# (lamina.query.core/populate-desc this# desc#)]
-                     (if intra-aggregate#
-                       (intra-aggregate# desc# ch#)
-                       ch#)))
+                   (if intra-aggregate#
+                     (intra-aggregate# desc# ch#)
+                     ch#))
                  (aggregate [this# desc# ch#]
-                   (let [desc# (lamina.query.core/populate-desc this# desc#)]
-                     (if aggregate#
-                       (aggregate# desc# ch#)
-                       (transform# desc# ch#)))))]
+                   (if aggregate#
+                     (aggregate# desc# ch#)
+                     (transform# desc# ch#))))]
        
-       (when-let [existing-operator# (.putIfAbsent operators ~(str name) op#)]
+       (when-let [existing-operator# (.putIfAbsent operators name# op#)]
          (if (= ~ns-str (namespace existing-operator#))
-           (.put operators ~(str name) op#)
-           (throw (IllegalArgumentException. (str "An operator for '" ~(str name) "' already exists in " (namespace existing-operator#) ".")))))
+           (.put operators name# op#)
+           (throw (IllegalArgumentException. (str "A query operator for '" name# "' already exists in " (namespace existing-operator#) ".")))))
 
        op#)))
+
+(defmacro def-query-comparator [name & body]
+  `(let [name# ~(str name)
+         f# (do ~@body)]
+     (when-let [[namespace# _#] (.putIfAbsent comparators name# [(str *ns*) f#])]
+       (if (= namespace# (str *ns*))
+         (.put comparators name# [namespace# f#])
+         (throw (IllegalArgumentException. (str "A query comparator for '" name# "' already exists in " namespace# ".")))))))
+
+(defmacro def-query-lookup [name & body]
+  `(let [name# ~(str name)
+         f# (do ~@body)]
+     (when-let [[namespace# _#] (.putIfAbsent lookups name# [(str *ns*) f#])]
+       (if (= namespace# (str *ns*))
+         (.put lookups name# [namespace# f#])
+         (throw (IllegalArgumentException. (str "A query lookup for '" name# "' already exists in " namespace# ".")))))))
 
 ;;;
 
@@ -137,14 +162,11 @@
               (recur (conj acc op) (rest ops))
               (conj acc (assoc op :operators operators*))))
             
-          (if (or
-                ;; we don't know what this is, maybe the endpoint does
-                (not (operator name))
-                (distribute? (operator name)))
+          (if (distribute? (query-operator name))
             (recur (conj acc op) (rest ops))
             (concat
               acc
-              (when (pre-aggregate? (operator name))
+              (when (pre-aggregate? (query-operator name))
                 [(assoc op :stage :pre-aggregate)]))))))))
 
 (defn non-distributable-chain
@@ -165,13 +187,10 @@
                   :operators operators*)
                 (rest ops))))
               
-          (if (or
-                (not (operator name))
-                (distribute? (operator name)))
+          (if (distribute? (query-operator name))
             (recur (rest ops))
             (concat
-              (when (operator name)
-                [(assoc op :stage :aggregate)])
+              [(assoc op :stage :aggregate)]
               (rest ops))))))))
 
 (defn periodic-chain?
@@ -181,7 +200,7 @@
     operator-seq
     (map :name)
     (remove nil?)
-    (map operator)
+    (map query-operator)
     (some periodic?)
     boolean))
 
@@ -197,7 +216,9 @@
 
        (cond
          name
-         (f (operator name) desc ch)
+         (if-let [op (query-operator name)]
+           (f op desc ch)
+           (throw (IllegalArgumentException. (str "Don't recognize query operator '" name "'"))))
            
          (not (empty? operators))
          (->> operators

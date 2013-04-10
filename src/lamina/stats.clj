@@ -19,8 +19,6 @@
     [lamina.stats.variance :as var]
     [lamina.stats.math :as math])
   (:import
-    [lamina.stats.utils
-     IUpdatable]
     [java.util.concurrent.atomic
      AtomicLong
      AtomicBoolean]))

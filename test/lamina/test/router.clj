@@ -61,7 +61,7 @@
         (post-enqueue-fn))
 
       (is* (= 10.0 (next-msg sum) (next-msg sum*)))
-      (is* (= 20.0 (next-msg merge-sum)))
+      ;(is* (= 20.0 (next-msg merge-sum)))
       
       (is* (= 9.0 (next-msg filtered-sum*)))
       (is* (= 4.0 (next-msg filtered-sum**)))
@@ -159,7 +159,7 @@
                   :task-queue q
                   :payload :value
                   :timestamp :timestamp})
-        sub #(tr/subscribe router (str "abc" %) {:period 1e5})
+        sub #(tr/subscribe router (str "&abc" %) {:period 1e5})
         enq #(tr/trace :abc {:timestamp 0, :value %})]
     (run-basic-operator-test sub enq #(t/advance-until q 2e5))
     (run-group-by-test sub enq #(t/advance-until q 5e5))
@@ -167,7 +167,7 @@
     (println)))
 
 (deftest test-local-router
-  (let [sub #(tr/subscribe tr/local-trace-router (str "abc" %) {:period 100})
+  (let [sub #(tr/subscribe tr/local-trace-router (str "&abc" %) {:period 100})
         enq #(tr/trace :abc %)]
     (run-basic-operator-test sub enq nil)
     (run-group-by-test sub enq nil)
@@ -176,7 +176,7 @@
 
 (deftest test-split-router
   (let [router (tr/aggregating-trace-router tr/local-trace-router)
-        sub #(tr/subscribe router (str "abc" %) {:period 100})
+        sub #(tr/subscribe router (str "&abc" %) {:period 100})
         enq #(tr/trace :abc %)]
     (run-basic-operator-test sub enq nil)
     (run-group-by-test sub enq nil)

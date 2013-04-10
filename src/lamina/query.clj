@@ -14,6 +14,7 @@
     [lamina.time :as time]
     [lamina.query.core :as c]
     [lamina.query.parse :as p]
+    [lamina.query.struct :as s]
     [lamina.query.operators :as o]))
 
 ;;;
@@ -21,15 +22,22 @@
 (import-vars
   [lamina.query.core
 
-   def-trace-operator])
+   def-query-operator])
 
 (defn parse-descriptor
   "Parses the query descriptor down to the canonical representation."
   ([x]
      (parse-descriptor x nil))
   ([x {:as options}]
-     (let [descriptor (if (string? x)
-                        (p/parse-stream x)
+     (let [descriptor (cond
+
+                        (string? x)
+                        (-> x p/parse-string-query s/parse-struct-query)
+
+                        (vector? x)
+                        (-> x s/parse-struct-query)
+
+                        :else
                         x)]
        descriptor)))
 
@@ -80,7 +88,7 @@
                                          (map* payload)))))
                                 (vals descriptor->channel)))
 
-        ;; fill in nil channels
+        ;; fill in nil channels 
         descriptor->channel (zipmap
                               (keys descriptor->channel)
                               (map
@@ -100,7 +108,7 @@
                (keys descriptor->channel)
                (map
                  (fn [[descriptor ch]]
-                   (if (ifn? descriptor)
+                   (if (and (ifn? descriptor) (not (sequential? descriptor)))
                      (descriptor ch)
                      (let [desc (parse-descriptor descriptor options)]
                        (c/transform-trace-stream desc ch))))
