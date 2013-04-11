@@ -16,8 +16,10 @@
     [lamina.query :as q]
     [lamina.time :as t]))
 
+;;;
+
 (defn next-msg [ch]
-  (-> ch read-channel (wait-for-result 12345)))
+  (-> ch read-channel (wait-for-result 5e3)))
 
 (defn next-non-zero-msg [ch]
   (->> (repeatedly #(next-msg ch))
@@ -29,114 +31,145 @@
     (drop-while empty?)
     first))
 
-(defn close-all [& chs]
-  (doseq [c chs]
-    (close c)))
-
 (defmacro is* [& args]
   `(do
      (is ~@args)
      (print ".")
      (flush)))
 
-(defn run-basic-operator-test [subscribe-fn enqueue-fn post-enqueue-fn]
-  (let [sum              (subscribe-fn ".x.y.sum()")
-        sum*             (subscribe-fn ".select(a: x.y, b: x).a.sum()")
-        filtered-sum*    (subscribe-fn ".where(x.y > 1).x.y.sum()")
-        filtered-sum**   (subscribe-fn ".x.where(y = 4).y.sum()")
-        filtered-sum***  (subscribe-fn ".x.y.where(_ < 4).sum()")
-        avg              (subscribe-fn ".x.y.moving-average(period: 75ms)") ;; todo: add :immediate? flag
-        rate             (subscribe-fn ".rate()")
-        sum-avg          (subscribe-fn ".x.y.sum(period: 0.1s).moving-average(period: 75000us)")
-        lookup           (subscribe-fn ".x.y")
-        merge-sum        (subscribe-fn ".merge(.x.y, .x.y).sum()")
-        ]
+(defn prepend [s x]
+  (if (string? x)
+    (str "&"  s x)
+    (vec (concat [s] x))))
 
+(defn run-test [{:keys [subscribe-fn enqueue-fn post-enqueue-fn consume-fn enqueued-values]} & expected-and-queries]
+  (let [expected-and-queries (remove nil? expected-and-queries)
+        queries (->> expected-and-queries
+                  (partition 2)
+                  (map second))
+        query-channels (->> queries
+                         (map (comp doall (partial map subscribe-fn)))
+                         doall)
+        expected (->> expected-and-queries
+                   (partition 2)
+                   (map first))]
     (try
-
-      (doseq [x (range 1 5)]
-        (enqueue-fn {:x {:y x}}))
+        
+      (doseq [v enqueued-values]
+        (enqueue-fn v))
 
       (when post-enqueue-fn
         (post-enqueue-fn))
 
-      (is* (= 10.0 (next-msg sum) (next-msg sum*)))
-      ;(is* (= 20.0 (next-msg merge-sum)))
-      
-      (is* (= 9.0 (next-msg filtered-sum*)))
-      (is* (= 4.0 (next-msg filtered-sum**)))
-      (is* (= 6.0 (next-msg filtered-sum***)))
-      (is* (= 4 (next-msg rate)))
-      (is* (= 2.5 (next-msg avg)))
-      (is* (= 10.0 (next-msg sum-avg)))
-      (is* (= (range 1 5) (take 4 (repeatedly #(next-msg lookup)))))
+      (doseq [[val queries channels] (map vector expected queries query-channels)]
+        (doseq [[query ch] (map vector queries channels)]
+          (is* (= val (consume-fn ch)) (pr-str query))))
 
       (finally
-        (close-all sum sum* filtered-sum* filtered-sum** filtered-sum*** avg rate sum-avg lookup merge-sum)))))
+        (doseq [c (apply concat query-channels)]
+          (close c))))))
+
+;;;
+
+(defn run-basic-operator-test [subscribe-fn enqueue-fn post-enqueue-fn]
+
+  (run-test
+
+    {:subscribe-fn subscribe-fn
+     :enqueue-fn enqueue-fn
+     :post-enqueue-fn post-enqueue-fn
+     :consume-fn next-msg
+     :enqueued-values (map
+                        (fn [x] {:x {:y x}})
+                        (range 1 5))}
+  
+    10.0
+    [".x.y.sum()"
+     '[:x :y sum]
+     ".select(a: x.y, b: x).a.sum()"
+     '[(select {:a (get-in :x :y), :b :x}) :a sum]
+     ".x.y.sum(period: 0.1s).moving-average(period: 75000us)"]
+
+    #_20.0
+    #_[".merge(.x.y, .x.y).sum()"
+     '[(merge [:x :y] [:x :y]) sum]]
+
+    9.0
+    [".where(x.y > 1).x.y.sum()"]
+
+    4.0
+    [".x.where(y = 4).y.sum()"]
+
+    6.0
+    [".x.y.where(_ < 4).sum()"]
+
+    7.0
+    [".x.y.where(_ in [1 2 4]).sum()"]
+
+    4
+    [".rate()"]
+
+    2.5
+    [".x.y.moving-average(period: 75ms)"]
+
+    1
+    [".x.y"]))
 
 (defn run-group-by-test [subscribe-fn enqueue-fn post-enqueue-fn]
-  (let [foo-grouping       (subscribe-fn ".group-by(foo)")
-        foo-rate           (subscribe-fn ".group-by(foo).rate()")
-        bar-rate           (subscribe-fn ".group-by(facet: bar).rate()")
-        bar-rate*          (subscribe-fn ".select(foo, bar).group-by(bar).rate()")
-        bar-rate**         (subscribe-fn ".select(bar).group-by(bar).bar.rate()")
-        foo-bar-rate       (subscribe-fn ".group-by(foo).select(bar).group-by(bar).rate()")
-        foo-bar-rate*      (subscribe-fn ".group-by([foo bar]).rate()")
-        filtered-group-by  (subscribe-fn ".where(foo = 'a').group-by(bar).rate()")
-        filtered-group-by* (subscribe-fn ".where(foo ~= 'a').group-by(bar).rate()")
-        ;filtered-group-by  (subscribe-fn ".group-by(foo).rate().where(_ > 1)")
-        val (fn [foo bar] {:foo foo, :bar bar})]
-    
-    (try
 
-      (doseq [x (map val [:a :a :b :b :c] [:x :x :z :y :y])]
-        (enqueue-fn x))
-      
-      (when post-enqueue-fn
-        (post-enqueue-fn))
-    
-      (is* (= {:a [:x :x], :b [:z :y], :c [:y]}
-             (let [m (next-non-empty-msg foo-grouping)]
-               
-               (zipmap (keys m) (map #(map :bar %) (vals m))))))
-      (is* (= {:a 2, :b 2, :c 1}
-             (next-non-empty-msg foo-rate)))
-      (is* (= {:x 2, :y 2, :z 1}
-             (next-non-empty-msg bar-rate)
-             (next-non-empty-msg bar-rate*)
-             (next-non-empty-msg bar-rate**)))
-      (is* (= {:c {:y 1}, :b {:y 1, :z 1}, :a {:x 2}}
-             (next-non-empty-msg foo-bar-rate)))
-      (is* (= {[:a :x] 2, [:b :z] 1, [:c :y] 1, [:b :y] 1}
-             (next-non-empty-msg foo-bar-rate*)))
-      (is* (= {:x 2}
-             (next-non-empty-msg filtered-group-by)
-             (next-non-empty-msg filtered-group-by*)))
+  (run-test
 
-      (finally
-        (close-all foo-grouping foo-rate bar-rate bar-rate* bar-rate** foo-bar-rate foo-bar-rate* filtered-group-by filtered-group-by*
-          )))))
+    {:subscribe-fn subscribe-fn
+     :enqueue-fn enqueue-fn
+     :post-enqueue-fn post-enqueue-fn
+     :consume-fn next-non-empty-msg
+     :enqueued-values (map
+                        #(hash-map :foo %1 :bar %2)
+                        [:a :a :b :b :c]
+                        [:x :x :z :y :y])}
+    
+    ;; tests
+    {:a [:x :x], :b [:z :y], :c [:y]}
+    [".group-by(foo).bar"]
+
+    {:a 2, :b 2, :c 1}
+    [".group-by(foo).rate()"]                      
+
+    {:x 2, :y 2, :z 1}
+    [".group-by(facet: bar).rate()"
+     ".select(foo, bar).group-by(bar).rate()"
+     ".select(bar).group-by(bar).bar.rate()"]
+
+    {:c {:y 1}, :b {:y 1, :z 1}, :a {:x 2}}
+    [".group-by(foo).select(bar).group-by(bar).rate()"]
+
+    {[:a :x] 2, [:b :z] 1, [:c :y] 1, [:b :y] 1}
+    [".group-by([foo bar]).rate()"]
+
+    {:x 2}
+    [".where(foo = 'a').group-by(bar).rate()"
+     ".where(foo ~= 'a').group-by(bar).rate()"]))
 
 (defn run-merge-streams-test [subscribe-fn enqueue-fn post-enqueue-fn]
-  (let [merged-sum (subscribe-fn ".merge(., &abc).x.sum()")
-        zipped-sum (subscribe-fn ".zip(a: .group-by(foo).x.sum(),
-                                       b: &abc.group-by(foo).x.sum())")]
+  (run-test
 
-    (try
+    {:subscribe-fn subscribe-fn
+     :enqueue-fn enqueue-fn
+     :post-enqueue-fn post-enqueue-fn
+     :consume-fn next-msg
+     :enqueued-values (map
+                        #(hash-map :foo :bar, :x %, :y (* 2 %))
+                        (range 1 5))}
 
-      (doseq [x (range 1 5)]
-        (enqueue-fn {:foo :bar, :x x :y (* 2 x)}))
+    20.0
+    [".merge(., &abc).x.sum()"]
 
-      (when post-enqueue-fn
-        (post-enqueue-fn))
+    ;; todo: this is staggered in the split-router case
+    #_{:a {:bar 10}, :b {:bar 10}}
+    #_".zip(a: .group-by(foo).x.sum(),
+            b: &abc.group-by(foo).x.sum())"))
 
-      (is* (= 20.0 (next-msg merged-sum)))
-
-      ;; todo: this is staggered in the split-router case
-      #_(is* (= {:a {:bar 10}, :b {:bar 10}} (next-msg zipped-sum) (next-msg zipped-sum)))
-
-      (finally
-        (close-all merged-sum zipped-sum)))))
+;;;
 
 (deftest test-operators
   (let [ch (channel)
@@ -151,6 +184,23 @@
     (close ch))
   (println))
 
+(deftest test-non-realtime-operators
+  (let [ch (channel)
+        sub #(q/query-stream %
+               {:period 100, :timestamp (constantly 0)}
+               (join ch (channel)))
+        enq #(enqueue ch %)]
+    (run-basic-operator-test sub enq #(close ch))
+    (close ch))
+  #_(let [ch (channel)
+        sub #(q/query-stream %
+               {:period 100, :timestamp (constantly 0)}
+               (join ch (channel)))
+        enq #(enqueue ch %)]
+    (run-group-by-test sub enq #(close ch))
+    (close ch))
+  (println))
+
 (deftest test-non-realtime-router
   (let [q (t/non-realtime-task-queue)
         router (tr/trace-router
@@ -159,7 +209,7 @@
                   :task-queue q
                   :payload :value
                   :timestamp :timestamp})
-        sub #(tr/subscribe router (str "&abc" %) {:period 1e5})
+        sub #(tr/subscribe router (prepend "abc" %) {:period 1e5})
         enq #(tr/trace :abc {:timestamp 0, :value %})]
     (run-basic-operator-test sub enq #(t/advance-until q 2e5))
     (run-group-by-test sub enq #(t/advance-until q 5e5))
@@ -167,7 +217,7 @@
     (println)))
 
 (deftest test-local-router
-  (let [sub #(tr/subscribe tr/local-trace-router (str "&abc" %) {:period 100})
+  (let [sub #(tr/subscribe tr/local-trace-router (prepend "abc" %) {:period 100})
         enq #(tr/trace :abc %)]
     (run-basic-operator-test sub enq nil)
     (run-group-by-test sub enq nil)
@@ -176,7 +226,7 @@
 
 (deftest test-split-router
   (let [router (tr/aggregating-trace-router tr/local-trace-router)
-        sub #(tr/subscribe router (str "&abc" %) {:period 100})
+        sub #(tr/subscribe router (prepend "abc" %) {:period 100})
         enq #(tr/trace :abc %)]
     (run-basic-operator-test sub enq nil)
     (run-group-by-test sub enq nil)

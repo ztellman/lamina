@@ -17,10 +17,12 @@
 
 ;;;
 
-(def ^{:dynamic true} *stream-generator* nil)
+(def ^:dynamic *stream-generator* nil)
 
 (defn generate-stream [descriptor]
   (*stream-generator* descriptor))
+
+(def ^:dynamic *query* nil)
 
 ;;;
 
@@ -204,7 +206,7 @@
     (some periodic?)
     boolean))
 
-(defn transform-trace-stream
+(defn transform-stream
   ([{:keys [name operators stage]
      :or {stage :transform}
      :as desc}
@@ -222,7 +224,7 @@
            
          (not (empty? operators))
          (->> operators
-           (reduce #(transform-trace-stream %2 %1) ch))
+           (reduce #(transform-stream %2 %1) ch))
            
          :else
          ch))))

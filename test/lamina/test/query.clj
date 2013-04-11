@@ -13,7 +13,7 @@
   (:require
     [lamina.time :as t]))
 
-(deftest test-query-seq-partition-every
+(deftest test-query-seq
 
   ;; smaller period than interval of data
   (let [val (query-seq
@@ -71,7 +71,7 @@
     (is (= [200] (map :timestamp val2)))
     (is (= [(range 100 120)] (map :value val2)))))
 
-(deftest test-query-stream-partition-every
+(deftest test-query-stream
 
   ;; smaller period than interval of data
   (let [ch (query-stream

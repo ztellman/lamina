@@ -87,6 +87,7 @@
 
         ;; something's already consuming the channel
         (do
+          (log/warn "attempting multiple consumption with" description)
           (when dst
             (error dst :lamina/already-consumed! false))
           (r/error-result :lamina/already-consumed!))
@@ -668,13 +669,18 @@
   "Combines n-many streams into a single stream.  The returned channel will be closed only
    once all source channels have been closed."
   [& channels]
-  (let [ch* (channel)
-        cnt (atom (count channels))]
+  (let [ch* (channel)]
+
     (doseq [ch channels]
-      (on-closed ch
-        #(when (zero? (swap! cnt dec))
-           (close ch*)))
       (siphon ch ch*))
+    
+    (let [chs (distinct channels)
+          cnt (atom (count channels))]
+      (doseq [ch channels]
+        (on-closed ch
+          #(when (zero? (swap! cnt dec))
+             (close ch*)))))
+    
     ch*))
 
 ;;;

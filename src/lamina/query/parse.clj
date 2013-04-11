@@ -9,7 +9,8 @@
 (ns lamina.query.parse
   (:require
     [lamina.time :as t]
-    [clojure.string :as str])
+    [clojure.string :as str]
+    [lamina.query.core :as c])
   (:import
     [java.util.regex Pattern]))
 
@@ -147,12 +148,14 @@
 (declare pair)
 (declare operators)
 
+(def ^:dynamic *comparison* nil)
+
 (deftoken time-unit #"d|h|s|ms|m|us|ns")
 (deftoken transform-prefix #"\.")
 (deftoken stream-prefix #"&")
 (deftoken pattern #"[a-zA-Z0-9:_\-\*]*")
 (deftoken id #"[_a-zA-Z][a-zA-Z0-9\-_]*")
-(deftoken comparison #"<|>|=|~=")
+(def comparison (fn [s] ((token *comparison*) s)))
 (deftoken field #"[_a-zA-Z][a-zA-Z0-9\-_\.]*" parse-lookup)
 (deftoken number #"[0-9\.]+" read-string)
 (deftoken string #"'[a-zA-Z0-9\-\*_ ]+'" #(.substring ^String % 1 (dec (count %))))
@@ -165,18 +168,6 @@
     (chain number time-unit)
     #(keyword (apply str %))))
 
-(def relationship
-  (token
-    (chain
-      (ignore whitespace)
-      field
-      (ignore whitespace)
-      comparison
-      (ignore whitespace)
-      (one-of number string))
-    (fn [[a b c]]
-      (list b a c))))
-
 (def tuple
   (token
     (chain
@@ -188,6 +179,30 @@
     (fn [[[a b]]]
       (let [fields (map keyword (list* a b))]
         (list* 'tuple fields)))))
+
+(def value-set
+  (token
+    (chain
+      (ignore whitespace)
+      (ignore #"\[")
+      (chain (one-of number string)
+        (many (second* whitespace (one-of number string))))
+      (ignore whitespace)
+      (expect #"\]"))
+    (fn [[[a b]]]
+      (set (list* a b)))))
+
+(def relationship
+  (token
+    (chain
+      (ignore whitespace)
+      field
+      (ignore whitespace)
+      comparison
+      (ignore whitespace)
+      (one-of number string value-set))
+    (fn [[a b c]]
+      (list b a c))))
 
 (let [t (delay (one-of tuple pair relationship operators field time-interval number stream))]
   (defn param [s]
@@ -271,11 +286,18 @@
       (IllegalArgumentException.
         "queries must start with either '&' or '.'")))
   
-  (->> q
-    str/split-lines
-    (map str/trim)
-    (apply str)
-    ((parser (one-of stream operators)))))
+  (binding [*comparison* (->> c/comparators
+                           keys
+                           (map #(Pattern/quote %))
+                           (interpose "|")
+                           (apply str)
+                           (Pattern/compile))]
+    (->> q
+      str/split-lines
+      (map str/trim)
+      (apply str)
+      ((parser (one-of stream operators)))
+      doall)))
 
 
 

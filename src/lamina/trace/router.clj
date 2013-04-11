@@ -62,7 +62,7 @@
                    (when (and (not name) (not (empty? operators)))
                      {:cache this
                       :topic (update-in topic [:operators] butlast)
-                      :transform #(c/transform-trace-stream
+                      :transform #(c/transform-stream
                                     (update-in topic [:operators] (comp list last)) %)}))
         router (cache/router
                  (assoc options

@@ -76,6 +76,12 @@
               (recur ((first fs) x) (rest fs))
               nil)))))))
 
+(q/def-query-lookup nth
+
+  (fn [{:keys [options]}]
+    (let [idx (get options 0)]
+      #(nth % idx))))
+
 ;; comparators
 
 (defn normalize-for-comparison [x]
@@ -84,30 +90,38 @@
     x))
 
 (q/def-query-comparator <
-  (fn [a b]
-    (let [f (comp normalize-for-comparison (getter a))]
-      #(< (f %) b))))
+  (fn [field value]
+    (let [f (comp normalize-for-comparison (getter field))]
+      #(< (f %) value))))
 
 (q/def-query-comparator =
-  (fn [a b]
-    (let [f (comp normalize-for-comparison (getter a))]
-      #(= (f %) b))))
+  (fn [field value]
+    (let [f (comp normalize-for-comparison (getter field))]
+      #(= (f %) value))))
 
 (q/def-query-comparator >
-  (fn [a b]
-    (let [f (comp normalize-for-comparison (getter a))]
-      #(> (f %) b))))
+  (fn [field value]
+    (let [f (comp normalize-for-comparison (getter field))]
+      #(> (f %) value))))
 
 (q/def-query-comparator "~="
-  (fn [a b]
-    (let [f (getter a)
-          b (-> b (str/replace "*" ".*") Pattern/compile)]
+  (fn [field value]
+    (let [f (getter field)
+          value (-> value (str/replace "*" ".*") Pattern/compile)]
       #(->> %
          f
          normalize-for-comparison
          str
-         (re-find b)
+         (re-find value)
          boolean))))
+
+(q/def-query-comparator in
+  (fn [field value]
+    (let [f (comp normalize-for-comparison (getter field))
+          values (if (set? value)
+                   value
+                   (->> value :options vals (map normalize-for-comparison) set))]
+      #(contains? values %))))
 
 ;;;
 
@@ -142,13 +156,13 @@
   (fn [{:keys [options]} ch]
     (let [descs (vals options)]
       (assert (every? #(contains? % :operators) descs))
-      (apply merge-channels
-        (map
-          (fn [{:keys [operators pattern] :as desc}]
-            (if pattern
-              (q/generate-stream desc)
-              (q/transform-trace-stream desc (fork ch))))
-          descs)))))
+      (let [chs (map
+                  (fn [{:keys [operators pattern] :as desc}]
+                    (if pattern
+                      (q/generate-stream desc)
+                      (q/transform-stream desc (fork ch))))
+                  descs)]
+        (apply merge-channels chs)))))
 
 (q/def-query-operator zip
   :periodic? true
@@ -165,7 +179,7 @@
                     (fn [{:keys [operators pattern] :as desc}]
                       (if pattern
                         (q/generate-stream desc)
-                        (q/transform-trace-stream desc (fork ch)))))
+                        (q/transform-stream desc (fork ch)))))
                   zip
                   (map* #(zipmap ks %)))]
         (ground ch)
@@ -209,7 +223,7 @@
        :generator (fn [k ch]
                     (let [ch (->> ch
                                (close-on-idle expiration)
-                               (q/transform-trace-stream (dissoc desc :name)))]
+                               (q/transform-stream (dissoc desc :name)))]
                       (if-not periodic?
                         (partition-every {:period period} ch)
                         ch)))
@@ -232,7 +246,7 @@
                             ch (if-not periodic?
                                  (concat* ch)
                                  ch)
-                            ch (q/transform-trace-stream (dissoc desc :name) ch)]
+                            ch (q/transform-stream (dissoc desc :name) ch)]
                         (if-not periodic?
                           (partition-every {:period period} ch)
                           ch)))
@@ -327,6 +341,24 @@
   :aggregate (fn [desc ch]
                (->> ch concat* (partition-every-op desc))))
 
+;;;
+
+(q/def-query-operator concat
+  :periodic? false
+  :distribute? true
+  :transform (fn [_ ch] (concat* ch)))
+
+(q/def-query-operator recur
+  :periodic? true
+  :distribute? true
+  :transform (fn [_ ch] (q/transform-stream q/*query* ch)))
+
+(q/def-query-operator nth
+  :periodic? false
+  :distribute? true
+  :transform (fn [{:keys [options]} ch]
+               (let [idx (get options 0)]
+                 (map* #(nth % idx) ch))))
 
 
 

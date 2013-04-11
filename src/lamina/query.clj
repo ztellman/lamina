@@ -111,7 +111,8 @@
                    (if (and (ifn? descriptor) (not (sequential? descriptor)))
                      (descriptor ch)
                      (let [desc (parse-descriptor descriptor options)]
-                       (c/transform-trace-stream desc ch))))
+                       (binding [c/*query* desc]
+                         (c/transform-stream desc ch)))))
                  descriptor->channel))
              
              (finally
@@ -143,9 +144,10 @@
 
         (fn [_]
           ;; advance until every last event is squeezed out
-          (loop []
-            (when-let [t (time/advance task-queue)]
-              (recur))))))
+          (future
+            (loop []
+              (when-let [t (time/advance task-queue)]
+                (recur)))))))
 
     (f)))
 
