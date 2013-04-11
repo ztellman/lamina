@@ -25,8 +25,15 @@
 
 (defn lerp-array ^double [^doubles ary ^double t]
   (let [len (Array/getLength ary)]
-    (if (= 0 len)
+    (cond
+
+      (= 0 len)
       0.0
+
+      (= 1 len)
+      (aget ary 0)
+
+      :else
       (if (== 1.0 t)
         (aget ary (dec len))
         (let [cnt (dec len)
