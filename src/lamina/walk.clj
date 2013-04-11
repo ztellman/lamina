@@ -15,7 +15,7 @@
     [clojure.string :as str])
   (:import
     [lamina.core.graph.node
-     Node]
+     Node NodeState]
     [lamina.core.graph.core
      Edge]
     [lamina.core.graph.propagator
@@ -34,7 +34,7 @@
        :downstream-count (count (downstream n))}
       (when (node? n)
         {:node? true
-         :downstream-count (-> n .state .downstream-count)
+         :downstream-count (.downstream-count ^NodeState (.state ^Node n))
          :queue-size (count n)
          :operator (or (operator-predicate f) f)
          :messages (when (queue n false) (-> n (queue false) q/messages))
