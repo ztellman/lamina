@@ -773,49 +773,6 @@
     
     (Channel. receiver receiver {::propagator propagator})))
 
-(defn aggregate
-  ""
-  [{:keys [facet flush? task-queue period]
-    :or {task-queue (t/task-queue)
-         period (t/period)}}
-   ch]
-  (let [ch* (mimic ch)
-        lock (l/lock)
-        aggregator (atom (ConcurrentHashMap.))
-        post-process #(-> (into {} %) (rename-keys {::nil nil}))]
-
-    (bridge-siphon ch ch* "aggregate"
-      (fn [msg]
-        (let [id (facet msg)
-              id* (if (nil? id)
-                    ::nil
-                    id)]
-          (when-let [msg (l/with-exclusive-lock lock
-                           (let [^ConcurrentHashMap m @aggregator]
-                             (when (or
-                                     ;; we've lapped ourselves
-                                     (and (.putIfAbsent m id* msg)
-                                       (reset! aggregator
-                                         (doto (ConcurrentHashMap.)
-                                           (.put id* msg))))
-                                     
-                                     ;; the flush predicate returns true
-                                     (and flush?
-                                       (flush? m)
-                                       (reset! aggregator
-                                         (ConcurrentHashMap.))))
-                               m)))]
-            (enqueue ch* (post-process msg))))))
-
-    (on-closed ch
-      (fn []
-        (let [msg (post-process @aggregator)]
-          (when-not (empty? msg)
-            (enqueue ch* msg)))
-        (close ch*)))
-
-    ch*))
-
 (defn distribute-aggregate
   "A mechanism similar to a SQL `group by` or the split-apply-combine strategy for data analysis.
 
@@ -846,48 +803,74 @@
   [{:keys [facet generator period task-queue]
     :or {task-queue (t/task-queue)
          period (t/period)}}
-   channel]
-  (let [ch* (mimic channel)
+   ch]
+
+  ;; distribution
+  (let [ch* (mimic ch)
         on-clearance (atom nil)
         dist (distributor
                {:facet facet
-                :on-clearance (fn [] (@on-clearance))
+                :on-clearance #(close ch*)
                 :initializer (fn [facet-value ch]
                                (let [generated (->> ch
                                                  (generator facet-value)
                                                  (map* #(vector facet-value %)))]
                                  (siphon generated ch*)
                                  generated))})
-        dist-propagator (-> dist meta ::propagator)
-        aggr (aggregate
-               {:facet first
-                :task-queue task-queue
-                :period period
-                :flush? #(and
-                           (= (count %) (count dist-propagator))
-                           (= (keys %) (dist/facets dist-propagator)))}
-               ch*)]
+        propagator (-> dist meta ::propagator)]
 
-    (join channel dist)
-    (on-error aggr #(error dist % false))
-    (on-closed aggr #(close dist))
-    (reset! on-clearance #(close ch*))
+    ;; aggregation
+    (let [out (channel)
+          aggregator (atom (ConcurrentHashMap.))
+          lock (l/lock)
+          de-nil #(if (nil? %) ::nil %)
+          re-nil #(if (identical? ::nil %) nil %)
+          flush-aggregator #(enqueue out
+                              (zipmap
+                                (map re-nil (keys %))
+                                (map re-nil (vals %))))]
 
-    (let [out (map*
-                #(zipmap (keys %) (map second (vals %)))
-                aggr)
+      (receive-all ch*
+        (fn [[facet msg]]
+          (let [facet (de-nil facet)
+                msg (de-nil msg)]
+            (when-let [msg (l/with-exclusive-lock lock
+                             (let [^ConcurrentHashMap m @aggregator]
+                               (when (or
+                                       ;; we've lapped ourselves
+                                       (and (.putIfAbsent m facet msg)
+                                         (reset! aggregator
+                                           (doto (ConcurrentHashMap.)
+                                             (.put facet msg))))
+                                       
+                                       ;; the flush predicate returns true
+                                       (and (= (.size m) (count propagator))
+                                         (= (keys m) (dist/facets propagator))
+                                         (reset! aggregator (ConcurrentHashMap.))))
+                                 m)))]
+              (flush-aggregator msg)))))
 
-          latch (atom true)]
+      ;; set up flush on inactivity
+      (let [latch (atom true)]
+        
+        (let [monitor (fork ch)]
+          (receive-all monitor
+            (fn [_]
+              (do
+                (reset! latch false)
+                (close monitor)))))
 
-      ;; emit nil if no messages have come in yet
-      (p/run-pipeline (read-channel* channel :on-drained nil)
-        (fn [_]
-          (reset! latch false)))
+        (t/invoke-repeatedly task-queue period
+          (fn [cancel]
+            (if @latch
+              (enqueue out nil)
+              (cancel)))))
 
-      (t/invoke-repeatedly task-queue period
-        (fn [cancel]
-          (if @latch
-            (enqueue out nil)
-            (cancel))))
+      ;; hook up everything
+      (join ch dist)
+      (on-closed out #(close ch*))
+      (on-closed ch* #(do (flush-aggregator @aggregator) (close out)))
+      (on-error ch* #(error out % false))
+      (on-error out #(error ch* % false))
 
       out)))

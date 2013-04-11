@@ -8,8 +8,10 @@
 
 (ns lamina.core.utils
   (:use
+    [clojure.walk]
     [potemkin])
   (:require
+    [flatland.useful.datatypes :as d]
     [clojure.tools.logging :as log]
     [clojure.string :as str])
   (:import
@@ -34,6 +36,27 @@
                   (log/error e (str "error in thread '" name "'"))))))
           (.setName name)
           (.setDaemon true))))))
+
+;;;
+
+(defn- normalize-useful-names [x]
+  (postwalk
+    #(cond
+       (not (symbol? %))
+       %
+
+       (re-find #"record\d+" (name %))
+       (->> % name (drop 6) (apply str "record__") symbol)
+
+       :else
+       %)
+    x))
+
+(defmacro assoc-record [& args]
+  (normalize-useful-names (macroexpand `(d/assoc-record ~@args))))
+
+(defmacro make-record [& args]
+  (normalize-useful-names (macroexpand `(d/make-record ~@args))))
 
 ;;;
 

@@ -9,7 +9,6 @@
 (ns lamina.core.result
   (:use
     [potemkin]
-    [flatland.useful.datatypes :only (assoc-record)]
     [lamina.core.utils])
   (:require
     [lamina.core.return-codes :as codes]

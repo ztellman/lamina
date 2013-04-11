@@ -31,6 +31,10 @@
     (drop-while empty?)
     first))
 
+(defn close-all [chs]
+  (doseq [ch chs]
+    (close ch)))
+
 (defmacro is* [& args]
   `(do
      (is ~@args)
@@ -66,8 +70,7 @@
           (is* (= val (consume-fn ch)) (pr-str query))))
 
       (finally
-        (doseq [c (apply concat query-channels)]
-          (close c))))))
+        (close-all (apply concat query-channels))))))
 
 ;;;
 

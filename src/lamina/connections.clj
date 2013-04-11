@@ -9,7 +9,7 @@
 (ns lamina.connections
   (:use
     [potemkin]
-    [flatland.useful.datatypes :only (assoc-record)]
+    [lamina.core.utils :only (assoc-record)]
     [lamina core trace])
   (:require
     [lamina.core.lock :as lock]

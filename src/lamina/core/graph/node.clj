@@ -9,7 +9,6 @@
 (ns lamina.core.graph.node
   (:use
     [potemkin]
-    [flatland.useful.datatypes :only (make-record assoc-record)]
     [lamina.core.threads :only (enqueue-cleanup)]
     [lamina.core.graph.core]
     [lamina.core utils]
@@ -168,22 +167,20 @@
        :queue (if drained?# (q/drained-queue) q#))))
 
 (defmacro read-from-queue [[this lock state watchers cancellations] forward queue-receive]
-  (let [state-sym (gensym "state")]
-    `(let [x# (l/with-exclusive-lock ~lock
-                (let [s# ~state]
-                  (if (identical? ::split (.mode s#))
-                    ::split
-                    (ensure-queue ~this ~state s#))))]
+  `(let [x# (l/with-exclusive-lock ~lock
+              (let [s# ~state]
+                (if (identical? ::split (.mode s#))
+                  ::split
+                  (ensure-queue ~this ~state s#))))]
 
-      (case x#
-        ::split
-        ~forward
+     (case x#
+       ::split
+       ~forward
 
-        (let [~state-sym ^NodeState x#
-              result# ~queue-receive]
-          (when (instance? SuccessResult result#)
-            (check-for-drained ~this ~lock ~state ~watchers ~cancellations))
-          result#)))))
+       (let [result# ~queue-receive]
+         (when (instance? SuccessResult result#)
+           (check-for-drained ~this ~lock ~state ~watchers ~cancellations))
+         result#))))
 
 (defn drain-queue [^NodeState state]
   (when state

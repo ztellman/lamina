@@ -9,7 +9,7 @@
 (ns lamina.core.context
   (:use
     [potemkin]
-    [flatland.useful.datatypes :only (assoc-record make-record)])
+    [lamina.core.utils])
   (:import
     [java.util
      LinkedList]))

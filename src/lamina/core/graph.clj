@@ -9,7 +9,6 @@
 (ns lamina.core.graph
   (:use
     [potemkin]
-    [flatland.useful.datatypes :only (make-record assoc-record)]
     [lamina.core.threads :only (enqueue-cleanup)])
   (:require
     [lamina.core.utils :as u]
