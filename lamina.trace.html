@@ -44,7 +44,7 @@ the distributable portion to <code>endpoint-router</code>.</p>
           </div><div class="public">
             <h3><a id="var-analyze-timings" class="source var-name" href="/src/lamina/trace.clj">analyze-timings</a></h3>
             <h4 class="var-type fn" id="var-type">fn</h4>
-            <div class="usage">[{:keys [period expiration analyses window], :as options} ch]</div>
+            <div class="usage">[{:keys [period window], :or {window (time/hours 1), period (time/period)}, :as options} ch]</div>
             
             
             <div class="doc"><p>Aggregates timings, and periodically emits statistical information about them.</p>
