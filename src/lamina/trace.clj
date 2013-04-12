@@ -46,69 +46,24 @@
 
 (defn analyze-timings
   "Aggregates timings, and periodically emits statistical information about them."
-  [{:keys [period expiration analyses window] :as options}
+  [{:keys [period  window]
+    :or {window (time/hours 1)
+         period (time/period)}
+    :as options}
    ch]
-  (let [ch (if expiration
-             (close-on-idle expiration ch)
-             ch)
-        analyses (merge
-                   {:duration-quantiles
-                    #(->> %
-                       (map* :durations)
-                       concat*
-                       (stats/moving-quantiles
-                         (merge options
-                           (when window {:window window}))))
+  (->> ch
 
-                    :calls
-                    #(->> %
-                       (map* :durations)
-                       concat*
-                       (stats/rate options)
-                       (reductions* +))
+    ;; normalize the input
+    (map* distill-timing)
 
-                    :total-duration
-                    #(->> %
-                       (map* :durations)
-                       concat*
-                       (stats/sum options)
-                       (reductions* +))}
-                   analyses)
-        ks (list* :sub-tasks (keys analyses))]
-
-    (->> ch
-
-      ;; normalize the input
-      (map* distill-timing)
-
-      ;; split along the :task facet
-      (distribute-aggregate
-        (merge
-          options
-          {:facet :task
-           :generator (fn [task ch]
-                        (map*
-                          #(zipmap ks %)
-                          (zip
-                            (list*
-                                
-                              ;; recursively analyze all sub-tasks
-                              (->> ch
-                                (map*
-                                  (fn [{:keys [sub-tasks] :as trace}]
-                                    (map #(assoc % :parent trace) sub-tasks)))
-                                concat*
-                                (analyze-timings options))
-                                
-                              ;; all per-task analyses
-                              (map #(% ch) (vals analyses))))))})))))
-
-(q/def-query-operator analyze-timings
-  :periodic? true
-  :distribute? false
-  :transform
-  (fn [{:keys [options]} ch]
-    (analyze-timings options ch)))
+    (q/query-stream
+      '[(zip
+          {:duration-quantiles [:durations concat moving-quantiles]
+           :calls [:durations concat rate rolling-sum]
+           :total-duration [:durations concat rolling-sum]
+           :sub-tasks [:sub-tasks concat (group-by :task [recur])]
+           })]
+      options)))
 
 ;;;
 

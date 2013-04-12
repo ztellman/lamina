@@ -19,13 +19,17 @@
      ThreadPoolExecutor
      ScheduledThreadPoolExecutor
      LinkedBlockingQueue
-     ConcurrentSkipListSet]))
+     ConcurrentLinkedQueue
+     ConcurrentSkipListSet]
+    [java.util.concurrent.atomic
+     AtomicBoolean]))
 
 (definterface+ IClock
   (now [_]))
 
 (definterface+ ITaskQueue
-  (invoke-in- [_ delay f]))
+  (invoke-in- [_ delay f])
+  (invoke-lazily- [_ f]))
 
 ;;;
 
@@ -59,6 +63,8 @@
               (long (* 1e6 delay))
               TimeUnit/NANOSECONDS)))
         true)
+      (invoke-lazily- [_ f]
+        (f))
       IClock
       (now [_]
         (System/currentTimeMillis)))))
@@ -92,6 +98,13 @@
        (unchecked-subtract (long timestamp) (long (now task-queue)))
        f)))
 
+(defn invoke-lazily
+  "Provides a function that will be invoked whenever the task-queue begins processing events."
+  ([f]
+     (invoke-lazily- (task-queue) f))
+  ([task-queue f]
+     (invoke-lazily- task-queue f)))
+
 (defn invoke-repeatedly
   "Repeatedly invokes a function every `period` milliseconds, but ensures that the function cannot
    overlap its own invocation if it takes more than the period to complete.
@@ -104,7 +117,6 @@
      (let [target-time (atom (+ (now task-queue) period))
            latch (atom false)
            cancel-callback #(reset! latch true)
-           
            schedule-next (fn schedule-next []
                            (invoke-in- task-queue (max 0.1 (- @target-time (now task-queue)))
                              (fn []
@@ -140,15 +152,39 @@
 (deftype+ NonRealTimeTaskQueue
   [^ConcurrentSkipListSet tasks
    now
-   ^boolean discard-past-events?]
+   ^boolean discard-past-events?
+   ^AtomicBoolean running?
+   ^ConcurrentLinkedQueue pending]
   
   ITaskQueue
   (invoke-in- [_ delay f]
     (if (and discard-past-events? (neg? delay))
+
       false
+
       (do
-        (.add tasks (TaskTuple. (+ @now delay) f))
+        (.add tasks
+          (TaskTuple. (+ @now delay)
+            (if-not (.get running?)
+              (fn []
+
+                (f)
+
+                ;; flush pending functions
+                (.set running? true)
+                (loop [f (.poll pending)]
+                  (when f
+                    (f)
+                    (recur (.poll pending)))))
+
+              f)))
+
         true)))
+
+  (invoke-lazily- [_ f]
+    (if-not (.get running?)
+      (.add pending f)
+      (f)))
 
   IClock
   (now [_]
@@ -179,7 +215,9 @@
      (NonRealTimeTaskQueue.
        (ConcurrentSkipListSet.)
        (atom start-time)
-       discard-past-events?)))
+       discard-past-events?
+       (AtomicBoolean. false)
+       (ConcurrentLinkedQueue.))))
 
 ;;;
 

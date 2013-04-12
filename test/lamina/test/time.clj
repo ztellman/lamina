@@ -15,7 +15,9 @@
 (deftest test-periodically
   (let [q (non-realtime-task-queue 0 false)
         cnt (atom 0)
-        ch (periodically 10 #(swap! cnt inc) q)]
+        ch (periodically
+             {:period 10, :task-queue q}
+             #(swap! cnt inc))]
 
     (advance-until q 50)
     (is (= (range 1 6) (channel->seq ch)))
@@ -54,6 +56,7 @@
       (enqueue ch {:timestamp i}))
     
     (is (= (range 0 5) (channel->seq ch*)))
+    
 
     (doseq [i (range 5 10)]
       (enqueue ch {:timestamp i}))
@@ -64,7 +67,7 @@
 
 (deftest ^:benchmark benchmark-periodically
   (let [q (non-realtime-task-queue 0 false)
-        ch (periodically 10 (constantly 1) q)]
+        ch (periodically {:period 10} (constantly 1) q)]
     (bench "non-realtime periodically"
       (advance q)
       @(read-channel ch))))

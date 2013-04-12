@@ -351,7 +351,8 @@
 (q/def-query-operator recur
   :periodic? true
   :distribute? true
-  :transform (fn [_ ch] (q/transform-stream q/*query* ch)))
+  :transform (fn [_ ch]
+               (q/transform-stream q/*query* ch)))
 
 (q/def-query-operator nth
   :periodic? false

@@ -117,6 +117,7 @@
    invoke-in
    invoke-at
    invoke-repeatedly
+   invoke-lazily
 
    with-task-queue
    task-queue

@@ -459,23 +459,31 @@
 (defn periodically
   "Returns a channel.  Every `period` milliseconds, `f` is invoked with no arguments
    and the value is emitted as a message."
-  ([period f]
-     (periodically period f (t/task-queue)))
-  ([period f task-queue]
+  ([{:keys [task-queue period priority close-latch lazy?]
+     :or {task-queue (t/task-queue)
+          period (t/period)
+          priority 0}}
+    f]
+     
      (let [ch (channel* :description "periodically")
            cnt (atom 0)
-           latch (-> f meta :close-latch)
-           priority (or (-> f meta :priority) 0)]
-       (t/invoke-repeatedly task-queue period
-         (with-meta
-           (fn [cancel-callback]
-             (try
-               (enqueue ch (f))
-               (finally
-                 (when (or (and latch @latch) (closed? ch))
-                   (close ch)
-                   (cancel-callback)))))
-           {:priority priority}))
+           f #(t/invoke-repeatedly task-queue period
+                (with-meta
+                  (fn [cancel-callback]
+                    (try
+                      (enqueue ch (f))
+                      (finally
+                        (when (or
+                                (and close-latch @close-latch)
+                                (closed? ch))
+                          (close ch)
+                          (cancel-callback)))))
+                  {:priority priority}))]
+
+       (if lazy?
+         (t/invoke-lazily task-queue f)
+         (f))
+
        ch)))
 
 (defn bridge-accumulate
@@ -509,16 +517,16 @@
               (cancel-callback src close-callback)
 
               (join
-                (periodically period
-                  (with-meta
-                    (fn []
-                      (try
-                        (emitter)
-                        (finally
-                          (when (drained? src)
-                            (reset! close-latch true)))))
-                    {:close-latch close-latch})
-                  task-queue)
+                (periodically
+                  {:period period
+                   :task-queue task-queue
+                   :close-latch close-latch}
+                  (fn []
+                    (try
+                      (emitter)
+                      (finally
+                        (when (drained? src)
+                          (reset! close-latch true))))))
                 dst))))))
     dst))
 
@@ -860,11 +868,12 @@
                 (reset! latch false)
                 (close monitor)))))
 
-        (t/invoke-repeatedly task-queue period
-          (fn [cancel]
-            (if @latch
-              (enqueue out nil)
-              (cancel)))))
+        (t/invoke-lazily task-queue
+          #(t/invoke-repeatedly task-queue period
+             (fn [cancel]
+               (if @latch
+                 (enqueue out nil)
+                 (cancel))))))
 
       ;; hook up everything
       (join ch dist)
