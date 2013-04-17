@@ -57,12 +57,13 @@
     (map* distill-timing)
 
     (q/query-stream
-      '[(zip
-          {:duration-quantiles [:durations concat moving-quantiles]
-           :calls [:durations concat rate rolling-sum]
-           :total-duration [:durations concat rolling-sum]
-           :sub-tasks [:sub-tasks concat (group-by :task [recur])]
-           })]
+      '[(group-by :task
+          [(zip
+             {:duration-quantiles [:durations concat moving-quantiles]
+              :calls [:durations concat rate rolling-sum]
+              :total-duration [:durations concat rolling-sum]
+              :sub-tasks [:sub-tasks concat recur]
+              })])]
       options)))
 
 ;;;

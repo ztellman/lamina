@@ -110,14 +110,6 @@
   (enqueue ch 1 2)
   (take* 4 ch))
 
-(render-graph-diagram channel-17 [ch]
-  (enqueue ch 1 2)
-  (take* 4 ch)
-  (enqueue ch 3 4 5))
-
-(render-graph-diagram channel-18 [ch]
-  (enqueue ch 1 2 3 4))
-
 (render-graph-diagram channel-19 [ch]
   (receive-all
     (->> ch (map* inc) (filter* even?))
@@ -145,3 +137,24 @@
   (let [ch* (map* reciprocal ch)]
     (enqueue ch 0)
     [ch ch*]))
+
+(render-graph-diagram channel-26 [ch]
+  (let [ch* (channel)]
+    (enqueue ch 1 2 3)
+    (join ch ch*)))
+
+(render-graph-diagram channel-27 [ch]
+  (let [ch* (channel)]
+    (enqueue ch 1 2 3)
+    (siphon ch ch*)))
+
+(render-graph-diagram channel-28 [a]
+  (let [b (channel)
+        c (channel)]
+    (enqueue a 1 2 3)
+    (join a b c)))
+
+(render-graph-diagram channel-29 [ch]
+  (enqueue ch 1 2 3)
+  (tap ch)
+  (map* inc ch))

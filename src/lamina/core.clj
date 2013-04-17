@@ -157,7 +157,7 @@
   [lamina.core.result
 
    result-channel
-   async-result?
+   async-promise?
    with-timeout
    expiring-result
    timed-result
@@ -197,7 +197,7 @@
    If more than two channels are specified, `siphon` becomes transitive.  `(siphon a b c)` is equivalent to
    `(siphon a b)` and `(siphon b c)`."
   ([src dst]
-     (if (async-result? src)
+     (if (async-promise? src)
        (r/siphon-result src dst)
        (ch/siphon src dst)))
   ([src dst & rest]
@@ -212,7 +212,7 @@
    If more than two channels are specified, `join` becomes transitive.  `(join a b c)` is equivalent to
    `(join a b)` and `(join b c)`."
   ([src dst]
-     (if (async-result? src)
+     (if (async-promise? src)
        (do
          (r/siphon-result src dst)
          (r/subscribe dst (r/result-callback (fn [_]) #(u/error src % false))))
@@ -222,10 +222,10 @@
      (apply join dst rest)))
 
 (defn error-value
-  "Returns the error-value of the channel or async-result if it's in an error state, and 'default-value'
+  "Returns the error-value of the channel or async-promise if it's in an error state, and 'default-value'
    otherwise"
   [x default-value]
-  (if (async-result? x)
+  (if (async-promise? x)
     (r/error-value x default-value)
     (ch/error-value x default-value)))
 

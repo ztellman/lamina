@@ -350,7 +350,7 @@
                                  msg
                                  (not grounded?))]
 
-                    (when (r/async-result? result)
+                    (when (r/async-promise? result)
                       (reset-meta! result
                         {:description {:type :queue, :name description}, :timestamp (now)}))
 
@@ -391,7 +391,7 @@
                       consumer-description (.description e)
                       result (enqueue-and-release lock state msg true)]
 
-                  #_(when (r/async-result? result)
+                  #_(when (r/async-promise? result)
                     (reset-meta! result
                       {:description {:type queue, :name consumer-description}}))
                   
@@ -481,7 +481,7 @@
                   ::split
                   (if-let [v (.get cancellations name)]
                     
-                    (if (r/async-result? v)
+                    (if (r/async-promise? v)
                       ::already-registered
                       ::invalid-name)
                     
@@ -790,7 +790,7 @@
          (identical? ::split x)
          (cancel (.split state) name)
 
-         (r/async-result? x)
+         (r/async-promise? x)
          (l/with-lock lock
            (q/cancel-receive (.queue state) x))
 

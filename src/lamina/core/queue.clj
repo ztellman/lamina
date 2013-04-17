@@ -318,7 +318,7 @@
                                 (recur (cons c cs)))))))))))]
 
         (cond
-          (r/async-result? x)
+          (r/async-promise? x)
           x
 
           (identical? :lamina/discarded x)
@@ -533,7 +533,7 @@
                                 (recur (cons c cs))))))))))))]
 
       (cond
-        (r/async-result? x)
+        (r/async-promise? x)
         x
         
         (identical? :lamina/discarded x)

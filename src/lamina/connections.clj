@@ -174,10 +174,10 @@
 (defn client
   "Layers a client-side request-response communication model on top of a bidirectional socket.  Returns 
    a function which takes the `request` and optionally a `timeout` in milliseconds, and returns an 
-   async-result representing the response.
+   async-promise representing the response.
 
    `connection-generator` is a function which takes zero parameters, and returns a channel representing
-   a bidirectional socket, or an async-result which will be realized as a bidirectional socket.  It will
+   a bidirectional socket, or an async-promise which will be realized as a bidirectional socket.  It will
    only be called once a request has been made, and whenever the socket channel subsequently closes.
 
    If a request is made while there is not a live connection, it will be sent once the connection is opened.

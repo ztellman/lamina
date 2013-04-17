@@ -133,13 +133,12 @@
             window
             quantiles
             task-queue]
-     :or {quantiles [50 75 95 99 99.9]
+     :or {quantiles [0.5 0.75 0.95 0.99 0.999]
           task-queue (t/task-queue)
           window (t/minutes 5)}
      :as options}
     ch]
-     (let [quantiles (map #(double (/ % 100)) quantiles)
-           sampler (sample/moving-sampler options)
+     (let [sampler (sample/moving-sampler options)
            ch* (bridge-accumulate ch (mimic ch) "moving-quantiles"
                  (merge options
                    (number-accumulator "moving-quantiles" #(update sampler %))

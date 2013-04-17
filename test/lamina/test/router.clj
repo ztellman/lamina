@@ -128,29 +128,30 @@
      :consume-fn next-non-empty-msg
      :enqueued-values (map
                         #(hash-map :foo %1 :bar %2)
-                        [:a :a :b :b :c]
+                        #_[:a :a :b :b :c]
+                        [:a :b]
                         [:x :x :z :y :y])}
     
     ;; tests
-    {:a [:x :x], :b [:z :y], :c [:y]}
-    [".group-by(foo).bar"]
+    #_{:a [:x :x], :b [:z :y], :c [:y]}
+    #_[".group-by(foo).bar"]
 
     {:a 2, :b 2, :c 1}
     [".group-by(foo).rate()"]                      
 
-    {:x 2, :y 2, :z 1}
-    [".group-by(facet: bar).rate()"
+    #_{:x 2, :y 2, :z 1}
+    #_[".group-by(facet: bar).rate()"
      ".select(foo, bar).group-by(bar).rate()"
      ".select(bar).group-by(bar).bar.rate()"]
 
-    {:c {:y 1}, :b {:y 1, :z 1}, :a {:x 2}}
-    [".group-by(foo).select(bar).group-by(bar).rate()"]
+    #_{:c {:y 1}, :b {:y 1, :z 1}, :a {:x 2}}
+    #_[".group-by(foo).select(bar).group-by(bar).rate()"]
 
-    {[:a :x] 2, [:b :z] 1, [:c :y] 1, [:b :y] 1}
-    [".group-by([foo bar]).rate()"]
+    #_{[:a :x] 2, [:b :z] 1, [:c :y] 1, [:b :y] 1}
+    #_[".group-by([foo bar]).rate()"]
 
-    {:x 2}
-    [".where(foo = 'a').group-by(bar).rate()"
+    #_{:x 2}
+    #_[".where(foo = 'a').group-by(bar).rate()"
      ".where(foo ~= 'a').group-by(bar).rate()"]))
 
 (defn run-merge-streams-test [subscribe-fn enqueue-fn post-enqueue-fn]
@@ -178,7 +179,7 @@
   (let [ch (channel)
         sub #(q/query-stream % {:period 100} ch)
         enq #(enqueue ch %)]
-    (run-basic-operator-test sub enq nil)
+    (run-basic-operator-test sub enq nil) 
     (close ch))
   (let [ch (channel)
         sub #(q/query-stream % {:period 100} ch)
@@ -188,19 +189,20 @@
   (println))
 
 (deftest test-non-realtime-operators
-  (let [ch (channel)
+  #_(let [ch (channel)
         sub #(q/query-stream %
                {:period 100, :timestamp (constantly 0)}
                (join ch (channel)))
         enq #(enqueue ch %)]
     (run-basic-operator-test sub enq #(close ch))
     (close ch))
-  #_(let [ch (channel)
+  (let [ch (channel)
+        q (t/non-realtime-task-queue 0 false)
         sub #(q/query-stream %
-               {:period 100, :timestamp (constantly 0)}
+               {:period 1e5, :task-queue q, :auto-advance? true, :timestamp (constantly 0)}
                (join ch (channel)))
         enq #(enqueue ch %)]
-    (run-group-by-test sub enq #(close ch))
+    (run-group-by-test sub enq #(do (prn "view") (close ch)))
     (close ch))
   (println))
 

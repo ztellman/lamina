@@ -159,10 +159,10 @@
 ;;;
 
 (defn probe-result
-  "Allows an async-result to be treated like a probe-channel that only accepts a single value
+  "Allows an async-promise to be treated like a probe-channel that only accepts a single value
    before deactivating."
   [result]
-  (when-not (r/async-result? result)
+  (when-not (r/async-promise? result)
     (throw (IllegalArgumentException. "probe-result must be given a result-channel")))
   (reify
     IEnqueue

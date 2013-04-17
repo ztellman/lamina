@@ -1,10 +1,10 @@
 # Lamina
 
-An event is a value that we don't yet have.  Lamina contains a rich set of operators for dealing with these unrealized values, both individually and collectively.  If you're new to Lamina, you should start by reading about [how it deals with individual events](https://github.com/ztellman/lamina/wiki/Introduction).
+Lamina is for describing and analyzing streams of data.  It provides a rich set of operators for dealing with these unrealized values, both individually and collectively.  If you're new to Lamina, you should start by reading about [how it deals with individual events](https://github.com/ztellman/lamina/wiki/Introduction).
 
 ## Installation
 
-    [lamina "0.5.0-beta15"]
+    [lamina "0.5.0-beta16"]
     
 ## Rationale
 
@@ -33,7 +33,7 @@ nil
 > (map* dec ch)
 <== [...]
 > (enqueue ch 1 2 3)
-:lamina/enqueued
+<< ... >>
 > (view-graph ch)
 ```
 

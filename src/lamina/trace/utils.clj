@@ -30,7 +30,7 @@
                    {:error-handler (fn [ex] (t/mark-error timer ex))}
                    (fn [_]
                      (let [result (f)]
-                       (reset! unwrap? (not (async-result? result)))
+                       (reset! unwrap? (not (async-promise? result)))
                        result))
                    (fn [result]
                      (t/mark-return timer result)

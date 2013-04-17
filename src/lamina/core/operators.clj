@@ -700,7 +700,7 @@
 
    The returned channel will emit each message from `channel` only once the designated time has arrived.
    This assumes the timestamp for each message is monotonically increasing."
-  [{:keys [timestamp task-queue auto-advance?]} channel]
+  [{:keys [timestamp task-queue auto-advance?]} ch]
   (let [ch* (lamina.core.channel/channel)]
 
     (p/run-pipeline auto-advance?
@@ -708,11 +708,13 @@
       ;; allow for consumption to be deferred until the topology is built
       (fn [auto-advance?]
 
-        (receive-in-order channel
+        (bridge-in-order ch ch* "defer-onto-queue"
+          :wait-on-callback? true
+          :callback
           (fn [msg]
             (let [r (r/result-channel)
                   t (timestamp msg)]
-
+              
               (t/invoke-at task-queue t
                 (with-meta
                   (fn []
@@ -724,13 +726,12 @@
 
               ;; advance to the message entering the topology
               (when auto-advance?
-                (t/advance-until task-queue t))
+                (t/advance-until task-queue t)
+                (when (drained? ch)
+                  ))
 
               ;; if we've auto-advanced, this should always be realized
-              r))))
-
-      (fn [_]
-        (close ch*)))
+              r)))))
     
     ch*))
 
@@ -813,17 +814,19 @@
          period (t/period)}}
    ch]
 
+  ;; ch -> dist -> intermediate -> aggregator -> out
+
   ;; distribution
-  (let [ch* (mimic ch)
+  (let [intermediate (mimic ch)
         on-clearance (atom nil)
         dist (distributor
                {:facet facet
-                :on-clearance #(close ch*)
+                :on-clearance #(close intermediate)
                 :initializer (fn [facet-value ch]
                                (let [generated (->> ch
                                                  (generator facet-value)
                                                  (map* #(vector facet-value %)))]
-                                 (siphon generated ch*)
+                                 (siphon generated intermediate)
                                  generated))})
         propagator (-> dist meta ::propagator)]
 
@@ -838,7 +841,7 @@
                                 (map re-nil (keys %))
                                 (map re-nil (vals %))))]
 
-      (receive-all ch*
+      (receive-all intermediate
         (fn [[facet msg]]
           (let [facet (de-nil facet)
                 msg (de-nil msg)]
@@ -851,8 +854,9 @@
                                            (doto (ConcurrentHashMap.)
                                              (.put facet msg))))
                                        
-                                       ;; the flush predicate returns true
-                                       (and (= (.size m) (count propagator))
+                                       ;; we've filled up all available slots
+                                       (and (not (closed? ch))
+                                         (= (.size m) (count propagator))
                                          (= (keys m) (dist/facets propagator))
                                          (reset! aggregator (ConcurrentHashMap.))))
                                  m)))]
@@ -876,10 +880,10 @@
                  (cancel))))))
 
       ;; hook up everything
+      (on-closed out #(close intermediate))
+      (on-closed intermediate #(do (flush-aggregator @aggregator) (close out)))
+      (on-error intermediate #(error out % false))
+      (on-error out #(error intermediate % false))
       (join ch dist)
-      (on-closed out #(close ch*))
-      (on-closed ch* #(do (flush-aggregator @aggregator) (close out)))
-      (on-error ch* #(error out % false))
-      (on-error out #(error ch* % false))
 
       out)))

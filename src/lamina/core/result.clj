@@ -502,7 +502,7 @@
 (defn result-callback [on-success on-error]
   (ResultCallback. on-success on-error))
 
-(defn async-result?
+(defn async-promise?
   "Returns true if `x` is a result."
   [x]
   (or
@@ -552,7 +552,7 @@
        result)))
 
 (defn merge-results
-  "Given n `results` returns a single async-result which will be realized as a sequence of all the realized
+  "Given n `results` returns a single async-promise which will be realized as a sequence of all the realized
    results."
   [& results]
   (let [cnt (count results)
@@ -570,7 +570,7 @@
           combined-result)
         
         (let [r (first results)]
-          (if-not (async-result? r)
+          (if-not (async-promise? r)
 
             ;; not a result - set, decrement, and recur
             (do

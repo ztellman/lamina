@@ -160,7 +160,7 @@
 (defn- unwind-stages [idx stages remaining subscribe-expr unwrap?]
   `(cond
        
-     (r/async-result? val##)
+     (r/async-promise? val##)
      (let [value# (r/success-value val## ::unrealized)]
        (if (identical? ::unrealized value#)
          ~(subscribe-expr idx)
@@ -234,9 +234,9 @@
   "A means for composing asynchronous functions.  Returns a function which will pass the value into the first
    function, the result from that function into the second, and so on.
 
-   If any function returns an unrealized async-result, the next function won't be called until that value is realized.
-   The call into the pipeline itself returns an async-result, which won't be realized until all functions have completed.
-   If any function throws an exception or returns an async-result that realizes as an error, this will short-circuit all
+   If any function returns an unrealized async-promise, the next function won't be called until that value is realized.
+   The call into the pipeline itself returns an async-promise, which won't be realized until all functions have completed.
+   If any function throws an exception or returns an async-promise that realizes as an error, this will short-circuit all
    calls to subsequent functions, and cause the pipeline's result to be realized as an error.
 
    Loops and other more complex flows may be created if any stage returns a redirect signal by returning the result of 
@@ -262,7 +262,7 @@
                     Defaults to false.
 
      `:unwrap?` - if true, and the pipeline does not need to pause between streams, the pipeline will return an actual value 
-                  rather than an async-result.
+                  rather than an async-promise.
 
      `:with-bindings` - if true, conveys the binding context of the initial invocation of the pipeline into any deferred stages."
   [& opts+stages]

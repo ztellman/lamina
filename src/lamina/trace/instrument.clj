@@ -91,7 +91,7 @@
        (try
          (let [result# (context/with-context (context/assoc-context :timer timer#)
                          ~invoke)]
-           (when (async-result? result#)
+           (when (async-promise? result#)
              (t/mark-waiting timer#))
            (run-pipeline result#
              {:error-handler (fn [err#] (t/mark-error timer# err#))}

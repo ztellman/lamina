@@ -121,7 +121,7 @@
           values (if (set? value)
                    value
                    (->> value :options vals (map normalize-for-comparison) set))]
-      #(contains? values %))))
+      #(contains? values (f %)))))
 
 ;;;
 
