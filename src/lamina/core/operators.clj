@@ -71,7 +71,7 @@
            close-on-complete?
            wait-on-callback?]
      :or {close-on-complete? false
-	      wait-on-callback? false}}]
+          wait-on-callback? false}}]
 
   (p/run-pipeline (g/consume
                     (emitter-node src)
@@ -637,7 +637,7 @@
                               (System/arraycopy ary 0 ary* 0 cnt)
                               ary*))]
        (doseq [[idx ch] (map vector (range cnt) channels)]  ;; tag as long
-         (bridge-join ch ch* ""
+         (bridge-siphon ch ch* ""
            (fn [msg]
              (let [curr-result @result]
                (if-let [ary* (l/with-exclusive-lock lock
@@ -664,6 +664,16 @@
                    (fn [_] (enqueue ch* (seq ary*))))
 
                  curr-result)))))
+
+       (let [cnt (count channels)]
+         (p/run-pipeline (->> channels (map drained-result) (apply r/merge-results))
+           {:error-handler (fn [_])}
+           (fn [_]
+             (let [^BitSet bitset @bitset]
+               (when-not (= cnt (.cardinality bitset))
+                 (enqueue ch* (seq ary))))
+             (close ch*))))
+       
        ch*)))
 
 (defn combine-latest
@@ -710,6 +720,7 @@
 
         (bridge-in-order ch ch* "defer-onto-queue"
           :wait-on-callback? true
+          :close-on-complete? true
           :callback
           (fn [msg]
             (let [r (r/result-channel)
@@ -726,9 +737,7 @@
 
               ;; advance to the message entering the topology
               (when auto-advance?
-                (t/advance-until task-queue t)
-                (when (drained? ch)
-                  ))
+                (t/advance-until task-queue t))
 
               ;; if we've auto-advanced, this should always be realized
               r)))))
@@ -769,6 +778,11 @@
 
     (when on-clearance
       (let [facet-count (AtomicLong. 0)]
+
+        (g/on-closed receiver
+          #(when (zero? (.get facet-count))
+             (on-clearance)))
+
         (reset! watch-channel
           (fn [ch]
             (.incrementAndGet facet-count)
@@ -875,7 +889,7 @@
         (t/invoke-lazily task-queue
           #(t/invoke-repeatedly task-queue period
              (fn [cancel]
-               (if @latch
+               (if (and @latch (not (closed? out)))
                  (enqueue out nil)
                  (cancel))))))
 
