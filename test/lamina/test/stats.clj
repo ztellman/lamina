@@ -76,7 +76,7 @@
     (= expected-values
       (run-stats-test moving-quantiles inputs (t/seconds 1) {:quantiles quantiles}))
 
-    [{0.5 49.5}] [(range 100)] [50.0]))
+    [{0.5 49.5}] [(range 100)] [0.5]))
 
 (deftest test-sample
   #_(prn
