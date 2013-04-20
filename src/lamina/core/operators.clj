@@ -24,7 +24,8 @@
     [lamina.core.lock
      Lock]
     [java.util
-     BitSet]
+     BitSet
+     HashMap]
     [lamina.core.channel
      Channel]
     [lamina.core.graph.propagator
@@ -499,7 +500,7 @@
         close-callback #(close dst)]
 
     ;; set up callback to handle zero-message case
-    (on-closed src close-callback)
+    (on-drained src close-callback)
 
     (bridge-siphon src dst description
       (fn [msg]
@@ -636,7 +637,7 @@
                             (let [ary* (object-array cnt)]
                               (System/arraycopy ary 0 ary* 0 cnt)
                               ary*))]
-       (doseq [[idx ch] (map vector (range cnt) channels)]  ;; tag as long
+       (doseq [[idx ch] (map vector (range cnt) channels)] ;; tag as long
          (bridge-siphon ch ch* ""
            (fn [msg]
              (let [curr-result @result]
@@ -665,14 +666,9 @@
 
                  curr-result)))))
 
-       (let [cnt (count channels)]
-         (p/run-pipeline (->> channels (map drained-result) (apply r/merge-results))
-           {:error-handler (fn [_])}
-           (fn [_]
-             (let [^BitSet bitset @bitset]
-               (when-not (= cnt (.cardinality bitset))
-                 (enqueue ch* (seq ary))))
-             (close ch*))))
+       (p/run-pipeline (->> channels (map drained-result) (apply r/merge-results))
+         {:error-handler (fn [_])}
+         (fn [_] (close ch*)))
        
        ch*)))
 
@@ -773,7 +769,7 @@
         propagator (g/distributing-propagator facet
                      (fn [id]
                        (let [ch (channel* :description (pr-str id))]
-                         (@watch-channel (initializer id ch))
+                         (@watch-channel id (initializer id ch))
                          (receiver-node ch))))]
 
     (when on-clearance
@@ -784,12 +780,12 @@
              (on-clearance)))
 
         (reset! watch-channel
-          (fn [ch]
+          (fn [id ch]
             (.incrementAndGet facet-count)
-            (on-closed ch
+            (on-drained ch
               (fn []
                 (when (and (zero? (.decrementAndGet facet-count))
-                        (g/closed? receiver))
+                        (g/drained? receiver))
                   (on-clearance))))))))
 
     (g/join receiver propagator)
@@ -814,10 +810,10 @@
    Example:
 
      (distribute-aggregate 
-	   {:facet     :uri
-		:generator (fn [uri ch]
-			          (rate ch))}
-	   ch)
+       {:facet     :uri
+        :generator (fn [uri ch]
+		         (rate ch))}
+       ch)
 	
    will return a channel which periodically emits a map of the form
 	
@@ -832,7 +828,6 @@
 
   ;; distribution
   (let [intermediate (mimic ch)
-        on-clearance (atom nil)
         dist (distributor
                {:facet facet
                 :on-clearance #(close intermediate)
@@ -846,10 +841,11 @@
 
     ;; aggregation
     (let [out (channel)
-          aggregator (atom (ConcurrentHashMap.))
+          aggregator (atom (HashMap.))
           lock (l/lock)
           de-nil #(if (nil? %) ::nil %)
           re-nil #(if (identical? ::nil %) nil %)
+
           flush-aggregator #(enqueue out
                               (zipmap
                                 (map re-nil (keys %))
@@ -860,20 +856,25 @@
           (let [facet (de-nil facet)
                 msg (de-nil msg)]
             (when-let [msg (l/with-exclusive-lock lock
-                             (let [^ConcurrentHashMap m @aggregator]
-                               (when (or
-                                       ;; we've lapped ourselves
-                                       (and (.putIfAbsent m facet msg)
-                                         (reset! aggregator
-                                           (doto (ConcurrentHashMap.)
-                                             (.put facet msg))))
-                                       
-                                       ;; we've filled up all available slots
-                                       (and (not (closed? ch))
-                                         (= (.size m) (count propagator))
-                                         (= (keys m) (dist/facets propagator))
-                                         (reset! aggregator (ConcurrentHashMap.))))
-                                 m)))]
+                             (let [^HashMap m @aggregator]
+                                        
+                               (or
+                                 ;; we've lapped ourselves
+                                 (and (.containsKey m facet)
+                                   (reset! aggregator
+                                     (doto (HashMap.)
+                                       (.put facet msg)))
+                                   m)
+                                   
+                                 ;; we've filled up all available slots
+                                 (do
+                                   (.put m facet msg)
+                                   (and (not (closed? ch))
+                                     (= (.size m) (count propagator))
+                                     (= (set (keys m)) (set (dist/facets propagator)))
+                                     (reset! aggregator (HashMap.))
+                                     m)))))]
+
               (flush-aggregator msg)))))
 
       ;; set up flush on inactivity
@@ -890,7 +891,7 @@
           #(t/invoke-repeatedly task-queue period
              (fn [cancel]
                (if (and @latch (not (closed? out)))
-                 (enqueue out nil)
+                 (enqueue out {})
                  (cancel))))))
 
       ;; hook up everything
@@ -898,6 +899,7 @@
       (on-closed intermediate #(do (flush-aggregator @aggregator) (close out)))
       (on-error intermediate #(error out % false))
       (on-error out #(error intermediate % false))
+
       (join ch dist)
 
       out)))

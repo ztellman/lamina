@@ -195,13 +195,13 @@
         enq #(enqueue ch %)]
     (run-basic-operator-test sub enq #(close ch))
     (close ch))
-  #_(let [ch (channel)
+  (let [ch (channel)
         q (t/non-realtime-task-queue 0 false)
         sub #(q/query-stream %
                {:period 1e5, :task-queue q, :auto-advance? true, :timestamp (constantly 0)}
                (join ch (channel)))
         enq #(enqueue ch %)]
-    (run-group-by-test sub enq #(do (prn "view") (close ch)))
+    (run-group-by-test sub enq #(close ch))
     (close ch))
   (println))
 

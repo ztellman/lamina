@@ -83,7 +83,7 @@
 (defn close-and-clear [lock ^AtomicBoolean closed? ^ConcurrentHashMap downstream]
   (l/with-exclusive-lock lock
     (.set closed? true)
-    (let [channel-thunks (vals downstream)]
+    (let [channel-thunks (doall (vals downstream))]
       (.clear ^ConcurrentHashMap downstream)
       (map deref channel-thunks))))
 
@@ -99,15 +99,18 @@
    ^AtomicBoolean transactional?
    ^ConcurrentHashMap downstream-map]
   clojure.lang.Counted
-  (count [_] (.size downstream-map))
+  (count [_]
+    (.size downstream-map))
   IDistributingPropagator
   (close-all-facets [_ force?]
-    (doseq [n (vals downstream-map)]
-      (close @n force?)))
+    (l/with-exclusive-lock lock
+      (doseq [n (doall (vals downstream-map))]
+        (close @n force?))))
   (facets [_]
-    (keys downstream-map))
+    (doall (keys downstream-map)))
   IDescribed
-  (description [_] "distributor")
+  (description [_]
+    "distributor")
   IError
   (error [_ err force?]
     (doseq [n (close-and-clear lock closed? downstream-map)]
@@ -118,13 +121,15 @@
       (close n force?)))
   (transactional [_]
     (let [downstream
-          (l/with-exclusive-lock
+          (l/with-exclusive-lock lock
             (when (.compareAndSet transactional? false true)
-              (vals downstream-map)))]
+              (doall (vals downstream-map))))]
       (doseq [n downstream]
         (transactional n))))
   (downstream [_]
-    (map #(edge nil @%) (vals downstream-map)))
+    (map
+      #(edge nil @%)
+      (doall (vals downstream-map))))
   (propagate [this msg _]
     (try
       (let [id (facet msg)

@@ -218,17 +218,17 @@
 
     (assert facet)
 
-    (distribute-aggregate
-      {:facet (getter facet)
-       :generator (fn [k ch]
-                    (let [ch (->> ch
-                               (close-on-idle expiration)
-                               (q/transform-stream (dissoc desc :name)))]
-                      (if-not periodic?
-                        (partition-every {:period period} ch)
-                        ch)))
-       :period period}
-      ch)))
+    (let [ch* ch] (distribute-aggregate
+       {:facet (getter facet)
+        :generator (fn [k ch]
+                     (let [ch (->> ch
+                                (close-on-idle expiration)
+                                (q/transform-stream (dissoc desc :name)))]
+                       (if-not periodic?
+                         (partition-every {:period period} ch)
+                         ch)))
+        :period period}
+       ch))))
 
 (defn merge-group-by [{:keys [options operators] :as desc} ch]
   (let [periodic? (q/periodic-chain? operators)

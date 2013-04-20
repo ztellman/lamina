@@ -783,9 +783,9 @@
   (cancel [this name]
     (io! "Cannot cancel modifications to node within a transaction."
       (if-let [x (l/with-exclusive-lock lock
-                  (if (identical? ::split (.mode state))
-                    (or (.remove cancellations name) ::split)
-                    (.remove cancellations name)))]
+                   (if (identical? ::split (.mode state))
+                     (or (.remove cancellations name) ::split)
+                     (.remove cancellations name)))]
        (cond
          (identical? ::split x)
          (cancel (.split state) name)
