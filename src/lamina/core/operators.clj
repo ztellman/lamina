@@ -598,78 +598,37 @@
 
 (defn zip
   "Emits a tuple containing the most recent message from all `channels` once a single message has been received
-   from each channel.
-
-   Each stream in `channels` is assumed to be emitting at the same rate.  If this is not true, then the behavior
-   for messages from higher-rate channels can be controlled via `most-frequent?`.
-
-   Consider two channels, `a` and `b`, where `a` emits ascending numbers twice as fast as `b`. In this case, the output
-   of each would look like this:
-
-   `a`      `b`
-    1        
-    2        1
-    3        
-    4        2
-
-    If `most-frequent?` is true, we will emit at the tempo of the highest-frequency channel, giving us the sequence:
-
-    `[2, 1]`, `[3, 1]`, `[4, 2]`
-
-    If `most-frequent?` is false, we will emit at the tempo of the lowest-frequency channel, giving us the sequence:
-
-    `[2, 1]`, `[4, 2]`
-
-    By default, `most-frequent?` is false.    
-   "
+   from each channel."
   ([channels]
      (zip false channels))
   ([most-frequent? channels]
-     (let [cnt (count channels)
-           lock (l/lock)
-           ^objects ary (object-array cnt)
-           bitset (atom (create-bitset cnt))
-           result (atom (r/result-channel))
-           ch* (channel* :description "zip")
-           copy-and-reset (fn []
-                            (reset! bitset (create-bitset cnt))
-                            (reset! result (r/result-channel))
-                            (let [ary* (object-array cnt)]
-                              (System/arraycopy ary 0 ary* 0 cnt)
-                              ary*))]
-       (doseq [[idx ch] (map vector (range cnt) channels)] ;; tag as long
-         (bridge-siphon ch ch* ""
-           (fn [msg]
-             (let [curr-result @result]
-               (if-let [ary* (l/with-exclusive-lock lock
-                               (let [^BitSet curr-bitset @bitset]
-                                 (if (and most-frequent? (not (.get curr-bitset (int idx))))
 
-                                   ;; copy the current array, and set the value for the next one
-                                   (let [result (copy-and-reset)]
-                                     (.set curr-bitset (int idx) false)
-                                     (aset ary idx msg)
-                                     result)
-
-                                   ;; check if we've zeroed out the array
-                                   (do
-                                     (aset ary idx msg)
-                                     (when (do
-                                             (.set curr-bitset (int idx) false)
-                                             (.isEmpty curr-bitset))
-                                       (copy-and-reset))))))]
-
-                 (p/run-pipeline nil
-                   {:error-handler (fn [_])
-                    :result curr-result}
-                   (fn [_] (enqueue ch* (seq ary*))))
-
-                 curr-result)))))
+     (let [ch* (channel)]
 
        (p/run-pipeline (->> channels (map drained-result) (apply r/merge-results))
          {:error-handler (fn [_])}
          (fn [_] (close ch*)))
-       
+
+       (on-closed ch*
+         (fn []
+           (doseq [ch channels]
+             (close ch))))
+
+       (p/run-pipeline nil
+         {:error-handler (fn [ex]
+                           (if (= :lamina/drained! ex)
+                             (close ch*)
+                             (error ch* ex false)))}
+         (fn [_]
+           (if (closed? ch*)
+             (p/complete nil)
+             (->> channels
+               (map read-channel)
+               (apply r/merge-results))))
+         (fn [msgs]
+           (enqueue ch* msgs)
+           (p/restart)))
+
        ch*)))
 
 (defn combine-latest
@@ -839,7 +798,7 @@
                                  generated))})
         propagator (-> dist meta ::propagator)]
 
-    ;; aggregation
+    ;; aggregation 
     (let [out (channel)
           aggregator (atom (HashMap.))
           lock (l/lock)
@@ -858,22 +817,27 @@
             (when-let [msg (l/with-exclusive-lock lock
                              (let [^HashMap m @aggregator]
                                         
-                               (or
-                                 ;; we've lapped ourselves
-                                 (and (.containsKey m facet)
-                                   (reset! aggregator
-                                     (doto (HashMap.)
-                                       (.put facet msg)))
-                                   m)
+                               (if (closed? ch)
+
+                                 ;; rely on flushing behavior if we're already closed
+                                 (when-not (.containsKey m facet)
+                                   (.put m facet msg))
+                                 
+                                 (or 
+                                  ;; we've lapped ourselves
+                                  (and (.containsKey m facet)
+                                    (reset! aggregator
+                                      (doto (HashMap.)
+                                        (.put facet msg)))
+                                    m)
                                    
-                                 ;; we've filled up all available slots
-                                 (do
-                                   (.put m facet msg)
-                                   (and (not (closed? ch))
-                                     (= (.size m) (count propagator))
-                                     (= (set (keys m)) (set (dist/facets propagator)))
-                                     (reset! aggregator (HashMap.))
-                                     m)))))]
+                                  ;; we've filled up all available slots
+                                  (do
+                                    (.put m facet msg)
+                                    (and (= (.size m) (count propagator))
+                                      (= (set (keys m)) (set (dist/facets propagator)))
+                                      (reset! aggregator (HashMap.))
+                                      m))))))]
 
               (flush-aggregator msg)))))
 
