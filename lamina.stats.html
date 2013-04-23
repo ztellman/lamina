@@ -22,7 +22,7 @@
       <div id="vars" class="sidebar">
         <h3>Public Vars</h3>
         <ul class="ns-var-links">
-          <li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.stats.html#var-moving-average">moving-average</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.stats.html#var-moving-quantiles">moving-quantiles</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.stats.html#var-moving-sample">moving-sample</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.stats.html#var-outliers">outliers</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.stats.html#var-rate">rate</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.stats.html#var-sample">sample</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.stats.html#var-sum">sum</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.stats.html#var-variance">variance</a></li>
+          <li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.stats.html#var-moving-average">moving-average</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.stats.html#var-moving-quantiles">moving-quantiles</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.stats.html#var-moving-sample">moving-sample</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.stats.html#var-outliers">outliers</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.stats.html#var-quantiles">quantiles</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.stats.html#var-rate">rate</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.stats.html#var-sample">sample</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.stats.html#var-sum">sum</a></li><li class="ns-var-list"><a class="ns-var-link ns-var-name" href="lamina.stats.html#var-variance">variance</a></li>
         </ul>
       </div>
     </navigation>
@@ -46,20 +46,20 @@ last five minutes.</p>
           </div><div class="public">
             <h3><a id="var-moving-quantiles" class="source var-name" href="/src/lamina/stats.clj">moving-quantiles</a></h3>
             <h4 class="var-type fn" id="var-type">fn</h4>
-            <div class="usage">[ch]</div><div class="usage">[{:keys [period window quantiles task-queue], :or {quantiles [0.5 0.75 0.95 0.99 0.999], task-queue (t/task-queue), window (t/minutes 5)}, :as options} ch]</div>
+            <div class="usage">[ch]</div><div class="usage">[{:keys [period window quantiles task-queue sample-size], :or {quantiles [0.5 0.75 0.95 0.99 0.999], task-queue (t/task-queue), window (t/minutes 5)}, :as options} ch]</div>
             
             
             <div class="doc"><p>Returns a channel that will periodically emit a map of quantile values every <code>period</code>
 millseconds, which represent the statistical distribution of values emitted by the source
-channel over the last five minutes.</p>
+channel, weighted towards the last <code>window</code> milliseconds.</p>
 
 <p>The map will be of quantile onto quantile value, so for a uniform distribution of values from
 1..1000, it would emit</p>
 
-<p>  {50 500, 75 750, 95 950, 99 990, 99.9 999}</p>
+<p>  {0.5 500, 0.75 750, 0.95 950, 0.99 990, 0.999 999}</p>
 
 <p>By default, the above quantiles will be used, these can be specified as a sequence of quantiles
-of the form [50 98 99.9 99.99].</p>
+of the form [0.5 0.75 0.99 0.999].</p>
 </div>
           </div><div class="public">
             <h3><a id="var-moving-sample" class="source var-name" href="/src/lamina/stats.clj">moving-sample</a></h3>
@@ -75,7 +75,7 @@ last <code>window</code> milliseconds.</p>
           </div><div class="public">
             <h3><a id="var-outliers" class="source var-name" href="/src/lamina/stats.clj">outliers</a></h3>
             <h4 class="var-type fn" id="var-type">fn</h4>
-            <div class="usage">[facet ch]</div><div class="usage">[facet {:keys [window variance-predicate task-queue], :or {window (t/minutes 5), variance-predicate (fn* [p1__14565#] (&lt; 3 (abs (double p1__14565#)))), task-queue (t/task-queue)}} ch]</div>
+            <div class="usage">[facet ch]</div><div class="usage">[facet {:keys [window variance-predicate task-queue], :or {window (t/minutes 5), variance-predicate (fn* [p1__14619#] (&lt; 3 (abs (double p1__14619#)))), task-queue (t/task-queue)}} ch]</div>
             
             
             <div class="doc"><p>Returns a channel that will emit outliers from the source channel, as measured by the standard
@@ -99,6 +99,24 @@ than three.</p>
 
 <p>:window describes the window of the moving average, which defaults to five minutes.  This can
 be used to adjust the responsiveness to long-term changes to the mean.</p>
+</div>
+          </div><div class="public">
+            <h3><a id="var-quantiles" class="source var-name" href="/src/lamina/stats.clj">quantiles</a></h3>
+            <h4 class="var-type fn" id="var-type">fn</h4>
+            <div class="usage">[ch]</div><div class="usage">[{:keys [period quantiles task-queue sample-size], :or {quantiles [0.5 0.75 0.95 0.99 0.999], task-queue (t/task-queue)}, :as options} ch]</div>
+            
+            
+            <div class="doc"><p>Returns a channel that will periodically emit a map of quantile values every <code>period</code>
+millseconds, which represent the statistical distribution of values emitted by the source
+channel.</p>
+
+<p>The map will be of quantile onto quantile value, so for a uniform distribution of values from
+1..1000, it would emit</p>
+
+<p>  {0.5 500, 0.75 750, 0.95 950, 0.99 990, 0.999 999}</p>
+
+<p>By default, the above quantiles will be used, these can be specified as a sequence of quantiles
+of the form [0.5 0.75 0.99 0.999].</p>
 </div>
           </div><div class="public">
             <h3><a id="var-rate" class="source var-name" href="/src/lamina/stats.clj">rate</a></h3>
