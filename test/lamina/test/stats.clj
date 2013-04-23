@@ -72,9 +72,15 @@
     ))
 
 (deftest test-quantiles
-  (are [expected-values inputs quantiles]
+  (are [expected-values inputs qnt]
     (= expected-values
-      (run-stats-test moving-quantiles inputs (t/seconds 1) {:quantiles quantiles}))
+      (run-stats-test moving-quantiles inputs (t/seconds 1) {:quantiles qnt}))
+
+    [{0.5 49.5}] [(range 100)] [0.5])
+
+  (are [expected-values inputs qnt]
+    (= expected-values
+      (run-stats-test quantiles inputs (t/seconds 1) {:quantiles qnt}))
 
     [{0.5 49.5}] [(range 100)] [0.5]))
 

@@ -313,6 +313,14 @@
   (fn [desc ch]
     (lamina.stats/moving-quantiles (normalize-options desc) ch)))
 
+(q/def-query-operator quantiles
+  :periodic? true
+  :distribute? false
+
+  :transform
+  (fn [desc ch]
+    (lamina.stats/quantiles (normalize-options desc) ch)))
+
 ;;;
 
 (q/def-query-operator sample-every

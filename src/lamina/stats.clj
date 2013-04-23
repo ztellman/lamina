@@ -118,21 +118,22 @@
 (defn moving-quantiles
   "Returns a channel that will periodically emit a map of quantile values every `period`
    millseconds, which represent the statistical distribution of values emitted by the source
-   channel over the last five minutes.
+   channel, weighted towards the last `window` milliseconds.
 
    The map will be of quantile onto quantile value, so for a uniform distribution of values from
    1..1000, it would emit
 
-     {50 500, 75 750, 95 950, 99 990, 99.9 999}
+     {0.5 500, 0.75 750, 0.95 950, 0.99 990, 0.999 999}
 
    By default, the above quantiles will be used, these can be specified as a sequence of quantiles
-   of the form [50 98 99.9 99.99]."
+   of the form [0.5 0.75 0.99 0.999]."
   ([ch]
      (moving-quantiles nil ch))
   ([{:keys [period
             window
             quantiles
-            task-queue]
+            task-queue
+            sample-size]
      :or {quantiles [0.5 0.75 0.95 0.99 0.999]
           task-queue (t/task-queue)
           window (t/minutes 5)}
@@ -142,6 +143,37 @@
            ch* (bridge-accumulate ch (mimic ch) "moving-quantiles"
                  (merge options
                    (number-accumulator "moving-quantiles" #(update sampler %))
+                   {:emitter #(deref sampler)}))]
+       (map*
+         #(zipmap quantiles (math/quantiles % quantiles))
+         ch*))))
+
+(defn quantiles
+  "Returns a channel that will periodically emit a map of quantile values every `period`
+   millseconds, which represent the statistical distribution of values emitted by the source
+   channel.
+
+   The map will be of quantile onto quantile value, so for a uniform distribution of values from
+   1..1000, it would emit
+
+     {0.5 500, 0.75 750, 0.95 950, 0.99 990, 0.999 999}
+
+   By default, the above quantiles will be used, these can be specified as a sequence of quantiles
+   of the form [0.5 0.75 0.99 0.999]."
+  ([ch]
+     (moving-quantiles nil ch))
+  ([{:keys [period
+            quantiles
+            task-queue
+            sample-size]
+     :or {quantiles [0.5 0.75 0.95 0.99 0.999]
+          task-queue (t/task-queue)}
+     :as options}
+    ch]
+     (let [sampler (sample/sampler options)
+           ch* (bridge-accumulate ch (mimic ch) "quantiles"
+                 (merge options
+                   (number-accumulator "quantiles" #(update sampler %))
                    {:emitter #(deref sampler)}))]
        (map*
          #(zipmap quantiles (math/quantiles % quantiles))

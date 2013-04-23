@@ -283,7 +283,7 @@
               (condp-case identical? (.mode state)
 
                 (::open ::split)
-                (condp = (.size edges)
+                (condp == (long (.size edges))
                   
                   1
                   (let [edge (.get edges 0)]
