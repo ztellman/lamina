@@ -21,6 +21,8 @@
     [lamina.executor.utils
      IExecutor]
     [java.util.concurrent
+     BlockingQueue
+     SynchronousQueue
      LinkedBlockingQueue
      ThreadPoolExecutor
      ThreadFactory
@@ -55,28 +57,37 @@
            max-thread-count
            interrupt?]
     :or {idle-timeout 60000
-         min-thread-count 1
-         max-thread-count Integer/MAX_VALUE
          interrupt? false}
     :as options}]
   (when-not (contains? options :name)
     (throw (IllegalArgumentException. "Every executor must have a :name specified.")))
   (let [nm (name (:name options))
-        cnt (atom 0)
         return-probe (pr/probe-channel [nm :return])
         error-probe (pr/probe-channel [nm :error])
-        result-meta {:description {:type :executor, :name nm}}
+
+        bounded? (boolean max-thread-count)
+        min-thread-count (int (or min-thread-count 1))
+        max-thread-count (int (if bounded? min-thread-count Integer/MAX_VALUE))
+
+        ^BlockingQueue q (if bounded?
+                           (LinkedBlockingQueue.)
+                           (SynchronousQueue.))
+
+        cnt (atom 0)
+        ^ThreadFactory tf (reify ThreadFactory
+                            (newThread [_ f]
+                              (doto
+                                (Thread. f)
+                                (.setName (str nm "-" (swap! cnt inc))))))
+        
         pool (ThreadPoolExecutor.
-               (int min-thread-count)
-               (int min-thread-count)
+               min-thread-count
+               max-thread-count
                (long idle-timeout)
                TimeUnit/MILLISECONDS
-               (LinkedBlockingQueue.)
-               (reify ThreadFactory
-                 (newThread [_ f]
-                   (doto
-                     (Thread. f)
-                     (.setName (str nm "-" (swap! cnt inc)))))))
+               q
+               tf)
+        
         stats (fn []
                 {:completed-tasks (.getCompletedTaskCount pool)
                  :pending-tasks (- (.getTaskCount pool) (.getCompletedTaskCount pool))
@@ -84,7 +95,8 @@
                  :num-threads (.getPoolSize pool)})
         stats-channel (pr/probe-channel [nm :stats])]
 
-    (periodically-contract-pool-size pool min-thread-count idle-timeout)
+    (when bounded?
+      (periodically-contract-pool-size pool min-thread-count idle-timeout))
     
     (invoke-repeatedly 1000
       (fn [cancel]
@@ -115,7 +127,6 @@
         (let [result (if timeout
                        (r/expiring-result timeout)
                        (r/result-channel))
-              _ (reset-meta! result (assoc result-meta :timestamp (now)))
               
               complete? (when interrupt? (atom false))
 
@@ -155,11 +166,14 @@
                     (reset! complete? true)
                     (Thread/interrupted)))]
           
-          (expand-pool-size pool max-thread-count)
+          (when bounded?
+            (expand-pool-size pool max-thread-count))
+          
           (.execute pool f)
+
           result)))))
 
-(defonce
+(def
   ^{:doc "A default executor with an unbounded maximum thread count."}
   default-executor (executor
                      {:name "lamina-default-executor"
