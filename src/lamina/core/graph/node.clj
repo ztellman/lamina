@@ -954,8 +954,14 @@
 (defn upstream-callback [src dst join?]
   (fn [state _ err]
     (case state
-      (::closed ::drained) (enqueue-cleanup #(cancel src dst))
-      ::error (enqueue-cleanup (if join? #(error src err false) #(cancel src dst)))
+      (::closed ::drained) (enqueue-cleanup
+                             (fn []
+                               (cancel src [dst :upstream-cleanup])
+                               (cancel src dst)))
+      ::error (enqueue-cleanup
+                (if join?
+                  #(error src err false)
+                  #(cancel src dst)))
       nil)))
 
 (defn downstream-callback [src dst]
@@ -965,10 +971,10 @@
       ::error (enqueue-cleanup #(error dst err false))
       nil)))
 
-(defn siphon-cleanup-callback [callback dst]
+(defn siphon-cleanup-callback [src dst]
   (fn [state _ _]
     (case state
-      (::drained ::closed ::error) (cancel dst callback)
+      (::drained ::closed ::error) (cancel dst [src :upstream])
       nil)))
 
 (defn connect
@@ -988,11 +994,11 @@
                    (not (sneaky-edge? dst))
                    (node? (.next dst)))
 
-             (let [callback (upstream-callback src (.next dst) true)]
-               (on-state-changed (.next dst) callback
-                 callback)
-               (on-state-changed src nil
-                 (siphon-cleanup-callback callback (.next dst)))))
+             (on-state-changed (.next dst) [src :upstream]
+               (upstream-callback src (.next dst) downstream?))
+             
+             (on-state-changed src [(.next dst) :upstream-cleanup]
+               (siphon-cleanup-callback src (.next dst))))
 
            ;; downstream
            (when downstream?
