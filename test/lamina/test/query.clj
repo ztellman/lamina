@@ -59,7 +59,9 @@
               {f1 nil
                f2 nil}
               {:timestamp identity
-               :seq-generator (constantly s)})
+               :seq-generator (fn [pattern]
+                                (assert (#{"abc" "def"} pattern))
+                                s)})
         val1 (get val f1)
         val2 (get val f2)]
 
@@ -111,7 +113,9 @@
               {f1 nil
                f2 nil}
               {:timestamp identity
-               :stream-generator (fn [_] (apply closed-channel s))})
+               :stream-generator (fn [pattern]
+                                   (assert (#{"abc" "def"} pattern))
+                                   (apply closed-channel s))})
         ch1 (get val f1)
         ch2 (get val f2)]
 
