@@ -429,16 +429,16 @@
                   the handler as a transformation of request -> response, eliding the `result-channel` and treating
                   the time spent waiting for it to become realized as part of the handler's invocation.
 
-	   `:implicit?` - whether the instrumentation will be captured by higher-level functions, defaults to true.
+       `:implicit?` - whether the instrumentation will be captured by higher-level functions, defaults to true.
 	
        `:probes` - a map of sub-names (with `:name` implicitly prefixed) onto channels that consume those probes.
 
-	   `:executor` - the executor for the handler.
+       `:executor` - the executor for the handler.
 	
-	   `:result-channel-generator` - a function that takes zero parameters and returns the result-channel that will be
+       `:result-channel-generator` - a function that takes zero parameters and returns the result-channel that will be
 	                                 passed into the handler.
 	
-	   `:error-response` - the response that will be sent if there is an error in the handler."
+       `:error-response` - the response that will be sent if there is an error in the handler."
   [handler
    ch
    {:keys

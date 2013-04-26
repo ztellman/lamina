@@ -96,7 +96,7 @@
                                   (or ch
                                     (-> descriptor
                                       (parse-descriptor options)
-                                      (get "pattern")
+                                      (get :pattern)
                                       stream-generator)))
                                 descriptor->channel))
 
