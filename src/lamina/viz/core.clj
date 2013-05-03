@@ -16,9 +16,27 @@
     [javax.imageio
      ImageIO]
     [javax.swing
-     JFrame JLabel JScrollPane ImageIcon]))
+     JFrame JLabel JScrollPane ImageIcon]
+    [javax.script
+     ScriptEngineManager]))
 
 ;;;
+
+(defn send-to-front [^JFrame frame]
+  (doto frame
+    (.setExtendedState JFrame/NORMAL)
+    (.setAlwaysOnTop true)
+    .repaint
+    .toFront
+    .requestFocus
+    (.setAlwaysOnTop false))
+
+  ;; may I one day be forgiven
+  (when-let [applescript (.getEngineByName (ScriptEngineManager.) "AppleScript")]
+    (try
+      (.eval applescript "tell me to activate")
+      (catch Throwable e
+        ))))
 
 (defn gen-frame [name]
   (delay
@@ -36,12 +54,7 @@
     (.setImage image-icon image)
     (.setVisible frame true)
     (java.awt.EventQueue/invokeLater
-      #(doto frame
-         (.setAlwaysOnTop true)
-         .toFront
-         .repaint
-         .requestFocus
-         (.setAlwaysOnTop false)))))
+      #(send-to-front frame))))
 
 (defn render-dot-string [s]
   (let [bytes (:out (sh "dot" "-Tpng" :in s :out-enc :bytes))]
@@ -137,7 +150,7 @@
                 "}\n"))]
       (str "digraph {\n"
         (when-not (empty? options)
-          (str (format-options "\n" options) "\n"))
+          (str "graph[" (format-options "\n" options) "]\n"))
         (when default-node
           (str (format-node "node" default-node) "\n"))
         (when default-edge
