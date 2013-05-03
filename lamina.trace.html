@@ -157,8 +157,8 @@ logged as an error.</p>
 <p> A :probes option may be defined, giving a hash of probe names onto channels that
  will consume their data:</p>
 
-<p>   {:error (channel-&gt;&gt; (sink #(println "ERROR:" %)))
-    :return (channel-&gt;&gt; (sink #(println "Given" (:args %) ", returned" (:result %))))}</p>
+<p>   {:error (sink-&gt;&gt; #(println "ERROR:" %))
+    :return (sink-&gt;&gt; #(println "Given" (:args %) ", returned" (:result %)))}</p>
 
 <h2></h2>
 

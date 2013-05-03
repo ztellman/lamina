@@ -315,7 +315,7 @@ if <code>channel</code> goes into an error state.</p>
           </div><div class="public">
             <h3><a id="var-enqueue" class="source var-name" href="/src/lamina/core.clj">enqueue</a></h3>
             <h4 class="var-type fn" id="var-type">fn</h4>
-            <div class="usage">[channel message]</div><div class="usage">[channel message &amp; messages]</div>
+            <div class="usage">[channel]</div><div class="usage">[channel message]</div><div class="usage">[channel message &amp; messages]</div>
             
             
             <div class="doc"><p>Enqueues the message or messages into the channel.</p>
@@ -635,7 +635,7 @@ invoking <code>restart</code>, <code>redirect</code>, or <code>complete</code>. 
                  only do this if you're sure there's an outer pipeline that will handle/log the error.
 </code></pre>
 
-<p>  <code>:finally</code> - a function wich is called with zero arguments when the pipeline completes, either due to success or error.</p>
+<p>  <code>:finally</code> - a function which is called with zero arguments when the pipeline completes, either due to success or error.</p>
 
 <p>  <code>:result</code> - the result into which the pipeline's result will be forwarded.  Causes the pipeline to not return any value.</p>
 
