@@ -251,7 +251,7 @@
                         in the same error being logged multiple times.  To hide this error you may define a no-op handler, but
                         only do this if you're sure there's an outer pipeline that will handle/log the error.
 
-     `:finally` - a function wich is called with zero arguments when the pipeline completes, either due to success or error.
+     `:finally` - a function which is called with zero arguments when the pipeline completes, either due to success or error.
 
      `:result` - the result into which the pipeline's result will be forwarded.  Causes the pipeline to not return any value.
 

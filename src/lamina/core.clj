@@ -103,6 +103,8 @@
 
 (defn enqueue
   "Enqueues the message or messages into the channel."
+  ([channel]
+     nil)
   ([channel message]
      (u/enqueue channel message))
   ([channel message & messages]

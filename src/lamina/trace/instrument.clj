@@ -12,11 +12,12 @@
     [lamina core]
     [lamina.trace.probe :only (probe-channel probe-enabled?)])
   (:require
+    [lamina.trace.context :as trace-context]
     [lamina.core.context :as context]
     [lamina.executor.utils :as ex]
     [lamina.trace.timer :as t]))
 
-(defrecord+ Enter [name ^long timestamp args])
+(defrecord+ Enter [name ^long timestamp args context])
 
 (defmethod print-method Enter [x writer]
   (print-method (into {} x) writer))
@@ -54,7 +55,7 @@
    args]
   `(do
      (when (probe-enabled? ~enter-probe)
-       (enqueue ~enter-probe (Enter. ~name (System/currentTimeMillis) ~args)))
+       (enqueue ~enter-probe (Enter. ~name (System/currentTimeMillis) ~args (trace-context/context))))
      (let [executor# ~executor
            timer# (t/enqueued-timer
                     ~executor
@@ -66,7 +67,7 @@
                     :implicit? ~implicit?)]
        (ex/execute executor# timer#
          (~(if with-bindings? `potemkin/fast-bound-fn `fn) [] ~invoke)
-         ~(when timeout `(when ~timeout (~timeout ~args)))))))
+         ~(when timeout `(when ~timeout (~timeout ~@args)))))))
 
 (defmacro fn-body
   [{:keys [name
@@ -79,7 +80,7 @@
    args]
   `(do
      (when (probe-enabled? ~enter-probe)
-       (enqueue ~enter-probe (Enter. ~name (System/currentTimeMillis) ~args)))
+       (enqueue ~enter-probe (Enter. ~name (System/currentTimeMillis) ~args (trace-context/context))))
      (let [timer# (t/timer
                     :capture ~capture
                     :name ~name
@@ -208,8 +209,8 @@
    A :probes option may be defined, giving a hash of probe names onto channels that
    will consume their data:
 
-     {:error (channel->> (sink #(println \"ERROR:\" %)))
-      :return (channel->> (sink #(println \"Given\" (:args %) \", returned\" (:result %))))}
+     {:error (sink->> #(println \"ERROR:\" %))
+      :return (sink->> #(println \"Given\" (:args %) \", returned\" (:result %)))}
 
   ----------
   TIMEOUTS
