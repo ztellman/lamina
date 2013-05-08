@@ -1,4 +1,4 @@
-(defproject lamina "0.5.0-rc1"
+(defproject lamina "0.5.0-rc2"
   :description "event-driven data structures for clojure"
   :min-lein-version "2.0.0"
   :dependencies [[org.clojure/tools.logging "0.2.4"]
