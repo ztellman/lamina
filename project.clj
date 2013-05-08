@@ -25,11 +25,11 @@
                     lamina.query
                     lamina.time]
           :output-dir "autodoc"}
-  :jvm-opts ["-server"
-             "-XX:+UseConcMarkSweepGC"
-             "-Xmx2g"
-             "-XX:NewSize=1g"
-             "-XX:MaxPermSize=256m"]
+  :jvm-opts ^:replace ["-server"
+                       "-XX:+UseConcMarkSweepGC"
+                       "-Xmx2g"
+                       "-XX:NewSize=1g"
+                       "-XX:MaxPermSize=256m"]
   :repositories {"sonatype-oss-public"
                  "https://oss.sonatype.org/content/groups/public/"}
   :test-selectors {:default #(not (some #{:wiki :benchmark :stress}

@@ -168,6 +168,17 @@
     (chain number time-unit)
     #(keyword (apply str %))))
 
+(def number-array
+  (token
+    (chain
+      (ignore whitespace)
+      (ignore #"\[")
+      (chain number (many (second* whitespace number)))
+      (ignore whitespace)
+      (expect #"\]"))
+    (fn [[[a b]]]
+      (vec (list* a b)))))
+
 (def tuple
   (token
     (chain
@@ -177,8 +188,7 @@
       (ignore whitespace)
       (expect #"\]"))
     (fn [[[a b]]]
-      (let [fields (map keyword (list* a b))]
-        (list* 'tuple fields)))))
+      (list* 'tuple a b))))
 
 (def value-set
   (token
@@ -204,7 +214,7 @@
     (fn [[a b c]]
       (list b a c))))
 
-(let [t (delay (one-of tuple pair relationship operators field time-interval number stream))]
+(let [t (delay (one-of tuple number-array pair relationship operators field time-interval number stream))]
   (defn param [s]
     (@t s)))
 

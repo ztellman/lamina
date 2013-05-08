@@ -90,9 +90,15 @@
   (if (vector? q)
 
     ;; composed operators
-    (if (string? (first q))
+    (cond
+      (string? (first q))
       {:pattern (first q)
        :operators (map transform-operator (rest q))}
+
+      (number? (first q))
+      q
+
+      :else
       {:operators (map transform-operator q)})
 
     ;; single operator

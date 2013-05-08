@@ -127,7 +127,7 @@
      :post-enqueue-fn post-enqueue-fn
      :consume-fn next-non-empty-msg
      :enqueued-values (map
-                        #(hash-map :foo %1 :bar %2)
+                        #(hash-map :foo %1 :bar %2 :baz {:quux %2})
                         [:a :a :b :b :c]
                         [:x :x :z :y :y])}
     
@@ -147,7 +147,8 @@
     [".group-by(foo).select(bar).group-by(bar).rate()"]
 
     {[:a :x] 2, [:b :z] 1, [:c :y] 1, [:b :y] 1}
-    [".group-by([foo bar]).rate()"]
+    [".group-by([foo bar]).rate()"
+     ".group-by([foo baz.quux]).rate()"]
 
     {:x 2}
     [".where(foo = 'a').group-by(bar).rate()"
