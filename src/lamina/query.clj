@@ -238,9 +238,9 @@
         (keys descriptor->ch)
         (map
           (fn [ch]
-            (->> (repeatedly #(advance-until-message ch))
-              (take-while #(not= ::drained %))
-              (map #(hash-map :timestamp (time/now q) :value %))))
+            (let [ch (map* #(hash-map :timestamp (time/now q) :value %) ch)]
+              (->> (repeatedly #(advance-until-message ch))
+                (take-while #(not= ::drained %)))))
           (vals descriptor->ch))))))
 
 (defn query-seq

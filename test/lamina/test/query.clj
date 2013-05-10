@@ -54,7 +54,7 @@
 
   (let [s (range 100 120)
         f1 "&abc.partition-every(period: 10ms)"
-        f2 "&def.partition-every(period: 100ms)"
+        f2 "&def.partition-every(period: 15ms)"
         val (query-seqs
               {f1 nil
                f2 nil}
@@ -70,8 +70,8 @@
     (is (= [(range 100 111) (range 111 120) nil]
           (map :value val1)))
 
-    (is (= [200] (map :timestamp val2)))
-    (is (= [(range 100 120)] (map :value val2)))))
+    (is (= [115 130] (map :timestamp val2)))
+    (is (= [(range 100 116) (range 116 120)] (map :value val2)))))
 
 (deftest test-query-stream
 
@@ -108,7 +108,7 @@
 
   (let [s (range 100 120)
         f1 "&abc.partition-every(period: 10ms)"
-        f2 "&def.partition-every(period: 100ms)"
+        f2 "&def.partition-every(period: 15ms)"
         val (query-streams
               {f1 nil
                f2 nil}
@@ -121,7 +121,7 @@
 
     (is (= [(range 100 111) (range 111 120)]
           (channel->seq ch1)))
-    (is (= [(range 100 120)]
+    (is (= [(range 100 116) (range 116 120)]
           (channel->seq ch2)))))
 
 (deftest test-group-by
