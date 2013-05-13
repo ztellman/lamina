@@ -89,7 +89,8 @@
                tf)
         
         stats (fn []
-                {:completed-tasks (.getCompletedTaskCount pool)
+                {:name nm
+                 :completed-tasks (.getCompletedTaskCount pool)
                  :pending-tasks (- (.getTaskCount pool) (.getCompletedTaskCount pool))
                  :active-threads (.getActiveCount pool)
                  :num-threads (.getPoolSize pool)})
@@ -102,7 +103,8 @@
       (fn [cancel]
         (if (.isShutdown pool)
           (cancel)
-          (enqueue stats-channel (stats)))))
+          (when (pr/probe-enabled? stats-channel)
+            (enqueue stats-channel (stats))))))
 
     (reify
 
