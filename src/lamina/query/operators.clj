@@ -99,6 +99,12 @@
     (let [f (comp normalize-for-comparison (getter field))]
       #(= (f %) value))))
 
+(letfn [(not-equal [field value]
+          (let [f (comp normalize-for-comparison (getter field))]
+            #(not= (f %) value)))]
+  (q/def-query-comparator not= not-equal)
+  (q/def-query-comparator != not-equal))
+
 (q/def-query-comparator >
   (fn [field value]
     (let [f (comp normalize-for-comparison (getter field))]
