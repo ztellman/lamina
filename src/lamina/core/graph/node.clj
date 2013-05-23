@@ -102,7 +102,7 @@
      if a callback with that identifier is currently registered.")
 
   ;;
-  (^NodeState state [_]
+  (state ^NodeState [_]
     "Returns the NodeState for this node.")
   (set-state [_ val]
     )

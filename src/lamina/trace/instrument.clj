@@ -30,16 +30,8 @@
         (~instrument-macro ~options-map (~f) [])) 
      ([a#]
         (~instrument-macro ~options-map (~f a#) [a#]))
-     ([a# b#]
-        (~instrument-macro ~options-map (~f a# b#) [a# b#]))
-     ([a# b# c#]
-        (~instrument-macro ~options-map (~f a# b# c#) [a# b# c#]))
-     ([a# b# c# d#]
-        (~instrument-macro ~options-map (~f a# b# c# d#) [a# b# c# d#]))
-     ([a# b# c# d# e#]
-        (~instrument-macro ~options-map (~f a# b# c# d# e#) [a# b# c# d# e#]))
-     ([a# b# c# d# e# ~'& rest#]
-        (~instrument-macro ~options-map (apply ~f a# b# c# d# e# rest#) (list* a# b# c# d# e# rest#)))))
+     ([a# ~'& rest#]
+        (~instrument-macro ~options-map (apply ~f a# rest#) (list* a# rest#)))))
 
 (defmacro task-fn-body
   [{:keys [name
@@ -95,7 +87,7 @@
            (when (async-promise? result#)
              (t/mark-waiting timer#))
            (run-pipeline result#
-             {:error-handler (fn [err#] (t/mark-error timer# err#))}
+             {:error-handler (partial t/mark-error timer#)}
              (fn [x#] (t/mark-return timer# x#)))
            result#)
          (catch Exception e#

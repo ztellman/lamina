@@ -22,7 +22,9 @@
 (import-vars
   [lamina.query.core
 
-   def-query-operator])
+   def-query-operator
+   def-query-comparator
+   def-query-lookup])
 
 (defn parse-descriptor
   "Parses the query descriptor down to the canonical representation."
@@ -258,14 +260,21 @@
 
    `:seq-generator` - a function that takes a pattern (i.e. in \"abc.rate()\" the pattern is \"abc\") and returns the base
                       sequence.  This is useful for merging together multiple streams in your query."
-  [descriptor
-   {:keys [timestamp
-           payload
-           period
-           seq-generator]
-    :or {payload identity}
-    :as options}
-   s]
-  (->> (query-seqs {descriptor s} options)
-    vals
-    first))
+  ([descriptor s]
+     (->> s
+       (query-seq descriptor
+         {:timestamp (constantly 0)
+          :period 1})
+       first
+       :value))
+  ([descriptor
+    {:keys [timestamp
+            payload
+            period
+            seq-generator]
+     :or {payload identity}
+     :as options}
+    s]
+     (->> (query-seqs {descriptor s} options)
+       vals
+       first)))

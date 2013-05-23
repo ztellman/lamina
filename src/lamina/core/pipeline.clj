@@ -286,7 +286,11 @@
         depth (max-depth len)
         location (str (ns-name *ns*) ", line " (:line (meta &form)))
         fn-transform (gensym "fn-transform")
-        expand-subscribe (fn [idx] `(subscribe this## result## initial-val## val## ~fn-transform ~idx))]
+        expand-subscribe (fn [idx] `(subscribe this## result## initial-val## val## ~fn-transform ~idx))
+        stage-ids (take (count stages)
+                    (map
+                      #(gensym (str "stage" % "_"))
+                      (iterate inc 0)))]
 
     ;; handle compositions of 
     `(let [executor# ~executor
@@ -341,13 +345,16 @@
                       (identical? nil (r/result result##)))
                 (try
                   ;; unwind the stages
-                  (loop [val## val# stage## (long stage#)]
-                    (case (int stage##)
-                      ~@(interleave
-                          (iterate inc 0)
-                          (map
-                            #(unwind-stages % (drop % stages) depth expand-subscribe unwrap?)
-                            (range (inc len))))))
+                  (let [~@(mapcat list
+                            stage-ids
+                            stages)]
+                    (loop [val## val# stage## (long stage#)]
+                      (case (int stage##)
+                        ~@(interleave
+                            (iterate inc 0)
+                            (map
+                              #(unwind-stages % (drop % stage-ids) depth expand-subscribe unwrap?)
+                              (range (inc len)))))))
                   ~@(map
                       (fn [ex] `(catch ~ex ex# (throw ex#)))
                       (distinct flow-exceptions))

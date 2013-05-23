@@ -6,24 +6,23 @@
 ;;   the terms of this license.
 ;;   You must not remove this notice, or any other, from this software.
 
-(ns lamina.test.utils)
+(ns lamina.test.utils
+  (:require [criterium.core :as c]))
 
-(if (and (= 1 (:major *clojure-version*)) (= 2 (:minor *clojure-version*)))
-  (defmacro bench [& _])
-  (do
-    (require '[criterium.core])
-    (defmacro long-bench [name & body]
-      `(do
-         (println "\n-----\n" ~name "\n-----\n")
-         (criterium.core/bench
-           (do ~@body)
-           :reduce-with #(and %1 %2))))
-    (defmacro bench [name & body]
-      `(do
-         (println "\n-----\n" ~name "\n-----\n")
-         (criterium.core/quick-bench
-           (do ~@body)
-           :reduce-with #(and %1 %2))))))
+(require '[criterium.core])
+(defmacro long-bench [name & body]
+  `(do
+     (println "\n-----\n" ~name "\n-----\n")
+     (c/bench
+       (do ~@body)
+       :reduce-with #(and %1 %2))))
+
+(defmacro bench [name & body]
+  `(do
+     (println "\n-----\n" ~name "\n-----\n")
+     (c/quick-bench
+       (do ~@body)
+       :reduce-with #(and %1 %2))))
 
 (defmacro dotimes* [[i n] & body]
   (let [display-interval (max 1000 (/ n 100))]

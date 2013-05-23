@@ -262,6 +262,7 @@
          ;; rinse, repeat
          (fn [_]
            (restart)))
+
        (try-heartbeat options connection
          (try-instrument options
            ^{::close-fn close-fn
