@@ -460,7 +460,7 @@
 (defn periodically
   "Returns a channel.  Every `period` milliseconds, `f` is invoked with no arguments
    and the value is emitted as a message."
-  ([{:keys [task-queue period priority close-latch lazy?]
+  ([{:keys [task-queue immediate? period priority close-latch lazy?]
      :or {task-queue (t/task-queue)
           period (t/period)
           priority 0}}
@@ -479,7 +479,8 @@
                                 (closed? ch))
                           (close ch)
                           (cancel-callback)))))
-                  {:priority priority}))]
+                  {:priority priority
+                   :immediate? immediate?}))]
 
        (if lazy?
          (t/invoke-lazily task-queue f)

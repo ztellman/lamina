@@ -114,7 +114,8 @@
   ([period f]
      (invoke-repeatedly (task-queue) period f))
   ([task-queue period f]
-     (let [target-time (atom (+ (now task-queue) period))
+     (let [immediate? (-> f meta :immediate?)
+           target-time (atom (+ (now task-queue) (if immediate? 0 period)))
            latch (atom false)
            cancel-callback #(reset! latch true)
            schedule-next (fn schedule-next []
