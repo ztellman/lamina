@@ -594,7 +594,7 @@ of all messages from the source channel in the last <code>period</code> millisec
           </div><div class="public">
             <h3><a id="var-periodically" class="source var-name" href="/src/lamina/core/operators.clj">periodically</a></h3>
             <h4 class="var-type fn" id="var-type">fn</h4>
-            <div class="usage">[{:keys [task-queue period priority close-latch lazy?], :or {task-queue (t/task-queue), period (t/period), priority 0}} f]</div>
+            <div class="usage">[{:keys [task-queue immediate? period priority close-latch lazy?], :or {task-queue (t/task-queue), period (t/period), priority 0}} f]</div>
             
             
             <div class="doc"><p>Returns a channel.  Every <code>period</code> milliseconds, <code>f</code> is invoked with no arguments
