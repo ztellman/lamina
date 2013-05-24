@@ -195,11 +195,11 @@
                   (fn []
                     (enqueue ch (payload x))
                     (enqueue-next (rest s) ch))
-                  {:priority Integer/MAX_VALUE})))
+                  {:priority -1})))
             (time/invoke-at q (inc (time/now q))
               (with-meta
                 #(close ch)
-                {:priority -1}))))
+                {:priority Integer/MIN_VALUE}))))
 
         chs (repeatedly (count descriptor->seq) channel)
 

@@ -689,7 +689,7 @@
                       (enqueue ch* msg)
                       (finally
                         (r/success r :lamina/consumed))))
-                  {:priority Integer/MAX_VALUE}))
+                  {:priority -1}))
 
               ;; advance to the message entering the topology
               (when auto-advance?

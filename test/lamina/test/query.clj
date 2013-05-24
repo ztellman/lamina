@@ -22,7 +22,7 @@
               (range 20))]
     (is (= [10 20 30]
           (map :timestamp val)))
-    (is (= [(range 11) (range 11 20) nil]
+    (is (= [(range 10) (range 10 20) nil]
           (map :value val))))
 
   ;; larger period than interval of data
@@ -46,7 +46,7 @@
 
     (is (= [110 120 130]
           (map :timestamp val1)))
-    (is (= [(range 100 111) (range 111 120) nil]
+    (is (= [(range 100 110) (range 110 120) nil]
           (map :value val1)))
 
     (is (= [200] (map :timestamp val2)))
@@ -67,11 +67,11 @@
 
     (is (= [110 120 130]
           (map :timestamp val1)))
-    (is (= [(range 100 111) (range 111 120) nil]
+    (is (= [(range 100 110) (range 110 120) nil]
           (map :value val1)))
 
     (is (= [115 130] (map :timestamp val2)))
-    (is (= [(range 100 116) (range 116 120)] (map :value val2)))))
+    (is (= [(range 100 115) (range 115 120)] (map :value val2)))))
 
 (deftest test-query-stream
 
@@ -80,7 +80,7 @@
              #(partition-every {:period 10} %)
              {:timestamp identity}
              (apply closed-channel (range 20)))]
-    (is (= [(range 11) (range 11 20)]
+    (is (= [(range 10) (range 10 20)]
           (channel->lazy-seq ch))))
 
   ;; larger period than interval of data
@@ -101,7 +101,7 @@
         ch1 (get val f1)
         ch2 (get val f2)]
 
-    (is (= [(range 100 111) (range 111 120)]
+    (is (= [(range 100 110) (range 110 120)]
           (channel->seq ch1)))
     (is (= [(range 100 120)]
           (channel->seq ch2))))
@@ -119,9 +119,9 @@
         ch1 (get val f1)
         ch2 (get val f2)]
 
-    (is (= [(range 100 111) (range 111 120)]
+    (is (= [(range 100 110) (range 110 120)]
           (channel->seq ch1)))
-    (is (= [(range 100 116) (range 116 120)]
+    (is (= [(range 100 115) (range 115 120)]
           (channel->seq ch2)))))
 
 (deftest test-group-by
