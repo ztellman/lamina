@@ -89,20 +89,15 @@
     (name x)
     x))
 
-(q/def-query-comparator <
-  (fn [field value]
-    (let [f (comp normalize-for-comparison (getter field))]
-      #(< (f %) value))))
-
-(q/def-query-comparator =
-  (fn [field value]
-    (let [f (comp normalize-for-comparison (getter field))]
-      #(= (f %) value))))
-
-(q/def-query-comparator >
-  (fn [field value]
-    (let [f (comp normalize-for-comparison (getter field))]
-      #(> (f %) value))))
+(letfn [(function-comparator [compare]
+          (fn [field value]
+            (let [f (comp normalize-for-comparison (getter field))]
+              #(compare (f %) value))))]
+  (q/def-query-comparator < (function-comparator <))
+  (q/def-query-comparator > (function-comparator >))
+  (q/def-query-comparator = (function-comparator =))
+  (q/def-query-comparator not= (function-comparator not=))
+  (q/def-query-comparator != (function-comparator not=)))
 
 (q/def-query-comparator "~="
   (fn [field value]

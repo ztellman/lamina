@@ -103,6 +103,12 @@
     4.0
     [".x.where(y = 4).y.sum()"]
 
+    7.0
+    [".x.where(y != 3).y.sum()"]
+
+    7.0
+    [".x.where(y not= 3).y.sum()"]
+
     6.0
     [".x.y.where(_ < 4).sum()"]
 
