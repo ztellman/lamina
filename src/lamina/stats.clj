@@ -8,11 +8,11 @@
 
 (ns lamina.stats
   (:use
+    [lamina.core.utils :only (log-warn)]
     [lamina core api]
     [lamina.core.channel :only (mimic)]
     [lamina.stats.utils :only (update)])
   (:require
-    [clojure.tools.logging :as log]
     [lamina.time :as t]
     [lamina.stats.sample :as sample]
     [lamina.stats.moving-average :as avg]
@@ -58,7 +58,7 @@
   (let [warn-str (format "non-numerical value in '%s':" name)]
     {:accumulator (fn [n]
                     (if-not (number? n)
-                      (log/warn warn-str (pr-str n))
+                      (log-warn warn-str (pr-str n))
                       (f n)))}))
 
 (defn sum

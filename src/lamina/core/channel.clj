@@ -16,8 +16,7 @@
     [lamina.core.lock :as l]
     [lamina.core.result :as r]
     [lamina.time :as t]
-    [clojure.string :as str]
-    [clojure.tools.logging :as log])
+    [clojure.string :as str])
   (:import
     [lamina.core.utils
      IChannelMarker
@@ -240,7 +239,8 @@
            listener-result
            on-timeout
            on-error
-           on-false]
+           on-false
+           task-queue]
     :as options}]
   `(g/read-node* (emitter-node ~ch) ~@(apply concat options)))
 
@@ -449,48 +449,6 @@
    (remove* even? (channel 2 3 4)) => [3]"
   [f channel]
   (filter* (complement f) channel))
-
-;;;
-
-(defn check-idle [^AtomicLong last-message interval result task-queue]
-  (let [mark (.get last-message)]
-    (t/invoke-in task-queue (- interval (- (System/currentTimeMillis) mark))
-      (fn []
-        (if (= mark (.get last-message))
-          (r/success result true)
-          (check-idle last-message interval result task-queue))))))
-
-(defn idle-result
-  "A result which will be realized if `channel` doesn't emit a message for `interval` milliseconds."
-  ([interval channel]
-     (idle-result interval (t/task-queue) channel))
-  ([interval task-queue channel]
-     (let [last-message (AtomicLong. (System/currentTimeMillis))
-           result (r/result-channel)
-           callback (fn [_] (.set last-message (System/currentTimeMillis)))]
-
-       (receive-all (tap channel) callback)
-       (r/subscribe result
-         (r/result-callback
-           (fn [_] (cancel-callback channel callback))
-           (fn [_] (cancel-callback channel callback))))
-    
-       (check-idle last-message interval result task-queue)
-
-       result)))
-
-(defn close-on-idle
-  "Sets up a watcher which will close `channel` if it doesn't emit a message for `interval` milliseconds.
-
-   Returns `channel`, for chaining convenience."
-  ([interval channel]
-     (close-on-idle interval (t/task-queue) channel))
-  ([interval task-queue channel]
-     (r/subscribe (idle-result interval task-queue channel)
-       (r/result-callback
-         (fn [_] (close channel))
-         (fn [_])))
-     channel))
 
 ;;;
 

@@ -18,8 +18,7 @@
     [lamina.core.lock :as l]
     [lamina.core.result :as r]
     [lamina.time :as t]
-    [lamina.core.pipeline :as p]
-    [clojure.tools.logging :as log])
+    [lamina.core.pipeline :as p])
   (:import
     [lamina.core.lock
      Lock]
@@ -88,7 +87,7 @@
 
         ;; something's already consuming the channel
         (do
-          (log/warn "attempting multiple consumption with" description)
+          (log-warn "attempting multiple consumption with" description)
           (when dst
             (error dst :lamina/already-consumed! false))
           (r/error-result :lamina/already-consumed!))
@@ -162,7 +161,7 @@
     (fn [msg]
       (p/run-pipeline msg
         {:error-handler (fn [ex]
-                          (log/error ex "error in receive-in-order")
+                          (log-error ex "error in receive-in-order")
                           (p/complete nil))}
         f))))
 

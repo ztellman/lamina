@@ -9,8 +9,6 @@
 (ns lamina.core.lock
   (:use
     [potemkin])
-  (:require
-    [clojure.tools.logging :as log])
   (:import
     [java.util.concurrent Semaphore]
     [java.util.concurrent.locks ReentrantLock ReentrantReadWriteLock]))

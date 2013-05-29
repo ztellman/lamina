@@ -15,8 +15,7 @@
     [lamina.trace.timer :as t]
     [lamina.core.result :as r]
     [lamina.executor.utils :as ex]
-    [lamina.core.context :as context]
-    [clojure.tools.logging :as log])
+    [lamina.core.context :as context])
   (:import
     [lamina.core.result
      ResultChannel
@@ -316,7 +315,7 @@
                `((try*
                    (~finally)
                    (catch Throwable e#
-                     (log/error e# "error in finally clause"))))))
+                     (u/log-error e# "error in finally clause"))))))
 
          ~(unify-gensyms
             `(gen-timer [_# stage##]
@@ -369,7 +368,7 @@
            (complex-error-handler error-handler (meta &form))
            `(error [this# result# _# ex#]
               (when-not ~(contains? options :error-handler)
-                (log/error ex# (str "Unhandled exception in pipeline at " ~location)))
+                (u/log-error ex# (str "Unhandled exception in pipeline at " ~location)))
               (run-finally this#)
               (if result#
                 (u/error result# ex# false)

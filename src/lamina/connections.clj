@@ -9,11 +9,10 @@
 (ns lamina.connections
   (:use
     [potemkin]
-    [lamina.core.utils :only (assoc-record)]
+    [lamina.core.utils :only (assoc-record log-error)]
     [lamina core trace])
   (:require
     [lamina.core.lock :as lock]
-    [clojure.tools.logging :as log]
     [lamina.core.result :as r]))
 
 
@@ -69,7 +68,7 @@
               (try
                 (on-connected conn)
                 (catch Throwable e
-                  (log/error e "Error in on-connected callback"))))
+                  (log-error e "Error in on-connected callback"))))
             (success @connection conn)
             (trace {:state :connected})
             (closed-result conn))))

@@ -10,14 +10,14 @@
   (:use
     [potemkin])
   (:require
+    [lamina.time :as t]
     [lamina.core.watch :as w]
     [lamina.core.named :as n]
     [lamina.core.utils :as u]
     [lamina.core.channel :as ch]
     [lamina.core.pipeline :as p]
     [lamina.core.result :as r]
-    [lamina.core.operators :as op]
-    [clojure.tools.logging :as log]))
+    [lamina.core.operators :as op]))
 
 ;;;
 
@@ -49,10 +49,8 @@
    on-drained
    on-error
    cancel-callback
-   idle-result
    closed-result
    drained-result
-   close-on-idle
 
    map*
    filter*
@@ -147,7 +145,7 @@
             (when-not (closed? ch)
               (recur (rest s)))))
         (catch Exception e
-          (log/error e "Error in lazy-seq->channel."))
+          (u/log-error e "Error in lazy-seq->channel."))
         (finally
           (close ch))))
 
@@ -345,6 +343,43 @@
          ch##))))
 
 ;;;
+
+(defn idle-result
+  "A result which will be realized if `channel` doesn't emit a message for `interval` milliseconds."
+  ([interval channel]
+     (idle-result interval (t/task-queue) channel))
+  ([interval task-queue channel]
+     (let [target-time (atom (+ (t/now) interval))
+           ch (tap channel)]
+
+       (ground ch)
+       
+       (p/run-pipeline ch
+         {:error-handler (fn [_])}
+         #(read-channel* %
+            :task-queue task-queue
+            :timeout (- @target-time (t/now))
+            :on-timeout ::timeout
+            :on-drained ::timeout)
+         #(if (= ::timeout %)
+            (p/complete true)
+            (let [to-sleep (- @target-time (t/now))]
+              (r/timed-result to-sleep to-sleep)))
+         (fn [slept]
+           (swap! target-time + (- interval slept))
+           (restart))))))
+
+(defn close-on-idle
+  "Sets up a watcher which will close `channel` if it doesn't emit a message for `interval` milliseconds.
+
+   Returns `channel`, for chaining convenience."
+  ([interval channel]
+     (close-on-idle interval (t/task-queue) channel))
+  ([interval task-queue channel]
+     (p/run-pipeline (idle-result interval task-queue channel)
+       {:error-handler (fn [_])}
+       (fn [_] (close channel)))
+     channel))
 
 (defn wait-for-message
   "Blocks for the next message from the channel. If the timeout elapses without a message,

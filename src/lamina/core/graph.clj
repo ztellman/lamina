@@ -114,42 +114,51 @@
                listener-result
                on-timeout
                on-false
-               on-drained]
+               on-drained
+               task-queue]
+        :or {task-queue 'lamina.time/default-task-queue}
         :as options}]
-  (unify-gensyms
-    `(let [result## (read-node ~n
-                      ~predicate
-                      ~(when predicate
-                         (or on-false :lamina/false))
-                      ~result)]
+  (let [timeout? (contains? options :timeout)]
+    (unify-gensyms
+     `(let [result## (read-node ~n
+                       ~predicate
+                       ~(when predicate
+                          (or on-false :lamina/false))
+                       ~result)
+            timeout-latch## ~(when timeout?
+                               `(atom false))
+            cancel-timeout## ~(when timeout?
+                                `(let [timeout# ~timeout]
+                                   (when (and timeout# (instance? ResultChannel result##))
+                                     (t/invoke-in ~task-queue timeout#
+                                       (fn []
+                                         (reset! timeout-latch## true)
+                                         ~(if on-timeout
+                                            `(r/success result## ~on-timeout)
+                                            `(u/error result## :lamina/timeout! false)))))))]
+       
+        ;; downstream results for listeners
+        ~@(when (contains? options :listener-result)
+            `((r/enqueue-to-listeners
+                (r/listeners result##)
+                ~listener-result)))
 
-       ;; timeouts
-       ~@(when (contains? options :timeout)
-           `((let [timeout# ~timeout]
-               (when (and timeout# (instance? ResultChannel result##))
-                 (t/invoke-in timeout#
-                   (fn []
-                     ~(if on-timeout
-                        `(r/success result## ~on-timeout)
-                        `(u/error result## :lamina/timeout! false))))))))
-
-       ;; downstream results for listeners
-       ~@(when (contains? options :listener-result)
-           `((r/enqueue-to-listeners
-               (r/listeners result##)
-               ~listener-result)))
-
-       ;; drained result
-       ~(if-not (contains? options :on-drained)
-          `result##
-          `(if (instance? SuccessResult result##)
-             result##
-             (let [result# (r/result-channel)]
-               (r/subscribe result##
-                 (r/result-callback
-                   (fn [x#] (r/success result# x#))
-                   (fn [err#]
-                     (if (identical? :lamina/drained! err#)
-                       (r/success result# ~on-drained)
-                       (u/error result# err# false)))))
-               result#))))))
+        ;; drained result
+        ~(if-not (contains? options :on-drained)
+           `result##
+           `(if (instance? SuccessResult result##)
+              result##
+              (let [result# (r/result-channel)]
+                (r/subscribe result##
+                  (r/result-callback
+                    (fn [x#]
+                      (when (and timeout-latch## (not @timeout-latch##))
+                        (cancel-timeout##))
+                      (r/success result# x#))
+                    (fn [err#]
+                      (when (and timeout-latch## (not @timeout-latch##))
+                        (cancel-timeout##))
+                      (if (identical? :lamina/drained! err#)
+                        (r/success result# ~on-drained)
+                        (u/error result# err# false)))))
+                result#)))))))

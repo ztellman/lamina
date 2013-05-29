@@ -14,8 +14,7 @@
     [clojure.string :as str]
     [lamina.core.channel :as c]
     [lamina.core.graph :as g]
-    [lamina.core.result :as r]
-    [clojure.tools.logging :as log])
+    [lamina.core.result :as r])
   (:import
     [lamina.core.utils
      IChannelMarker
@@ -44,7 +43,7 @@
   (enqueue [_ msg]
     (let [result (g/propagate (c/receiver-node channel) msg true)]
       (when (and log-on-disabled? (identical? :lamina/grounded result))
-        (log/error msg (str "error on inactive probe: " description)))
+        (log-error msg (str "error on inactive probe: " description)))
       result))
   IProbe
   (probe-enabled? [_]
@@ -54,7 +53,7 @@
       (try
         (c enabled?)
         (catch Exception e
-          (log/error e "Error in on-enabled-changed callback.")))))
+          (log-error e "Error in on-enabled-changed callback.")))))
 
   IChannelMarker
   IChannel

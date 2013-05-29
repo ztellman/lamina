@@ -10,8 +10,6 @@
   (:use
     [lamina.core.utils]
     [potemkin])
-  (:require
-    [clojure.tools.logging :as log])
   (:import
     [java.util.concurrent
      ThreadFactory
@@ -55,14 +53,15 @@
                              #(try
                                 (f)
                                 (catch Throwable e
-                                  (log/error e "Error in delayed invocation")))))]
+                                  (log-error e "Error in delayed invocation")))))]
           (if (<= delay 0)
             (enqueue-fn)
             (.schedule task-queue
               ^Runnable enqueue-fn
               (long (* 1e6 delay))
-              TimeUnit/NANOSECONDS)))
-        true)
+              TimeUnit/NANOSECONDS))
+          
+          #(.remove task-queue enqueue-fn)))
       (invoke-lazily- [_ f]
         (f))
       IClock
@@ -159,28 +158,23 @@
   
   ITaskQueue
   (invoke-in- [_ delay f]
-    (if (and discard-past-events? (neg? delay))
-
-      false
-
-      (do
-        (.add tasks
-          (TaskTuple. (+ @now delay)
-            (if-not (.get running?)
-              (fn []
-
-                (f)
-
-                ;; flush pending functions
-                (.set running? true)
-                (loop [f (.poll pending)]
-                  (when f
-                    (f)
-                    (recur (.poll pending)))))
-
-              f)))
-
-        true)))
+    (when-not (and discard-past-events? (neg? delay))
+      (let [task (TaskTuple. (+ @now delay)
+                   (if-not (.get running?)
+                     (fn []
+                       
+                       (f)
+                       
+                       ;; flush pending functions
+                       (.set running? true)
+                       (loop [f (.poll pending)]
+                         (when f
+                           (f)
+                           (recur (.poll pending)))))
+                     
+                     f))]
+        (.add tasks task)
+        #(.remove tasks task))))
 
   (invoke-lazily- [_ f]
     (if-not (.get running?)

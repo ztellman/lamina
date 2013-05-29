@@ -12,7 +12,6 @@
   (:require
     [lamina.query.core :as q]
     [clojure.string :as str]
-    [clojure.tools.logging :as log]
     [lamina.time :as t]
     [lamina.stats])
   (:import

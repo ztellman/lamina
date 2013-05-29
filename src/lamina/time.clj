@@ -121,6 +121,7 @@
 
    with-task-queue
    task-queue
+   default-task-queue
    non-realtime-task-queue
    advance
    advance-until])

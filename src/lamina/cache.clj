@@ -8,10 +8,9 @@
 
 (ns lamina.cache
   (:use
+    [lamina.core.utils]
     [potemkin :only (definterface+)]
     [lamina.core.channel :only (channel channel* on-closed on-error close siphon)])
-  (:require
-    [clojure.tools.logging :as log])
   (:import
     [java.util.concurrent
      ConcurrentHashMap]))
@@ -47,7 +46,7 @@
                 @pre-existing
                 (let [ch @thunk]
                   (on-closed ch #(release this id))
-                  (on-error ch #(log/error % "error in channel-cache"))
+                  (on-error ch #(log-error % "error in channel-cache"))
                   (when on-create (on-create ch))
                   ch))))))
       (ids [_]

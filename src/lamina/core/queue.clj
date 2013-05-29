@@ -12,8 +12,7 @@
   (:require
     [lamina.core.utils :as u]
     [lamina.core.result :as r]
-    [lamina.core.lock :as l]
-    [clojure.tools.logging :as log])
+    [lamina.core.lock :as l])
   (:import
     [clojure.lang PersistentQueue]
     [lamina.core.lock AsymmetricLock]

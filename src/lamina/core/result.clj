@@ -13,8 +13,7 @@
   (:require
     [lamina.core.return-codes :as codes]
     [lamina.core.lock :as l]
-    [lamina.time :as t]
-    [clojure.tools.logging :as log])
+    [lamina.time :as t])
   (:import
     [lamina.core.utils
      IEnqueue
@@ -76,7 +75,7 @@
              (try
                (lamina.core.result/success result# ~defer-expr)
                (catch Exception e#
-                 (clojure.tools.logging/error e# "Error in deferred action.")
+                 (lamina.core.utils/log-error e# "Error in deferred action.")
                  (lamina.core.utils/error result# e# false)))))
          result#))
      (do ~@body)))
@@ -269,7 +268,7 @@
                  (enqueue-to-listeners listeners# result#)
                  result#)
                (catch Exception e#
-                 (log/error e# "Error in result callback.")
+                 (log-error e# "Error in result callback.")
                  (error-to-listeners listeners# e#)
                  :lamina/error!))
              
@@ -286,7 +285,7 @@
                      (catch Exception e#
                        (error-to-listeners listeners# e#)
                        (aset ary# idx# :lamina/error!)
-                       (log/error e# "Error in result callback.")))
+                       (log-error e# "Error in result callback.")))
                      
                    (recur (unchecked-inc idx#))))
 

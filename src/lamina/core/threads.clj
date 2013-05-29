@@ -9,8 +9,6 @@
 (ns lamina.core.threads
   (:use
     [lamina.core.utils])
-  (:require
-    [clojure.tools.logging :as log])
   (:import
     [java.util.concurrent
      ThreadFactory

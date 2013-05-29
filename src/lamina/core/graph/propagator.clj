@@ -14,8 +14,7 @@
   (:require
     [lamina.core.lock :as l]
     [lamina.core.result :as r]
-    [lamina.core.graph.node :as n]
-    [clojure.tools.logging :as log])
+    [lamina.core.graph.node :as n])
   (:import
     [lamina.core.utils
      IError]
@@ -42,7 +41,7 @@
     (try
       (callback msg)
       (catch Exception e
-        (log/error e "Error in permanent callback.")))))
+        (log-error e "Error in permanent callback.")))))
 
 (defn callback-propagator [callback]
   (CallbackPropagator. callback))
@@ -161,7 +160,7 @@
           (propagate n msg true)
           :lamina/closed!))
       (catch Exception e
-        (log/error e "error in distributor")
+        (log-error e "error in distributor")
         (error this e false)))))
 
 (defn distributing-propagator [facet generator]
@@ -194,7 +193,7 @@
               (try*
                 (callback x)
                 (catch Throwable e
-                  (log/error e (str "error in " (or node-description edge-description)))
+                  (log-error e (str "error in " (or node-description edge-description)))
                   (error src e false))))
             downstream)
         upstream (edge edge-description n)]

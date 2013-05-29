@@ -11,7 +11,6 @@
     [potemkin]
     [lamina.core])
   (:require
-    [clojure.tools.logging :as log]
     [lamina.cache :as c]
     [lamina.query :as q]
     [lamina.time :as time]

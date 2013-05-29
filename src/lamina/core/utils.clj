@@ -11,12 +11,21 @@
     [clojure.walk]
     [potemkin])
   (:require
-    [flatland.useful.datatypes :as d]
     [clojure.tools.logging :as log]
+    [flatland.useful.datatypes :as d]
     [clojure.string :as str])
   (:import
     [java.util.concurrent
      ThreadFactory]))
+
+;;;
+
+;; this removes the protocol callsite caching overhead
+(defn log-error [e message]
+  (log/error e message))
+
+(defn log-warn [e message]
+  (log/warn e message))
 
 ;;;
 
@@ -33,7 +42,7 @@
               (try
                 (.run ^Runnable runnable)
                 (catch Throwable e
-                  (log/error e (str "error in thread '" name "'"))))))
+                  (log-error e (str "error in thread '" name "'"))))))
           (.setName name)
           (.setDaemon true))))))
 
