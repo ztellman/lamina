@@ -132,7 +132,7 @@ close the other.</p>
 or in an error state.</p>
 </div>
           </div><div class="public">
-            <h3><a id="var-close-on-idle" class="source var-name" href="/src/lamina/core/channel.clj">close-on-idle</a></h3>
+            <h3><a id="var-close-on-idle" class="source var-name" href="/src/lamina/core.clj">close-on-idle</a></h3>
             <h4 class="var-type fn" id="var-type">fn</h4>
             <div class="usage">[interval channel]</div><div class="usage">[interval task-queue channel]</div>
             
@@ -419,7 +419,7 @@ states.</p>
             <div class="doc"><p>Returns a channel that cannot accumulate messages.</p>
 </div>
           </div><div class="public">
-            <h3><a id="var-idle-result" class="source var-name" href="/src/lamina/core/channel.clj">idle-result</a></h3>
+            <h3><a id="var-idle-result" class="source var-name" href="/src/lamina/core.clj">idle-result</a></h3>
             <h4 class="var-type fn" id="var-type">fn</h4>
             <div class="usage">[interval channel]</div><div class="usage">[interval task-queue channel]</div>
             
@@ -666,7 +666,7 @@ from being consumed, effectively cancelling the <code>read-channel</code> call.<
           </div><div class="public">
             <h3><a id="var-read-channel*" class="source var-name" href="/src/lamina/core/channel.clj">read-channel*</a></h3>
             <h4 class="var-type macro" id="var-type">macro</h4>
-            <div class="usage">[ch &amp; {:keys [timeout predicate result listener-result on-timeout on-error on-false], :as options}]</div>
+            <div class="usage">[ch &amp; {:keys [timeout predicate result listener-result on-timeout on-error on-false task-queue], :as options}]</div>
             
             
             <div class="doc"><p>A variant of <code>read-channel</code> with more options.</p>
