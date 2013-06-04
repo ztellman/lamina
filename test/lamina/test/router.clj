@@ -101,7 +101,10 @@
     [".where(x.y > 1).x.y.sum()"]
 
     4.0
-    [".x.where(y = 4).y.sum()"]
+    [".x.where(y = 4).y.sum()"
+     ".x
+\t\t.where(y = 4).
+\t\ty.sum(\r\n)"]
 
     7.0
     [".x.where(y != 3).y.sum()"]
@@ -158,6 +161,7 @@
 
     {:x 2}
     [".where(foo = 'a').group-by(bar).rate()"
+     ".where(foo = \"a\").group-by(bar).rate()"
      ".where(foo ~= 'a').group-by(bar).rate()"]))
 
 (defn run-merge-streams-test [subscribe-fn enqueue-fn post-enqueue-fn]

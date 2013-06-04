@@ -158,8 +158,8 @@
 (def comparison (fn [s] ((token *comparison*) s)))
 (deftoken field #"[_a-zA-Z][a-zA-Z0-9\-_\.]*" parse-lookup)
 (deftoken number #"[0-9\.]+" read-string)
-(deftoken string #"'[^']*'" #(.substring ^String % 1 (dec (count %))))
-(deftoken whitespace #"[ \t,]*")
+(deftoken string #"'[^']*'|\"[^\"]\"*" #(.substring ^String % 1 (dec (count %))))
+(deftoken whitespace #"[\s,]*")
 (deftoken empty-token #"")
 (deftoken colon #"[ \t]*:[ \t]*")
 
@@ -261,11 +261,11 @@
       s
       (concat
         pre
-        (let [[[_ facet] & operators] (drop (count pre) s)
+        (let [[[_ facet & options] & operators] (drop (count pre) s)
               facet (if (string? facet)
                       (keyword facet)
                       facet)]
-          [(list 'group-by facet (vec (collapse-group-bys operators)))])))))
+          [`(~'group-by ~facet ~@options ~(vec (collapse-group-bys operators)))])))))
 
 ;;;
 
