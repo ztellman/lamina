@@ -261,11 +261,11 @@
       s
       (concat
         pre
-        (let [[[_ facet] & operators] (drop (count pre) s)
+        (let [[[_ facet & options] & operators] (drop (count pre) s)
               facet (if (string? facet)
                       (keyword facet)
                       facet)]
-          [(list 'group-by facet (vec (collapse-group-bys operators)))])))))
+          [`(~'group-by ~facet ~@options ~(vec (collapse-group-bys operators)))])))))
 
 ;;;
 
