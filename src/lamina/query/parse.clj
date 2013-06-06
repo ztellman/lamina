@@ -214,7 +214,7 @@
     (fn [[a b c]]
       (list b a c))))
 
-(let [t (delay (one-of tuple number-array pair relationship operators field time-interval number stream))]
+(let [t (delay (one-of tuple string number-array pair relationship operators field time-interval number stream))]
   (defn param [s]
     (@t s)))
 
