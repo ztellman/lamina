@@ -251,21 +251,34 @@
         (keyword name)
         (list* (symbol name) options)))))
 
+(letfn [(selector [target]
+          (fn [operator]
+            (and (sequential? operator)
+                 (= target (first operator)))))]
+  (def group-by? (selector 'group-by))
+  (def collapse? (selector 'collapse)))
+
+(defn keywordize-facet [operator]
+  (if (group-by? operator)
+    (let [[op facet & options] operator]
+      `(~op ~(if (string? facet)
+               (keyword facet)
+               facet)
+            ~@options))
+    operator))
+
+(defn collapse* [s]
+  (lazy-seq
+    (when (seq s)
+      (let [[before [group & after]] (split-with (complement group-by?) s)]
+        (concat before
+                (when group
+                  (let [[inner [_ & outer]] (split-with (complement collapse?) after)]
+                    (cons (concat group [(vec (collapse* inner))])
+                          (collapse* outer)))))))))
+
 (defn collapse-group-bys [s]
-  (let [pre (take-while
-              #(or
-                 (not (sequential? %))
-                 (not= 'group-by (first %)))
-              s)]
-    (if (= (count pre) (count s))
-      s
-      (concat
-        pre
-        (let [[[_ facet & options] & operators] (drop (count pre) s)
-              facet (if (string? facet)
-                      (keyword facet)
-                      facet)]
-          [`(~'group-by ~facet ~@options ~(vec (collapse-group-bys operators)))])))))
+  (collapse* (map keywordize-facet s)))
 
 ;;;
 

@@ -132,3 +132,11 @@
               (map #(hash-map :facet :foo, :value %) (range 20)))]
 
     (is (= [{:timestamp 100, :value {:foo 20}}] val))))
+
+(deftest test-collapse
+  (let [val (query-seq
+             ".group-by(facet).value.collapse().foo"
+             {:timestamp :value
+              :period 100}
+             (map #(hash-map :facet :foo, :value %) (range 20)))]
+    (is (= [{:timestamp 100, :value (range 20)}] val))))
