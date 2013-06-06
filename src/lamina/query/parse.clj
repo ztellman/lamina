@@ -267,18 +267,33 @@
             ~@options))
     operator))
 
-(defn collapse* [s]
-  (lazy-seq
-    (when (seq s)
-      (let [[before [group & after]] (split-with (complement group-by?) s)]
-        (concat before
-                (when group
-                  (let [[inner [_ & outer]] (split-with (complement collapse?) after)]
-                    (cons (concat group [(vec (collapse* inner))])
-                          (collapse* outer)))))))))
+(defn parse-groups
+  "Nests operators after a group-by within the group-by operator itself, stopping when it sees a
+  collapse operator. Note that collapse is a pseudo-operator; it is used only to punctuate group-by,
+  and is not callable itself.
+
+  Returns a pair:
+  - The result of processing to the next collapse operator, or end of string
+  - The remaining operators to process, including the collapse operator that closed the group-by."
+  [s]
+  (if (empty? s)
+    [nil nil]
+    (let [[before [op :as more]] (split-with (complement (some-fn group-by? collapse?)) s)]
+      (cond (nil? op) [before nil]
+            (collapse? op) [before more]
+            (group-by? op) (let [[inside outside] (parse-groups (rest more))
+                                 [after remainder] (parse-groups (rest outside))]
+                             [(concat before
+                                      (list (concat op [(vec inside)]))
+                                      after)
+                              remainder])))))
 
 (defn collapse-group-bys [s]
-  (collapse* (map keywordize-facet s)))
+  (let [[result remainder] (parse-groups (map keywordize-facet s))]
+    (when (seq remainder)
+      (throw (IllegalArgumentException.
+              "Unexpected collapse without group-by")))
+    result))
 
 ;;;
 
