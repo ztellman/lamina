@@ -214,7 +214,7 @@
     (fn [[a b c]]
       (list b a c))))
 
-(let [t (delay (one-of tuple number-array pair relationship operators field time-interval number stream))]
+(let [t (delay (one-of tuple string number-array pair relationship operators field time-interval number stream))]
   (defn param [s]
     (@t s)))
 
@@ -251,21 +251,49 @@
         (keyword name)
         (list* (symbol name) options)))))
 
+(letfn [(selector [target]
+          (fn [operator]
+            (and (sequential? operator)
+                 (= target (first operator)))))]
+  (def group-by? (selector 'group-by))
+  (def collapse? (selector 'collapse)))
+
+(defn keywordize-facet [operator]
+  (if (group-by? operator)
+    (let [[op facet & options] operator]
+      `(~op ~(if (string? facet)
+               (keyword facet)
+               facet)
+            ~@options))
+    operator))
+
+(defn- parse-groups
+  "Nests operators after a group-by within the group-by operator itself, stopping when it sees a
+  collapse operator. Note that collapse is a pseudo-operator; it is used only to punctuate group-by,
+  and is not callable itself.
+
+  Returns a pair:
+  - The result of processing to the next collapse operator, or end of string
+  - The remaining operators to process, including the collapse operator that closed the group-by."
+  [s]
+  (if (empty? s)
+    [nil nil]
+    (let [[before [op :as more]] (split-with (complement (some-fn group-by? collapse?)) s)]
+      (cond (nil? op) [before nil]
+            (collapse? op) [before more]
+            (group-by? op) (let [[inside outside] (parse-groups (rest more))
+                                 [after remainder] (parse-groups (rest outside))]
+                             [(concat before
+                                      (list (concat op [(vec inside)]))
+                                      after)
+                              remainder])))))
+
 (defn collapse-group-bys [s]
-  (let [pre (take-while
-              #(or
-                 (not (sequential? %))
-                 (not= 'group-by (first %)))
-              s)]
-    (if (= (count pre) (count s))
-      s
-      (concat
-        pre
-        (let [[[_ facet & options] & operators] (drop (count pre) s)
-              facet (if (string? facet)
-                      (keyword facet)
-                      facet)]
-          [`(~'group-by ~facet ~@options ~(vec (collapse-group-bys operators)))])))))
+  (let [[result remainder] (parse-groups (map keywordize-facet s))]
+    (when (seq remainder)
+      (throw (IllegalArgumentException.
+              "Unexpected collapse without group-by")))
+    result))
 
 ;;;
 
