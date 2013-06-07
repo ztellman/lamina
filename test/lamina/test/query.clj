@@ -9,7 +9,8 @@
 (ns lamina.test.query
   (:use
     [clojure.test]
-    [lamina core query])
+    [lamina core query]
+    lamina.query.parse)
   (:require
     [lamina.time :as t]))
 
@@ -132,3 +133,17 @@
               (map #(hash-map :facet :foo, :value %) (range 20)))]
 
     (is (= [{:timestamp 100, :value {:foo 20}}] val))))
+
+(deftest test-collapse
+  (let [val (query-seq
+             ".group-by(facet).value.collapse().foo"
+             {:timestamp :value
+              :period 100}
+             (map #(hash-map :facet :foo, :value %) (range 20)))]
+    (is (= [{:timestamp 100, :value (range 20)}] val))))
+
+(deftest test-nested-collapsing
+  (is (= '[(group-by :x [(group-by :y [:foo])
+                         :bar])
+           :baz]
+         (parse-string-query ".group-by(x).group-by(y).foo.collapse().bar.collapse().baz"))))
