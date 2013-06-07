@@ -267,7 +267,7 @@
             ~@options))
     operator))
 
-(defn parse-groups
+(defn- parse-groups
   "Nests operators after a group-by within the group-by operator itself, stopping when it sees a
   collapse operator. Note that collapse is a pseudo-operator; it is used only to punctuate group-by,
   and is not callable itself.
