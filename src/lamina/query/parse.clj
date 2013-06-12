@@ -158,7 +158,7 @@
 (def comparison (fn [s] ((token *comparison*) s)))
 (deftoken field #"[_a-zA-Z][a-zA-Z0-9\-_\.]*" parse-lookup)
 (deftoken number #"[0-9\.]+" read-string)
-(deftoken string #"'[^']*'|\"[^\"]\"*" #(.substring ^String % 1 (dec (count %))))
+(deftoken string #"'[^']*'|\"[^\"]*\"" #(.substring ^String % 1 (dec (count %))))
 (deftoken whitespace #"[\s,]*")
 (deftoken empty-token #"")
 (deftoken colon #"[ \t]*:[ \t]*")

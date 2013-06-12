@@ -147,3 +147,10 @@
                          :bar])
            :baz]
          (parse-string-query ".group-by(x).group-by(y).foo.collapse().bar.collapse().baz"))))
+
+(deftest test-string-params
+  (are [query]
+       (= '[(foo "xyz")]
+          (parse-string-query query))
+       ".foo('xyz')"
+       ".foo(\"xyz\")"))
