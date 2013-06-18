@@ -4,7 +4,7 @@ Lamina is for describing and analyzing streams of data.  It provides a rich set 
 
 ## Installation
 
-    [lamina "0.5.0-rc2"]
+    [lamina "0.5.0-rc3"]
     
 ## Rationale
 
