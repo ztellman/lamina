@@ -27,7 +27,9 @@
 
 (defn getter [x]
   (if (map? x)
-    (q/query-lookup x)
+    (if-let [operators (:operators x)]
+      (apply comp (reverse (map getter operators)))
+      (q/query-lookup x))
     (let [str-facet (name x)]
       (cond
         (= "_" str-facet)
@@ -41,8 +43,7 @@
               (get m key-facet))))))))
 
 (defn selector [m]
-  (let [ignore-key? number?
-        ks (map (fn [[k v]] (if (ignore-key? k) v k)) m)
+  (let [ks (keys m)
         vs (->> m vals (map getter))]
     (fn [m]
       (zipmap

@@ -127,7 +127,7 @@
 
 (deftest test-group-by
   (let [val (query-seq
-              ".group-by(facet).value.rate()"
+              ".group-by(.facet).value.rate()"
               {:timestamp :value
                :period 100}
               (map #(hash-map :facet :foo, :value %) (range 20)))]
@@ -136,17 +136,18 @@
 
 (deftest test-collapse
   (let [val (query-seq
-             ".group-by(facet).value.collapse().foo"
+             ".group-by(.facet).value.collapse().foo"
              {:timestamp :value
               :period 100}
              (map #(hash-map :facet :foo, :value %) (range 20)))]
     (is (= [{:timestamp 100, :value (range 20)}] val))))
 
 (deftest test-nested-collapsing
-  (is (= '[(group-by :x [(group-by :y [:foo])
-                         :bar])
+  (is (= '[(group-by [:x]
+             [(group-by [:y] [:foo])
+              :bar])
            :baz]
-         (parse-string-query ".group-by(x).group-by(y).foo.collapse().bar.collapse().baz"))))
+         (parse-string-query ".group-by(.x).group-by(.y).foo.collapse().bar.collapse().baz"))))
 
 (deftest test-string-params
   (are [query]

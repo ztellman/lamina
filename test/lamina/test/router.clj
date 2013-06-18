@@ -89,7 +89,7 @@
     10.0
     [".x.y.sum()"
      '[:x :y sum]
-     ".select(a: x.y, b: x).a.sum()"
+     ".select(a: .x.y, b: .x).a.sum()"
      '[(select {:a (get-in :x :y), :b :x}) :a sum]
      ".x.y.sum(period: 0.1s).moving-average(period: 75000us)"]
 
@@ -98,25 +98,25 @@
      '[(merge [:x :y] [:x :y]) sum]]
 
     9.0
-    [".where(x.y > 1).x.y.sum()"]
+    [".where(.x.y > 1).x.y.sum()"]
 
     4.0
-    [".x.where(y = 4).y.sum()"
+    [".x.where(.y = 4).y.sum()"
      ".x
-\t\t.where(y = 4).
+\t\t.where(.y = 4).
 \t\ty.sum(\r\n)"]
 
     7.0
-    [".x.where(y != 3).y.sum()"]
+    [".x.where(.y != 3).y.sum()"]
 
     7.0
-    [".x.where(y not= 3).y.sum()"]
+    [".x.where(.y not= 3).y.sum()"]
 
     6.0
-    [".x.y.where(_ < 4).sum()"]
+    [".x.y.where(. < 4).sum()"]
 
     7.0
-    [".x.y.where(_ in [1 2 4]).sum()"]
+    [".x.y.where(. in [1 2 4]).sum()"]
 
     4
     [".rate()"]
@@ -142,27 +142,27 @@
     
     ;; tests
     {:a [:x :x], :b [:z :y], :c [:y]}
-    [".group-by(foo).bar"]
+    [".group-by(.foo).bar"]
 
     {:a 2, :b 2, :c 1}
-    [".group-by(foo).rate()"]                      
+    [".group-by(.foo).rate()"]                      
 
     {:x 2, :y 2, :z 1}
-    [".group-by(facet: bar).rate()"
-     ".select(foo, bar).group-by(bar).rate()"
-     ".select(bar).group-by(bar).bar.rate()"]
+    [".group-by(facet: .bar).rate()"
+     ".select(foo: .foo, bar: .bar).group-by(.bar).rate()"
+     ".select(bar: .bar).group-by(.bar).bar.rate()"]
 
     {:c {:y 1}, :b {:y 1, :z 1}, :a {:x 2}}
-    [".group-by(foo).select(bar).group-by(bar).rate()"]
+    [".group-by(.foo).select(bar: .bar).group-by(.bar).rate()"]
 
     {[:a :x] 2, [:b :z] 1, [:c :y] 1, [:b :y] 1}
-    [".group-by([foo bar]).rate()"
-     ".group-by([foo baz.quux]).rate()"]
+    [".group-by([.foo .bar]).rate()"
+     ".group-by([.foo .baz.quux]).rate()"]
 
     {:x 2}
-    [".where(foo = 'a').group-by(bar).rate()"
-     ".where(foo = \"a\").group-by(bar).rate()"
-     ".where(foo ~= 'a').group-by(bar).rate()"]))
+    [".where(.foo = 'a').group-by(.bar).rate()"
+     ".where(.foo = \"a\").group-by(.bar).rate()"
+     ".where(.foo ~= 'a').group-by(.bar).rate()"]))
 
 (defn run-merge-streams-test [subscribe-fn enqueue-fn post-enqueue-fn]
   (run-test
@@ -180,8 +180,8 @@
 
     ;; todo: this is staggered in the split-router case
     #_{:a {:bar 10}, :b {:bar 10}}
-    #_".zip(a: .group-by(foo).x.sum(),
-            b: &abc.group-by(foo).x.sum())"))
+    #_".zip(a: .group-by(.foo).x.sum(),
+            b: &abc.group-by(.foo).x.sum())"))
 
 ;;;
 

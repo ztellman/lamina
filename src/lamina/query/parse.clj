@@ -32,13 +32,6 @@
 
 ;;;
 
-(defn parse-lookup [s]
-  (if (re-find #"\." s)
-    (->> (str/split s #"\.")
-      (map keyword)
-      (list* 'get-in))
-    (keyword s)))
-
 (defn token
   ([x]
      (if (fn? x)
@@ -156,7 +149,6 @@
 (deftoken pattern #"[a-zA-Z0-9:_\-\*]*")
 (deftoken id #"[_a-zA-Z][a-zA-Z0-9\-_]*")
 (def comparison (fn [s] ((token *comparison*) s)))
-(deftoken field #"[_a-zA-Z][a-zA-Z0-9\-_\.]*" parse-lookup)
 (deftoken number #"[0-9\.]+" read-string)
 (deftoken string #"'[^']*'|\"[^\"]*\"" #(.substring ^String % 1 (dec (count %))))
 (deftoken whitespace #"[\s,]*")
@@ -179,16 +171,18 @@
     (fn [[[a b]]]
       (vec (list* a b)))))
 
-(def tuple
-  (token
-    (chain
-      (ignore whitespace)
-      (ignore #"\[")
-      (chain field (many (second* whitespace field)))
-      (ignore whitespace)
-      (expect #"\]"))
-    (fn [[[a b]]]
-      (list* 'tuple a b))))
+(let [t (delay
+          (token
+            (chain
+              (ignore whitespace)
+              (ignore #"\[")
+              (chain operators (many (second* whitespace operators)))
+              (ignore whitespace)
+              (expect #"\]"))
+            (fn [[[a b]]]
+              (list* 'tuple a b))))]
+  (defn tuple [s]
+    (@t s)))
 
 (def value-set
   (token
@@ -202,19 +196,21 @@
     (fn [[[a b]]]
       (set (list* a b)))))
 
-(def relationship
-  (token
-    (chain
-      (ignore whitespace)
-      field
-      (ignore whitespace)
-      comparison
-      (ignore whitespace)
-      (one-of number string value-set))
-    (fn [[a b c]]
-      (list b a c))))
+(let [t (delay
+          (token
+            (chain
+              (ignore whitespace)
+              operators
+              (ignore whitespace)
+              comparison
+              (ignore whitespace)
+              (one-of number string value-set))
+            (fn [[a b c]]
+              (list b a c))))]
+  (defn relationship [s]
+    (@t s)))
 
-(let [t (delay (one-of tuple string number-array pair relationship operators field time-interval number stream))]
+(let [t (delay (one-of tuple string number-array pair relationship operators time-interval number stream))]
   (defn param [s]
     (@t s)))
 
