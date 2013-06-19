@@ -155,3 +155,17 @@
           (parse-string-query query))
        ".foo('xyz')"
        ".foo(\"xyz\")"))
+
+(deftest test-operator-without-leading-dot
+  (is (= '[(group-by [:foo] [:bar :baz (rate)])]
+         (parse-string-query ".group-by(foo).bar.baz.rate()")))
+  (is (= '[(group-by [:foo :bar (to-upper)] [])]
+         (parse-string-query ".group-by(foo.bar.to-upper())"))))
+
+(deftest test-single-dot-in-where
+  (is (= '[(where ("=" [] 4))]
+         (parse-string-query ".where(. = 4)"))))
+
+(deftest invalid-queries
+  (is (thrown? Throwable
+               (parse-string-query ".x...y"))))
