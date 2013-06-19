@@ -295,8 +295,13 @@
 
 (def operators
   (token
-    (chain transform-prefix (many operator))
-    (fn [[_ operators]]
+    (route
+      transform-prefix (many operator)
+      #"" (token
+            (chain operator (many operator))
+            (fn [[operator operators]]
+              (cons operator operators))))
+    (fn [operators]
       (vec (collapse-group-bys operators)))))
 
 (def stream
