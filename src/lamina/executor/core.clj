@@ -39,24 +39,28 @@
   (let [pending (- (.getTaskCount pool) (.getCompletedTaskCount pool))
         pool-size (.getPoolSize pool)]
     (when (<= pool-size pending)
-      (.setCorePoolSize pool (min max-thread-count (inc pool-size))))))
+      (.setCorePoolSize pool (min max-thread-count (int (* 1.5 pool-size)))))))
 
-(defn periodically-contract-pool-size [^ThreadPoolExecutor pool min-thread-count period]
+(defn periodically-adjust-pool-size [^ThreadPoolExecutor pool min-thread-count max-thread-count period]
   (invoke-repeatedly period
     (fn [cancel]
       (if (.isShutdown pool)
         (cancel)
-        (contract-pool-size pool min-thread-count)))))
+        (do
+          (contract-pool-size pool min-thread-count)
+          (expand-pool-size pool max-thread-count))))))
 
 (defn executor
   "Defines a thread pool that can be used with instrument and defn-instrumented.
 
    more goes here"
   [{:keys [idle-timeout
+           adjust-interval
            min-thread-count
            max-thread-count
            interrupt?]
     :or {idle-timeout 60000
+         adjust-interval 1000
          interrupt? false}
     :as options}]
   (when-not (contains? options :name)
@@ -97,7 +101,7 @@
         stats-channel (pr/probe-channel [nm :stats])]
 
     (when bounded?
-      (periodically-contract-pool-size pool min-thread-count idle-timeout))
+      (periodically-adjust-pool-size pool min-thread-count max-thread-count adjust-interval))
     
     (invoke-repeatedly 1000
       (fn [cancel]
@@ -167,9 +171,6 @@
                   (when interrupt?
                     (reset! complete? true)
                     (Thread/interrupted)))]
-          
-          (when bounded?
-            (expand-pool-size pool max-thread-count))
           
           (.execute pool f)
 
