@@ -9,7 +9,7 @@
   <body>
     <header>
       <div id="header">
-        <h1 class="project-title">Lamina 0.5.0-rc3 API documentation</h1>
+        <h1 class="project-title">Lamina 0.5.0-rc4 API documentation</h1>
       </div>
     </header>
     <navigation>
@@ -61,7 +61,7 @@ order of messages.</p>
           </div><div class="public">
             <h3><a id="var-executor" class="source var-name" href="/src/lamina/executor/core.clj">executor</a></h3>
             <h4 class="var-type fn" id="var-type">fn</h4>
-            <div class="usage">[{:keys [idle-timeout min-thread-count max-thread-count interrupt?], :or {idle-timeout 60000, interrupt? false}, :as options}]</div>
+            <div class="usage">[{:keys [idle-timeout adjust-interval min-thread-count max-thread-count interrupt?], :or {idle-timeout 60000, adjust-interval 1000, interrupt? false}, :as options}]</div>
             
             
             <div class="doc"><p>Defines a thread pool that can be used with instrument and defn-instrumented.</p>
