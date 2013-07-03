@@ -4,6 +4,8 @@ Lamina is for describing and analyzing streams of data.  It provides a rich set 
 
 ## Installation
 
+Add the following to the `:dependencies` section of your `project.clj` file:
+
     [lamina "0.5.0-rc3"]
     
 ## Rationale
