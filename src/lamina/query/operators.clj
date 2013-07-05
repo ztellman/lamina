@@ -217,7 +217,7 @@
        {:facet (getter facet)
         :generator (fn [k ch]
                      (let [ch (->> ch
-                                (close-on-idle expiration)
+                                (close-on-idle expiration (t/task-queue))
                                 (q/transform-stream (dissoc desc :name)))]
                        (if-not periodic?
                          (partition-every {:period period} ch)
@@ -236,7 +236,7 @@
         {:facet first
          :generator (fn [k ch]
                       (let [ch (->> ch
-                                 (close-on-idle expiration)
+                                 (close-on-idle expiration (t/task-queue))
                                  (map* second))
                             ch (if-not periodic?
                                  (concat* ch)

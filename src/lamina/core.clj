@@ -364,7 +364,7 @@
          #(if (= ::timeout %)
             (p/complete true)
             (let [to-sleep (- @target-time (t/now))]
-              (r/timed-result to-sleep to-sleep)))
+              (r/timed-result to-sleep to-sleep task-queue)))
          (fn [slept]
            (swap! target-time + (- interval slept))
            (restart))))))
