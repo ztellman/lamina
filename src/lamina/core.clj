@@ -349,7 +349,7 @@
   ([interval channel]
      (idle-result interval (t/task-queue) channel))
   ([interval task-queue channel]
-     (let [target-time (atom (+ (t/now) interval))
+     (let [target-time (atom (+ (t/now task-queue) interval))
            ch (tap channel)]
 
        (ground ch)
@@ -358,12 +358,12 @@
          {:error-handler (fn [_])}
          #(read-channel* %
             :task-queue task-queue
-            :timeout (- @target-time (t/now))
+            :timeout (- @target-time (t/now task-queue))
             :on-timeout ::timeout
             :on-drained ::timeout)
          #(if (= ::timeout %)
             (p/complete true)
-            (let [to-sleep (- @target-time (t/now))]
+            (let [to-sleep (- @target-time (t/now task-queue))]
               (r/timed-result to-sleep to-sleep task-queue)))
          (fn [slept]
            (swap! target-time + (- interval slept))

@@ -131,11 +131,13 @@
                                 `(let [timeout# ~timeout]
                                    (when (and timeout# (instance? ResultChannel result##))
                                      (t/invoke-in ~task-queue timeout#
-                                       (fn []
-                                         (reset! timeout-latch## true)
-                                         ~(if on-timeout
-                                            `(r/success result## ~on-timeout)
-                                            `(u/error result## :lamina/timeout! false)))))))]
+                                       (with-meta
+                                         (fn []
+                                           (reset! timeout-latch## true)
+                                           ~(if on-timeout
+                                              `(r/success result## ~on-timeout)
+                                              `(u/error result## :lamina/timeout! false)))
+                                         {:priority Integer/MIN_VALUE})))))]
        
         ;; downstream results for listeners
         ~@(when (contains? options :listener-result)
