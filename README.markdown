@@ -45,7 +45,7 @@ Since we can have multiple consumers for any stream of data, we can easily analy
 
 Lamina also provides [mechanisms to instrument code](http://ztellman.github.com/lamina/lamina.stats.html), allowing the execution of data to throw off a stream of events that can be aggregated, analyzed, and used to better understand your software.
 
-To learn more, read the [wiki](https://github.com/ztellman/lamina/wiki/Introduction) or the [complete documentation](http://ztellman.github.com/lamina/)
+To learn more, read the [wiki](https://github.com/ztellman/lamina/wiki/Introduction) or the [complete documentation](http://ztellman.github.com/lamina/).  If you have questions, visit the [Aleph mailing list](https://groups.google.com/forum/#!forum/aleph-lib).
 
 # License
 
