@@ -110,13 +110,15 @@
 (defmacro read-node*
   [n & {:keys [predicate
                timeout
+               priority
                result
                listener-result
                on-timeout
                on-false
                on-drained
                task-queue]
-        :or {task-queue 'lamina.time/default-task-queue}
+        :or {task-queue 'lamina.time/default-task-queue
+             priority 0}
         :as options}]
   (let [timeout? (contains? options :timeout)]
     (unify-gensyms
@@ -137,7 +139,7 @@
                                            ~(if on-timeout
                                               `(r/success result## ~on-timeout)
                                               `(u/error result## :lamina/timeout! false)))
-                                         {:priority Integer/MIN_VALUE})))))]
+                                         {:priority ~priority})))))]
        
         ;; downstream results for listeners
         ~@(when (contains? options :listener-result)

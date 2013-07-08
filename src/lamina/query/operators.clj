@@ -220,7 +220,7 @@
                                 (close-on-idle expiration (t/task-queue))
                                 (q/transform-stream (dissoc desc :name)))]
                        (if-not periodic?
-                         (partition-every {:period period} ch)
+                         (remove* nil? (partition-every {:period period} ch))
                          ch)))
         :period period}
        ch))))
@@ -243,7 +243,7 @@
                                  ch)
                             ch (q/transform-stream (dissoc desc :name) ch)]
                         (if-not periodic?
-                          (partition-every {:period period} ch)
+                          (remove* nil? (partition-every {:period period} ch))
                           ch)))
          :period period}))))
 

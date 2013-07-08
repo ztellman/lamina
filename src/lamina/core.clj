@@ -359,6 +359,7 @@
          #(read-channel* %
             :task-queue task-queue
             :timeout (- @target-time (t/now task-queue))
+            :priority Integer/MAX_VALUE
             :on-timeout ::timeout
             :on-drained ::timeout)
          #(if (= ::timeout %)
