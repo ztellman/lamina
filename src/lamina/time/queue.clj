@@ -20,7 +20,8 @@
      ConcurrentLinkedQueue
      ConcurrentSkipListSet]
     [java.util.concurrent.atomic
-     AtomicBoolean]))
+     AtomicBoolean
+     AtomicLong]))
 
 (definterface+ IClock
   (now [_]))
@@ -135,7 +136,9 @@
   (advance [_] "Advances to the next task. Returns false if there are no remaining tasks.")
   (advance-until [_ timestamp] "Advances across all tasks that occur before or on the given timestamp."))
 
-(defrecord+ TaskTuple [^long timestamp f]
+(def ^AtomicLong generation-counter (AtomicLong. 0))
+
+(defrecord+ TaskTuple [^long timestamp f ^long generation]
   Comparable
   (compareTo [this o]
     (let [^TaskTuple o o
@@ -145,7 +148,10 @@
                   (or (-> f meta :priority) 0)
                   (or (-> (.f o) meta :priority) 0))]
           (if (zero? c)
-            (compare (hash f) (hash (.f o)))
+            (let [c (compare (hash f) (hash (.f o)))]
+              (if (zero? c)
+                (- generation (.generation o))
+                c))
             (- c)))
         c))))
 
@@ -172,7 +178,8 @@
                            (f)
                            (recur (.poll pending)))))
                      
-                     f))]
+                     f)
+                   (.incrementAndGet generation-counter))]
         (.add tasks task)
         #(.remove tasks task))))
 
