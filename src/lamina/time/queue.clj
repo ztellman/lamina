@@ -148,10 +148,7 @@
                   (or (-> f meta :priority) 0)
                   (or (-> (.f o) meta :priority) 0))]
           (if (zero? c)
-            (let [c (compare (hash f) (hash (.f o)))]
-              (if (zero? c)
-                (- generation (.generation o))
-                c))
+            (- generation (.generation o))
             (- c)))
         c))))
 
