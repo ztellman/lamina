@@ -6,8 +6,8 @@ Lamina is for describing and analyzing streams of data.  It provides a rich set 
 
 Add the following to the `:dependencies` section of your `project.clj` file:
 
-    [lamina "0.5.0-rc3"]
-    
+    [lamina "0.5.0"]
+
 ## Rationale
 
 Streams of events are represented by channels, which are used in [Aleph](https://github.com/ztellman/aleph) to model network communication over a variety of protocols.  Much like Clojure's sequences, we can apply transforms to all events that pass through the channel:
@@ -17,7 +17,7 @@ Streams of events are represented by channels, which are used in [Aleph](https:/
 nil
 > (def ch (channel 1 2 3))
 #'ch
-> ch 
+> ch
 <== [1 2 3 ...]
 > (map* inc ch)
 <== [2 3 4 ...]
