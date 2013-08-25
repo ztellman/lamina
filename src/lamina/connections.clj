@@ -6,103 +6,97 @@
 ;;   the terms of this license.
 ;;   You must not remove this notice, or any other, from this software.
 
-(ns ^{:author "Zachary Tellman"}
-  lamina.connections
+(ns lamina.connections
   (:use
-    [lamina core executors api trace])
-  (:import
-    [java.util.concurrent TimeoutException]
-    [lamina.core.pipeline ResultChannel]))
+    [potemkin]
+    [lamina.core.utils :only (assoc-record log-error)]
+    [lamina core trace])
+  (:require
+    [lamina.core.lock :as lock]
+    [lamina.core.result :as r]))
 
-;;
 
-(defn- has-completed? [result-ch]
-  (wait-for-message (poll-result result-ch 0)))
+
+;;;
 
 (defn- incr-delay [delay]
   (if (zero? delay)
-    125
+    4
     (min 4000 (* 2 delay))))
 
-(defn- wait-for-close
-  "Returns a result-channel representing the closing of the channel."
-  [ch]
-  (closed-result ch))
 
-(defn- connect-loop
-  "Continually reconnects to server. Returns an atom which will always contain a result-channel
-   for the latest attempted connection."
-  [halt-signal connection-generator options]
-  (let [delay (atom 0)
-	result (atom (result-channel))
-	latch (atom true)
-	probe-prefix (:name options)
-	timestamp (ref (System/nanoTime))
-	elapsed #(dosync
-		   (let [last-time (ensure timestamp)
-			 current-time (System/nanoTime)]
-		     (ref-set timestamp current-time)
-		     (/ (- current-time last-time) 1e6)))
-	desc (select-keys options [:name :description])]
-    ;; handle signal to close persistent connection
-    (receive halt-signal
-      (fn [_]
-	(let [connection @result]
-          (success! @result ::close)
-          (reset! result (success-result ::close))
-	  (reset! latch false)
-	  (run-pipeline connection #(when (channel? %) (close %))))))
-
-    ;; run connection loop
+(defn- connection-loop [name connection-generator done? on-connected]
+  (let [connection (atom nil)
+        delay (atom 0)
+        probe (when name (probe-channel [name :connection]))
+        error-probe (when name (error-probe-channel [name :error]))
+        trace #(when probe
+                 (enqueue probe
+                   (assoc %
+                     :timestamp (System/currentTimeMillis))))]
     (run-pipeline nil
-      :error-handler (fn [ex]
-		       (swap! delay incr-delay)
-		       (when (and (result-channel? @result) (has-completed? @result))
-                         (reset! result (result-channel)))
-		       (if @latch
-			 (restart)
-			 (complete nil)))
-      (do-stage
-      	(when (pos? @delay)
-	  (trace [probe-prefix :connection:failed] (merge desc {:event :connect-attempt-failed, :delay @delay}))))
+      {:error-handler (fn [err]
+                        (when error-probe (enqueue error-probe err))
+                        (error @connection err)
+                        (swap! delay incr-delay)
+                        (restart))}
+
+      ;; check if we want to try to reconnect
+      (fn [_]
+        (if @done?
+          (do
+            (reset! connection :lamina/deactivated!)
+            (complete nil))
+          ;; if so, reset the connection to a fresh result-channel
+          (do
+            (reset! connection (result-channel))
+            nil)))
+
+      ;; wait the proscribed duration
       (wait-stage @delay)
+
+      ;; attempt to connect
       (fn [_]
-	(trace [probe-prefix :connection:attempting] (assoc desc :event :attempting-connection))
-	(connection-generator))
-      (fn [ch]
-	(trace [probe-prefix :connection:opened] (assoc desc :event :connection-opened, :elapsed (elapsed)))
-	(run-pipeline
-	  (when-let [new-connection-callback (:connection-callback options)]
-	    (new-connection-callback ch))
-	  (fn [_]
-	    (future (success! @result ch))
-            (Thread/yield)
-            (when-not @latch (close ch))
-            (wait-for-close ch))))
-      ;; wait here for connection to drop
+        (trace {:state :connecting})
+        (connection-generator))
+
+      ;; handle the new connection, and wait for it to close
+      (fn [conn]
+        (if-not (channel? conn)
+          (reset! done? true)
+          (do
+            (when on-connected
+              (try
+                (on-connected conn)
+                (catch Throwable e
+                  (log-error e "Error in on-connected callback"))))
+            (success @connection conn)
+            (trace {:state :connected})
+            (closed-result conn))))
+
+      ;; handle the lost connection, and restart
       (fn [_]
-	(trace [probe-prefix :connection:lost] (assoc desc :event :connection-lost, :elapsed (elapsed)))
-	(when @latch
-	  (reset! delay 0)
-	  (reset! result (result-channel))
-	  (restart))))
-    result))
+        (trace {:state :disconnected})
+        (reset! delay 0)
+        (restart)))
+    connection))
 
 (defn persistent-connection
   ([connection-generator]
      (persistent-connection connection-generator nil))
-  ([connection-generator options]
-     (let [options (merge
-		     {:name (str (gensym "connection:")), :description "unknown"}
-		     options)
-	   close-signal (constant-channel)
-	   result (connect-loop close-signal connection-generator options)]
-       (fn
-	 ([]
-	    @result)
-	 ([signal]
-	    (when (= ::close signal)
-	      (enqueue close-signal nil)))))))
+  ([connection-generator {:keys [name on-connected]}]
+     (let [latch (atom false)
+           connection (delay (connection-loop name connection-generator latch on-connected))
+           reset-fn (fn []
+                      (run-pipeline @@connection
+                        #(when (channel? %)
+                           (close %))))
+           close-fn (fn []
+                      (reset! latch true)
+                      (reset-fn))]
+       ^{::close-fn close-fn
+         ::reset-fn reset-fn}
+       (fn [] @@connection))))
 
 (defn close-connection
   "Takes a client function, and closes the connection."
@@ -111,343 +105,410 @@
     (close-fn)
     (f ::close)))
 
+(defn reset-connection
+  "Takes a client function, and resets the connection."
+  [f]
+  (if-let [reset-fn (-> f meta ::reset-fn)]
+    (reset-fn)
+    (f ::reset)))
+
 ;;;
 
-(defn- setup-result-timeout [result timeout]
-  (when-not (neg? timeout)
-    (receive (poll-result result timeout)
-      #(when-not %
-	 (error! result (TimeoutException. (str "Timed out after " timeout "ms.")))))))
+(defn- try-heartbeat [options connection f]
+  (when (contains? options :heartbeat)
+    (let [{:keys [timeout
+                  request
+                  on-failure
+                  response-validator
+                  interval]
+          :or {timeout 5000
+               interval 10000}
+           :as heartbeat} (:heartbeat options)]
 
-(defn- setup-connection-timeout [result ch]
-  (run-pipeline result
-    :error-handler
-    (fn [ex]
-      (when (instance? TimeoutException ex)
-	(close ch)))))
+      (when-not (contains? heartbeat :request)
+        (throw (IllegalArgumentException. "heartbeat must specify :request")))
+
+      (run-pipeline nil
+        {:error-handler (fn [err]
+                          (if (= :lamina/deactivated! err)
+                            (complete nil)
+                            (do
+                              (when on-failure (on-failure err))
+                              (reset-connection connection)
+                              (restart))))}
+        (wait-stage 0.1)
+        (fn [_] (connection))
+        (wait-stage interval)
+        (fn [_] (f request timeout))
+        (fn [response]
+          (when (and response-validator
+                  (not (response-validator response)))
+            (throw (IllegalStateException. (str "invalid hearbeat response: " (pr-str response)))))
+          (restart)))))
+  f)
+
+(defn- try-instrument [options f]
+  (if (contains? options :name)
+    (with-meta
+      (instrument f
+        (merge
+          options
+          {:capture :in-out}))
+      (meta f))
+    f))
+
+(defmacro handle-request [[reset-fn close-fn] request & body]
+  `(let [request# ~request]
+     (cond
+       (identical? ::close request#)
+       (~close-fn)
+
+       (identical? ::reset request#)
+       (~reset-fn)
+
+       :else
+       (do ~@body))))
+
+(deftype+ RequestTuple [request result channel])
 
 (defn client
-  "Given a function that returns a bi-directional channel, returns a function that
-   accepts (f request timeout?) and returns a result-channel representing the eventual
-   response."
+  "Layers a client-side request-response communication model on top of a bidirectional socket.  Returns 
+   a function which takes the `request` and optionally a `timeout` in milliseconds, and returns an 
+   async-promise representing the response.
+
+   `connection-generator` is a function which takes zero parameters, and returns a channel representing
+   a bidirectional socket, or an async-promise which will be realized as a bidirectional socket.  It will
+   only be called once a request has been made, and whenever the socket channel subsequently closes.
+
+   If a request is made while there is not a live connection, it will be sent once the connection is opened.
+   If the connection closes while a request is pending, it will return an error unless `:retry?` is true.
+
+   No matter how often the function is called, only one request will be in-flight at a time.  To allow request
+   pipelining, see `pipelined-client`.
+
+   Optional parameters:
+
+     `:name` - if defined, instruments the request function, creating probes within that namespace.
+
+     `:implicit?` - whether the instrumentation will be captured by higher-level functions, defaults to true.
+
+     `:probes` - a map of sub-names (with `:name` implicitly prefixed) onto channels that consume those probes.
+     
+     `:on-connected` - a callback for when connection-generator creates a new connection, which will be invoked with
+                       the new socket channel.
+    
+     `:executor` - an executor which will be used for response handling.
+
+     `:retry?` - whether requests which fail due to connection failure will automatically retry.  This should only be
+                 done if the requests are idempotent, and defaults to false.
+
+
+  `:hearbeat` takes a configuration map, describing a periodic request that should be made to check connection health:
+
+     `:request` - the hearbeat request.
+
+     `:interval` - the time between heartbeat requests, defaults to ten seconds.
+  
+     `:timeout` - the max time spent waiting for the heartbeat response, defaults to five seconds.
+
+     `:response-validator` - a predicate which takes a response, and returns true if it's valid.  Defaults to always returning true.
+
+     `:on-failure` - a callback which is invoked with no parameters when the heartbeat fails."
   ([connection-generator]
      (client connection-generator nil))
-  ([connection-generator options]
-     (let [options (merge
-		     {:name (str (gensym "client:"))
-		      :description "unknown"
-		      :reconnect-on-timeout? true}
-		     options)
-	   reconnect-on-timeout? (:reconnect-on-timeout? options)
-	   connection (persistent-connection connection-generator options)
-	   requests (channel)
-	   pause? (atom false)
-	   closed? (atom false)]
+  ([connection-generator
+    {:keys [name
+            heartbeat
+            on-connected
+            probes
+            executor
+            implicit?
+            retry?]
+     :or {retry? false
+	      implicit? true}
+     :as options}]
 
-       (siphon-probes (:name options) (:probes options))
-       
-       ;; request loop
-       (receive-in-order requests
-	 (fn [[request ^ResultChannel result timeout]]
+     (let [connection (persistent-connection
+                        connection-generator
+                        (select-keys options [:name :on-connected]))
+           requests (channel)
+           close-fn #(close-connection connection)
+           reset-fn #(reset-connection connection)]
 
-	   (if (= ::close request)
-	     (do
-	       (close-connection connection)
-	       (success! result true))
-	     (do
-	       ;; make request
-	       (run-pipeline nil
-		 :error-handler (fn [ex]
-				  (reset! pause? true)
-				  (if-not (has-completed? result)
-				    (restart)
-				    (complete nil)))
+       ;; consume the requests, one at a time
+       (run-pipeline requests
+         {:error-handler (fn [_] (restart))}
+         read-channel
+         (fn [^RequestTuple r]
+           (run-pipeline nil
+             ;; if we have a request error, wait a bit so we don't starve
+             ;; the connect loop, then resend the request if :retry? is true
+             {:error-handler (pipeline
+                               (wait-stage 0.1)
+                               (fn [err]
+                                 (when (and retry? (= :lamina/drained! err))
+                                   (restart))))
+              :result (.result r)}
+             ;; connect
+             (fn [_]
+               (connection))
+             ;; enqueue the request, then wait for the response
+             (fn [x]
+               (if (channel? x)
+                 (do
+                   (enqueue x (.request r))
+                   (read-channel x))
+                 (error-result x)))))
+         ;; rinse, repeat
+         (fn [_]
+           (restart)))
 
-		 (fn [_]
-		   (when (compare-and-set! pause? true false)
-		     (run-pipeline nil
-		       (wait-stage 1))))
-		   
-		 (fn [_]
-
-		   (if (has-completed? result)
-		       
-		     ;; if timeout has already elapsed, exit
-		     (complete nil)
-		     
-		     ;; send the request
-		     (run-pipeline
-		       (connection)
-		       (fn [ch]
-			 (if (= ::close ch)
-
-			   ;; (close-connection ...) has already been called
-			   (complete (Exception. "Client has been deactivated."))
-
-			   ;; send request, and wait for response
-			   (do
-			     (when reconnect-on-timeout?
-			       (setup-connection-timeout result ch))
-			     (enqueue ch request)
-			     ch))))))
-		 (fn [ch]
-		   (run-pipeline ch
-		     :error-handler (fn [_] )
-
-		     read-channel
-
-		     (fn [response]
-		       (if-not (and (nil? response) (drained? ch))
-			 (if (instance? Exception response)
-			   (error! result response)
-			   (success! result response))
-			 (throw (Exception. "Connection unexpectedly closed.")))))))))))
-
-       ;; request function
-       (trace-wrap
-	 (fn this
-	   ([request]
-	      (this request -1))
-	   ([request timeout]
-	      (let [result (result-channel)]
-		(enqueue requests [request result timeout])
-		(setup-result-timeout result timeout)
-		result)))
-	 options))))
+       (try-heartbeat options connection
+         (try-instrument options
+           ^{::close-fn close-fn
+             ::reset-fn reset-fn}
+           (fn
+             ([request]
+                (handle-request [reset-fn close-fn] request
+                  (let [result (result-channel)]
+                    (enqueue requests (RequestTuple. request result nil))
+                    result)))
+             ([request timeout]
+                (handle-request [reset-fn close-fn] request
+                  (let [result (expiring-result timeout)]
+                    (enqueue requests (RequestTuple. request result nil))
+                    result)))))))))
 
 (defn pipelined-client
-  "Given a function that returns a bi-directional channel, returns a function that
-   accepts (f request timeout?) and returns a result-channel representing the eventual
-   response.
-
-   Requests are sent immediately, under the assumption that responses will be sent in the same
-   order.  This is not true of all servers/protocols."
+  "Like `client`, but allows request pipelining."
   ([connection-generator]
      (pipelined-client connection-generator nil))
-  ([connection-generator options]
-     (let [options (merge
-		     {:name (str (gensym "client:"))
-		      :description "unknown"
-		      :reconnect-on-timeout? true}
-		     options)
-	   reconnect-on-timeout? (:reconnect-on-timeout? options)
-	   connection (persistent-connection connection-generator options)
-	   requests (channel)
-	   pause? (atom false)
-	   responses (channel)]
+  ([connection-generator
+    {:keys [name
+            heartbeat
+            on-connected
+            probes
+            executor
+            implicit?
+            retry?]
+     :or {retry? false}
+     :as options}]
 
-       (siphon-probes (:name options) (:probes options))
+     (let [connection (persistent-connection
+                        connection-generator
+                        (select-keys options [:name :on-connected]))
+           requests (channel)
+           responses (channel)
+           close-fn #(close-connection connection)
+           reset-fn #(reset-connection connection)
+           lock (lock/lock)]
 
-       ;; handle requests
-       (receive-in-order requests
-	 (fn [[request ^ResultChannel result timeout]]
-	   (if (= ::close request)
-	     (do
-	       (close-connection connection)
-	       (success! result true))
-	     (when-not (has-completed? result)
+       ;; consume the responses from the channel, and pair them with
+       ;; the result-channels in the RequestTuple
+       (receive-all responses
+         (fn [^RequestTuple r]
+           (run-pipeline (.channel r)
+             ;; if we fail and :retry? is true, resend the request
+             {:error-handler (fn [ex]
+                               (if retry?
+                                 (enqueue requests r)
+                                 (error (.result r) ex))
+                               (complete nil))}
+             read-channel
+             #(success (.result r) %))))
 
-	       ;; send requests
-	       (run-pipeline nil 
-                 :error-handler (fn [ex]
-				  (reset! pause? true)
-				  (if-not (has-completed? result)
-				    (restart)
-                                    (complete nil)))
-		 (fn [_]
-		   (when (compare-and-set! pause? true false)
-		     (run-pipeline nil
-		       (wait-stage 1))))
-                 (fn [_]
-		   (connection))
-		 (fn [ch]
-		   (when reconnect-on-timeout?
-		     (setup-connection-timeout result ch))
-                   (if (= ::close ch)
-		     (error! result (Exception. "Client has been deactivated."))
-		     (when-not (has-completed? result)
-		       (enqueue ch request)
-		       (enqueue responses [request result ch])))))))))
+       ;; send the request, and enqueue the result and connection onto
+       ;; the response channel
+       (receive-all requests
+         (fn [^RequestTuple r]
+           (lock/with-exclusive-lock lock
+             (when-not (r/result (.result r))
+               (run-pipeline (connection)
+                 ;; if we fail and :retry? is true, restart the pipeline
+                 {:error-handler (pipeline
+                                   (wait-stage 0.1)
+                                   (fn [ex]
+                                     (if retry?
+                                       (restart)
+                                       (do
+                                         (error (.result r) ex)
+                                         (complete nil)))))}
+                 (fn [x]
+                   (if (channel? x)
+                     (do
+                       (enqueue x (.request r))
+                       (enqueue responses (assoc-record r :channel x)))
+                     (error (.result r) x))))))))
 
-       ;; handle responses
-       (receive-in-order responses
-	 (fn [[request result ch]]
-	   (run-pipeline ch
-	     :error-handler (fn [ex]
-			      ;; re-send request
-			      (when-not (has-completed? result)
-				(enqueue requests [request result -1]))
-			      (complete nil))
-	     read-channel
-	     (fn [response]
-	       (if (and (nil? response) (drained? ch))
-		 (throw (Exception. "Connection unexpectedly closed."))
-		 (if (instance? Exception response)
-		   (error! result response)
-		   (success! result response)))))))
-
-       ;; request function
-       (trace-wrap
-	 (fn this
-	   ([request]
-	      (this request -1))
-	   ([request timeout]
-	      (let [result (result-channel)]
-		(setup-result-timeout result timeout)
-		(enqueue requests [request result timeout])
-		result)))
-	 options))))
-
-
-(defn client-pool
-  "Returns a client function that distributes requests across n-many clients."
-  [n client-generator]
-  (let [clients (take n (repeatedly client-generator))
-	counter (atom 0)]
-    (fn this
-      ([request]
-	 (this request -1))
-      ([request timeout]
-	 (if (= ::close request)
-	   (async (force-all (map close-connection clients)))
-	   (let [idx (swap! counter #(rem (inc %) n))
-		 client (nth clients idx)]
-	     (client request timeout)))))))
+       (try-heartbeat options connection
+         (try-instrument options
+           ^{::close-fn close-fn
+             ::reset-fn reset-fn}
+           (fn
+             ([request]
+                (handle-request [reset-fn close-fn] request
+                  (let [result (result-channel)]
+                    (enqueue requests (RequestTuple. request result nil))
+                    result)))
+             ([request timeout]
+                (handle-request [reset-fn close-fn] request
+                  (let [result (expiring-result timeout)]
+                    (enqueue requests (RequestTuple. request result nil))
+                    result)))))))))
 
 ;;;
 
-(defn- wrap-constant-response [f channel-generator options]
-  (fn [x]
-    (let [result (result-channel)
-	  ch (channel-generator)]
-      (run-pipeline nil
-	:error-handler #(error! result %)
-	(fn [_] (f ch x)))
-      (siphon-result
-	(read-channel ch)
-	result))))
+(defn server-generator-
+  [handler-fn
+   {:keys
+    [result-channel-generator
+     error-response
+     timeout]
+    :or {result-channel-generator result-channel}
+    :as options}
+   server-fn]
+  (let [f (fn this
+            ([request]
+               (this (result-channel-generator) request))
+            ([ch request]
+               (let [ch (if timeout
+                          (with-timeout (timeout request) ch)
+                          ch)]
+                 (run-pipeline nil
+                   {:error-handler (fn [ex]
+                                     (if error-response
+                                       (success ch (error-response ex))
+                                       (error ch ex)))}
+                   (fn [_]
+                     (handler-fn ch request)))
+                 ch)))
+        f (try-instrument options f)]
+    (fn [ch]
+      (server-fn f ch))))
+
+;;
 
 (defn server-generator
-  "Given a handler function, returns a function that takes a bi-directional channel
-   and consumes requests one at a time, passing them to the handler function with
-   a response channel.  Requests will be handled one at a time.
+  "Like `server`, but returns a function which takes a `channel` and sets up the server consumption.  
 
-   The handler function should accept two parameters, with the pattern (handler ch request)."
-  ([handler]
-     (server-generator handler {}))
-  ([handler options]
-     (let [options (merge
-		     {:name (str (gensym "server:"))}
-		     options)
-	   thread-pool (let [t (:thread-pool options)]
-			 (if (or (nil? t) (thread-pool? t))
-			   t
-			   (thread-pool t)))
-	   include-request? (:include-request options)
-	   handler (executor thread-pool
-		     (wrap-constant-response handler
-		       (or (:response-channel options) constant-channel)
-		       options)
-		     options)]
-
-       (siphon-probes (:name options) (:probes options))
-
-       (fn [ch]
-         (run-pipeline ch
-           read-channel
-           (fn [request]
-             (when-not (and (nil? request) (drained? ch))
-               (run-pipeline request
-                 :error-handler #(complete
-                                   (enqueue ch
-                                     (if include-request?
-                                       {:request request, :response %}
-                                       %)))
-                 #(handler [%])
-                 #(enqueue ch
-                    (if include-request?
-                      {:request request, :response %}
-                      %)))))
-           (fn [_]
-             (if-not (drained? ch)
-               (restart)
-               (close ch))))))))
+   This is slightly more efficient than calling `server` repeatedly with the same handler for different
+   channels."
+  [handler
+   {:keys
+    [name
+     implicit?
+     probes
+     executor
+     result-channel-generator
+     timeout
+     error-response]
+    :as options}]
+  (server-generator- handler options
+    (fn [handler ch]
+      (run-pipeline ch
+        {:error-handler (fn [ex]
+                          (when-not (or (drained? ch) (closed? ch))
+                            (enqueue ch ex)
+                            (restart)))}
+        read-channel
+        handler
+        (fn [response]
+          (enqueue ch response)
+          (when-not (or (drained? ch) (closed? ch))
+            (restart)))))))
 
 (defn server
-  "Given a handler function and a bi-directional channel, consumes requests one at a time,
-   passing them to the handler function a response channel.  Requests will be handled one
-   at a time.
+  "Models a server-side request-response communication model on top of a bidirectional socket.  For 
+   each request, `handler` will be called with a `result-channel` and the `request`.  The response
+   should be enqueued into the `result-channel`.
 
-   The handler function should accept two parameters, with the pattern (handler ch request)."
-  ([ch handler]
-     (server ch handler {}))
-  ([ch handler options]
-     ((server-generator handler options) ch)))
+   Only one request will be pending in the handler at any time.  To pipeline requests, see `pipelined-server`.
+
+   Optional parameters:
+
+       `:name` -  if defined, instruments the handler function, creating probes within that namespace. This simplifies
+                  the handler as a transformation of request -> response, eliding the `result-channel` and treating
+                  the time spent waiting for it to become realized as part of the handler's invocation.
+
+       `:implicit?` - whether the instrumentation will be captured by higher-level functions, defaults to true.
+	
+       `:probes` - a map of sub-names (with `:name` implicitly prefixed) onto channels that consume those probes.
+
+       `:executor` - the executor for the handler.
+	
+       `:result-channel-generator` - a function that takes zero parameters and returns the result-channel that will be
+	                                 passed into the handler.
+	
+       `:error-response` - the response that will be sent if there is an error in the handler."
+  [handler
+   ch
+   {:keys
+    [name
+     implicit?
+     probes
+     executor
+     result-channel-generator
+     error-response]
+    :or {implicit? true
+	     result-channel-generator result-channel}
+    :as options}]
+  ((server-generator handler options) ch))
+
+;;
 
 (defn pipelined-server-generator
-  "Given a handler function, returns a function that takes a bi-directional channel
-   and consumes requests one at a time, passing them to the handler function with
-   a response channel.  Requests will be handled in parallel, but responses will be
-   sent in-order.
+  "Like `pipelined-server`, but returns a function which takes a `channel` and sets up the server consumption.  
 
-   The handler function should accept two parameters, with the pattern (handler ch request)."
-  ([handler]
-     (pipelined-server-generator handler {}))
-  ([handler options]
-     (let [options (merge
-		     {:name (str (gensym "server:"))}
-		     options)
-	   thread-pool (let [t (:thread-pool options)]
-			 (if (or (nil? t) (thread-pool? t))
-			   t
-			   (thread-pool t)))
-	   include-request? (:include-request options)
-	   handler (executor thread-pool
-		     (wrap-constant-response handler
-		       (or (:response-channel options) constant-channel)
-		       options)
-		     options)]
+   This is slightly more efficient than calling `pipelined-server` repeatedly with the same handler for different
+   channels."
+  [handler
+   {:keys
+    [name
+     implicit?
+     probes
+     executor
+     result-channel-generator
+     timeout
+     error-response]
+    :or {result-channel-generator result-channel}
+    :as options}]
+  (server-generator- handler options
+    (fn [handler ch]
+      (let [responses (channel)
+            r (result-channel)]
 
-       (siphon-probes (:name options) (:probes options))
-       
-       (fn [ch]
+        ;; wait for the responses, returning them in-order
+        (run-pipeline responses
+          {:error-handler (fn [ex]
+                            (when-not (or (drained? ch) (closed? ch))
+                              (enqueue ch ex)
+                              (restart)))
+           :result r}
+          read-channel
+          (fn [response]
+            (enqueue ch response)
+            (restart)))
 
-         (let [requests (channel)
-               responses (channel)]
-
-           (run-pipeline responses
-             read-channel
-             #(enqueue ch %)
-             (fn [_] (restart)))
-         
-           (run-pipeline ch
-             read-channel
-             (fn [request]
-               (when-not (and (nil? request) (drained? ch))
-                 (run-pipeline request
-                   :error-handler #(complete
-                                     (enqueue responses
-                                       (if include-request?
-                                         {:request request, :response %}
-                                         %)))
-                   #(handler [%])
-                   (fn [c]
-                     (if include-request?
-                       {:request request, :response c}
-                       c))
-                   #(enqueue responses %))))
-             (fn [_]
-               (if-not (drained? ch)
-                 (restart)
-                 (close ch)))))))))
+        ;; handle the requests as quickly as we can, enqueuing
+        ;; the result onto the responses channel
+        (receive-all ch
+          (fn [request]
+            (let [result (result-channel-generator)]
+              (enqueue responses result)
+              (handler result request))))))))
 
 (defn pipelined-server
-  "Given a handler function and a bi-directional channel, consumes requests one at a time,
-   passing them to the handler function a response channel.  Requests will be handled in
-   parallel, but responses will be sent in-order.
+  "Like `server`, but can handle multiple requests from the same channel simultaneously."
+  [handler
+   ch
+   {:keys
+    [name
+     implicit?
+     probes
+     executor
+     result-channel-generator
+     error-response]
+    :as options}]
+  ((pipelined-server-generator handler options) ch))
 
-   The handler function should accept two parameters, with the pattern (handler ch request)."
-  ([ch handler]
-     (pipelined-server ch handler {}))
-  ([ch handler options]
-     ((pipelined-server-generator handler options) ch)))
+;;;

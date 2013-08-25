@@ -6,204 +6,395 @@
 ;;   the terms of this license.
 ;;   You must not remove this notice, or any other, from this software.
 
-(ns
-  ^{:author "Zachary Tellman"}
-  lamina.core
+(ns lamina.core
   (:use
-    [potemkin :only (import-fn)])
+    [potemkin])
   (:require
-    [lamina.core.pipeline :as pipeline]
-    [lamina.core.channel :as channel]
-    [lamina.core.seq :as seq]
-    [lamina.core.named :as named]
-    [lamina.core.expr :as x]
-    [lamina.executors :as executors]
-    [lamina.core.operators :as op]
-    [lamina.core.expr.utils :as x-utils])
-  (:import
-    [java.util.concurrent
-     TimeoutException]))
+    [lamina.time :as t]
+    [lamina.core.watch :as w]
+    [lamina.core.named :as n]
+    [lamina.core.utils :as u]
+    [lamina.core.channel :as ch]
+    [lamina.core.pipeline :as p]
+    [lamina.core.result :as r]
+    [lamina.core.operators :as op]))
 
+;;;
 
-;;;; CHANNELS
+(import-vars
+  [lamina.core.channel
 
-;; core channel functions
-(import-fn channel/receive)
-(import-fn channel/cancel-callback)
-(import-fn channel/enqueue)
-(import-fn channel/enqueue-and-close)
-(import-fn channel/close)
-(import-fn channel/on-closed)
-(import-fn channel/on-drained)
-(import-fn channel/drained?)
-(import-fn channel/closed?)
-(import-fn channel/channel?)
-(import-fn seq/receive-all)
-(import-fn channel/poll)
+   channel
+   closed-channel
+   grounded-channel
+   channel*
+   splice
+   channel?
+   ground
 
-;; channel variants
-(import-fn channel/splice)
-(import-fn channel/channel)
-(import-fn channel/channel-pair)
-(import-fn channel/permanent-channel)
-(import-fn channel/constant-channel)
-(import-fn channel/closed-channel)
-(import-fn channel/timed-channel)
-(import-fn channel/proxy-channel)
+   receive
+   receive-all
+   read-channel
+   read-channel*
+   sink
+   fork
+   tap
 
-(def nil-channel channel/nil-channel)
+   close
+   force-close
+   closed?
+   drained?
+   transactional?
+   on-closed
+   on-drained
+   on-error
+   cancel-callback
+   closed-result
+   drained-result
 
-;; channel utility functions
+   map*
+   filter*
+   remove*]
 
-(defn siphon
-  [ch & dsts]
-  (seq/siphon ch (zipmap dsts (repeat (count dsts) identity))))
+  [lamina.core.watch
 
-(defmacro siphon->> [& forms]
-  (let [ch-sym (gensym "ch")]
-    `(let [~ch-sym (channel)]
-       (apply siphon
-	 ~(let [operators (butlast forms)]
-	    (if (empty? operators)
-	      ch-sym
-	      `(->> ~ch-sym ~@operators)))
-	 (let [dsts# ~(last forms)]
-	   (if (coll? dsts#) dsts# [dsts#])))
-       ~ch-sym)))
+   atom-sink
+   watch-channel]
 
-(defn sink [& callbacks]
+  [lamina.core.operators
+
+   channel->lazy-seq
+   channel->seq
+
+   mapcat*
+   concat*
+   take*
+   drop*
+   drop-while*
+   take-while*
+   reductions*
+   reduce*
+   last*
+   partition*
+   partition-all*
+   
+   receive-in-order
+   emit-in-order
+   combine-latest
+   merge-channels
+   transitions
+   zip
+   zip-all
+
+   periodically
+   sample-every
+   partition-every
+
+   defer-onto-queue
+
+   distributor
+   distribute-aggregate]
+
+  [lamina.core.named
+
+   named-channel])
+
+(defn enqueue
+  "Enqueues the message or messages into the channel."
+  ([channel]
+     nil)
+  ([channel message]
+     (u/enqueue channel message))
+  ([channel message & messages]
+     (doall
+       (map
+         #(u/enqueue channel %)
+         (list* message messages)))))
+
+(defn enqueue-and-close
+  "Enqueues the message or messages into the channel, and then closes the channel."
+  [ch & messages]
+  (apply enqueue ch messages)
+  (close ch))
+
+(defn permanent-channel
+  "Returns a channel which cannot be closed or put into an error state."
+  [& messages]
+  (channel*
+    :permanent? true
+    :messages (seq messages)))
+
+(defmacro channel-seq [& args]
+  (println "channel-seq is deprecated, use channel->seq instead.")
+  `(channel->seq ~@args))
+
+(defmacro lazy-channel-seq [& args]
+  (println "lazy-channel-seq is deprecated, use channel->lazy-seq instead.")
+  `(channel->lazy-seq ~@args))
+
+(defn lazy-seq->channel
+  "Returns a channel representing the elements of the sequence."
+  [s]
   (let [ch (channel)]
-    (apply receive-all ch callbacks)
+
+    (future
+      (try
+        (loop [s s]
+          (when-not (empty? s)
+            (enqueue ch (first s))
+            (when-not (closed? ch)
+              (recur (rest s)))))
+        (catch Exception e
+          (u/log-error e "Error in lazy-seq->channel."))
+        (finally
+          (close ch))))
+
     ch))
 
-(import-fn seq/fork)
-(import-fn seq/mapcat*)
-(import-fn seq/map*)
-(import-fn seq/filter*)
-(import-fn seq/remove*)
-(import-fn seq/receive-in-order)
-(import-fn seq/reduce*)
-(import-fn seq/reductions*)
-(import-fn seq/take*)
-(import-fn seq/take-while*)
-(import-fn seq/partition*)
-(import-fn seq/partition-all*)
+;;;
 
-(import-fn op/sample-every)
+(import-vars
+  [lamina.core.result
 
-;; named channels
-(import-fn named/named-channel)
-(import-fn named/release-named-channel)
+   result-channel
+   async-promise?
+   with-timeout
+   expiring-result
+   timed-result
+   success
+   success-result
+   error-result
+   merge-results])
 
-;; synchronous channel functions
-(import-fn seq/lazy-channel-seq)
-(import-fn seq/channel-seq)
-(import-fn seq/wait-for-message)
+(defn on-realized
+  "Allows two callbacks to be registered on a result-channel, one in the case of a
+   value, the other in case of an error.
 
-
-;;;; PIPELINES
-
-;; core pipeline functions
-(import-fn pipeline/result-channel)
-(import-fn pipeline/pipeline)
-(import-fn pipeline/run-pipeline)
-
-;; pipeline stage helpers
-(import-fn pipeline/result-channel?)
-(import-fn pipeline/read-channel)
-(def read-channel* read-channel)
-(import-fn pipeline/read-merge)
-
-(import-fn pipeline/on-success)
-(import-fn pipeline/on-error)
-
-(defmacro do-stage
-  "Creates a pipeline stage that emits the same value it receives, but performs some side-effect
-   in between.  Useful for debug prints and logging."
-  [& body]
-  `(fn [x#]
-     ~@body
-     x#))
-
-(import-fn pipeline/wait-stage)
-
-;; redirect signals
-(import-fn pipeline/redirect)
-(import-fn pipeline/restart)
-(import-fn pipeline/complete)
-
-;; pipeline result hooks
-(import-fn pipeline/wait-for-result)
-(import-fn pipeline/siphon-result)
+   This often can and should be replaced by a pipeline."
+  [result-channel on-success on-error]
+  (r/subscribe result-channel
+    (r/result-callback
+      (or on-success (fn [_]))
+      (or on-error (fn [_])))))
 
 ;;;
 
-(defmacro wait-stage
-  "Creates a pipeline stage that accepts a value, and emits the same value after 'interval' milliseconds."
-  [interval]
-  `(fn [x#]
-     (let [interval# ~interval]
-       (run-pipeline
-	 (when (pos? interval#)
-	   (read-channel (timed-channel interval#)))
-	 (fn [_#] x#)))))
+(defn error
+  "Puts the channel or result-channel into an error state."
+  [channel err]
+  (u/error channel err false))
 
-(defmacro task
-  "A variation of 'future' that returns a result-channel instead of a synchronous
-   future object.
+(defn force-error
+  "Puts the channel or result-channel into an error state, even if it's permanent."
+  [channel err]
+  (u/error channel err true))
 
-   When used within (async ...), it's simply an annotation that the body should be executed
-   on a separate thread."
-  [& body]
-  `(executors/with-thread-pool (lamina.executors.core/current-executor) nil
-     ~@body))
+(defn siphon
+  "Takes all messages from `src` and forwards them to `dst`.  If `dst` closes, `src` is closed, but 
+   not vise-versa.  Error states are similarly propagated.  This is useful for many transient channels 
+   feeding into one channel.
+
+   If more than two channels are specified, `siphon` becomes transitive.  `(siphon a b c)` is equivalent to
+   `(siphon a b)` and `(siphon b c)`."
+  ([src dst]
+     (if (async-promise? src)
+       (r/siphon-result src dst)
+       (ch/siphon src dst)))
+  ([src dst & rest]
+     (siphon src dst)
+     (apply siphon dst rest)))
+
+(defn join
+  "Takes all messages from `src` and forwards them to `dst`.  If either channel closes or goes into an 
+   error state, the same is done for the other channel.  This is useful for channels which have a 1-to-1 
+   relationship.
+
+   If more than two channels are specified, `join` becomes transitive.  `(join a b c)` is equivalent to
+   `(join a b)` and `(join b c)`."
+  ([src dst]
+     (if (async-promise? src)
+       (do
+         (r/siphon-result src dst)
+         (r/subscribe dst (r/result-callback (fn [_]) #(u/error src % false))))
+       (ch/join src dst)))
+  ([src dst & rest]
+     (join src dst)
+     (apply join dst rest)))
+
+(defn error-value
+  "Returns the error-value of the channel or async-promise if it's in an error state, and 'default-value'
+   otherwise"
+  [x default-value]
+  (if (async-promise? x)
+    (r/error-value x default-value)
+    (ch/error-value x default-value)))
+
+(defn channel-pair
+  "Returns a pair of channels, where all messages enqueued into one channel can
+   be received by the other, and vice-versa.  Closing one channel will automatically
+   close the other."
+  []
+  (let [a (channel)
+        b (channel)]
+    (on-closed a #(close b))
+    (on-closed b #(close a))
+    (on-error a #(error b %))
+    (on-error b #(error a %))
+    [(splice a b) (splice b a)]))
+
+(import-vars
+  [lamina.core.pipeline
+
+   pipeline
+   run-pipeline
+   restart
+   redirect
+   complete
+   wait-stage])
+
+(defmacro sink->>
+  "Creates a channel, pipes it through the ->> operator, and sends the
+   resulting stream into the callback. This can be useful when defining
+   :probes for an instrumented function, among other places.
+
+   (sink->> (map* inc) (map* dec) println)
+
+   expands to
+
+   (let [ch (channel)]
+     (receive-all
+       (->> ch (map* inc) (map* dec))
+       println)
+     ch)"
+  [& transforms+callback]
+  (let [transforms (butlast transforms+callback)
+        callback (last transforms+callback)]
+   (unify-gensyms
+     `(let [ch## (channel)]
+        (do
+          ~(if (empty? transforms)
+             `(receive-all ch## ~callback)
+             `(receive-all (->> ch## ~@transforms) ~callback))
+          ch##)))))
+
+(defmacro split
+  "Returns a channel which will forward each message to all downstream-channels.
+   This can be used with sink->>, siphon->>, and join->> to define complex
+   message flows:
+
+   (join->> (map* inc)
+     (split
+       (sink->> (filter* even?) log-even)
+       (sink->> (filter* odd?) log-odd)))"
+  [& downstream-channels]
+  `(let [ch# (channel)]
+     (doseq [x# (list ~@downstream-channels)]
+       (siphon ch# x#))
+     ch#))
+
+(defmacro siphon->>
+  "A variant of sink->> where the last argument is assumed to be a channel,
+   and the contents of the transform chain are siphoned into it.
+
+   (siphon->> (map* inc) (map* dec) (named-channel :foo))
+
+   expands to
+
+   (let [ch (channel)]
+     (siphon
+       (->> ch (map* inc) (map* dec))
+       (named-channel :foo))
+     ch)"
+  [& transforms+downstream-channel]
+  (let [transforms (butlast transforms+downstream-channel)
+        ch (last transforms+downstream-channel)]
+    (unify-gensyms
+      `(let [ch## (channel)]
+         (siphon
+           ~(if (empty? transforms)
+              `ch##
+              `(->> ch## ~@transforms))
+           ~ch)
+         ch##))))
+
+(defmacro join->>
+  "A variant of sink->> where the last argument is assumed to be a channel,
+   and the transform chain is joined to it.
+
+   (join->> (map* inc) (map* dec) (named-channel :foo))
+
+   expands to
+
+   (let [ch (channel)]
+     (join
+       (->> ch (map* inc) (map* dec))
+       (named-channel :foo))
+     ch)"
+  [& transforms+downstream-channel]
+  (let [transforms (butlast transforms+downstream-channel)
+        ch (last transforms+downstream-channel)]
+    (unify-gensyms
+      `(let [ch## (channel)]
+         (join
+           ~(if (empty? transforms)
+              `ch##
+              `(->> ch## ~@transforms))
+           ~ch)
+         ch##))))
 
 ;;;
 
-(import-fn x-utils/compact)
+(defn idle-result
+  "A result which will be realized if `channel` doesn't emit a message for `interval` milliseconds."
+  ([interval channel]
+     (idle-result interval (t/task-queue) channel))
+  ([interval task-queue channel]
+     (let [target-time (atom (+ (t/now task-queue) interval))
+           ch (tap channel)]
 
-(defmacro force-all
-  "Forces a sequence of results.  Subsequent expressions will wait on all results being
-   realized, but the results can be completed in any order."
-  [expr]
-  `(~'force (compact ~expr)))
+       (ground ch)
+       
+       (p/run-pipeline ch
+         {:error-handler (fn [_])}
+         #(read-channel* %
+            :task-queue task-queue
+            :timeout (- @target-time (t/now task-queue))
+            :priority Integer/MAX_VALUE
+            :on-timeout ::timeout
+            :on-drained ::timeout)
+         #(if (= ::timeout %)
+            (p/complete true)
+            (let [to-sleep (- @target-time (t/now task-queue))]
+              (r/timed-result to-sleep to-sleep task-queue)))
+         (fn [slept]
+           (swap! target-time + (- interval slept))
+           (restart))))))
 
-(defmacro async
-  "Turns standard Clojure expressions into a dataflow representation of the computation.
+(defn close-on-idle
+  "Sets up a watcher which will close `channel` if it doesn't emit a message for `interval` milliseconds.
 
-   Any result-channel can be treated as a real value inside the async block.  The value
-   returned by the async block will be a result-channel."
-  [& body]
-  (x/async body))
+   Returns `channel`, for chaining convenience."
+  ([interval channel]
+     (close-on-idle interval (t/task-queue) channel))
+  ([interval task-queue channel]
+     (p/run-pipeline (idle-result interval task-queue channel)
+       {:error-handler (fn [_])}
+       (fn [_] (close channel)))
+     channel))
 
-(defmacro defn-async
-  "Creates an asynchronous function."
-  [& body]
-  `(def ~(first body)
-     (deref (async (fn ~(first body) ~@(rest body))))))
+(defn wait-for-message
+  "Blocks for the next message from the channel. If the timeout elapses without a message,
+   throws a java.util.concurrent.TimeoutException."
+  ([ch]
+     @(read-channel ch))
+  ([ch timeout]
+     @(read-channel* ch :timeout timeout)))
 
-(defmacro with-timeout
-  "Wraps a body that returns a result-channel, and returns a new result-channel that will
-   emit a java.util.concurrent.TimeoutException if the inner result-channel doesn't yield
-   a value in 'timeout' ms."
-  [timeout & body]
-  (let [start-sym (gensym "start")]
-    `(let [~start-sym (System/currentTimeMillis)
-	   result# (do ~@body)]
-       (if-not (result-channel? result#)
-	 result#
-	 (let [result## (result-channel)]
-	   (receive
-	     (pipeline/poll-result result#
-	       ~(cond
-		  (zero? timeout) 0
-		  (neg? timeout) -1
-		  :else `(max 1 (- ~timeout (- (System/currentTimeMillis) ~start-sym)))))
-	     (fn [poll-result#]
-	       (if-not poll-result#
-		 (pipeline/error! result## (TimeoutException. "Timed out waiting for async result."))
-		 (let [[outcome# value#] poll-result#]
-		   (condp = outcome#
-		     :success (pipeline/success! result## value#)
-		     :error (pipeline/error! result## value#))))))
-	   result##)))))
+(defn wait-for-result
+  "Waits for the result to be realized. If the timeout elapses without a value, throws a
+   java.util.concurrent.TimeoutException."
+  ([result-channel]
+     @result-channel)
+  ([result-channel timeout]
+     @(with-timeout timeout result-channel)))
+

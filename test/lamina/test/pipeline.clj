@@ -1,6 +1,5 @@
 ;;   Copyright (c) Zachary Tellman. All rights reserved.
 ;;   The use and distribution terms for this software are covered by the
-
 ;;   Eclipse Public License 1.0 (http://opensource.org/licenses/eclipse-1.0.php)
 ;;   which can be found in the file epl-v10.html at the root of this distribution.
 ;;   By using this software in any fashion, you are agreeing to be bound by
@@ -9,211 +8,152 @@
 
 (ns lamina.test.pipeline
   (:use
-    [lamina core executors])
-  (:use [clojure.test])
-  (:import [java.util.concurrent
-	    TimeoutException
-	    CountDownLatch
-	    TimeUnit]))
+    [lamina core
+     [executor :exclude (defer)]]
+    [clojure test]
+    [lamina.test utils]))
 
-(defn test-pipeline [pipeline expected-result]
-  (is (= expected-result (wait-for-result (pipeline 0) 5000))))
+(defn defer [f]
+  #(run-pipeline %
+     (wait-stage 20)
+     f))
 
-(def slow-inc
-  (fn [x]
-    (task
-      (Thread/sleep 10)
-      (inc x))))
-
-(defn assert-failure [pipeline]
-  (try
-    (wait-for-result (pipeline 0) 100)
-    (catch TimeoutException e
-      (is false))
-    #_(catch clojure.lang.ArityException e
-      (is false))
-    (catch Exception e
-      (is true))))
-
-(defn fail [_]
+(defn boom [_]
   (throw (Exception. "boom")))
 
-(def slow-fail
-  (fn [x]
-    (task
-      (fail x))))
+(def exc (executor {:name :test-pipeline}))
 
-(defn fail-times [n]
-  (let [counter (atom n)]
-    (fn [x]
-      (swap! counter dec)
-      (if (pos? @counter)
-	(fail nil)
-	x))))
+(defmacro repeated-pipeline [n f]
+  `(pipeline ~@(repeat n f)))
 
-(declare pipe-a)
-(def pipe-b (pipeline inc #(if (< % 10) (redirect pipe-a %) %)))
-(def pipe-a (pipeline inc #(if (< % 10) (redirect pipe-b %) %)))
+(defmacro repeated-executor-pipeline [n f]
+  `(pipeline {:executor exc} ~@(repeat n f)))
+
+(defmacro repeated-run-pipeline [n initial-val f]
+  `(run-pipeline ~initial-val ~@(repeat n f)))
 
 ;;;
 
-(deftest test-basic-pipelines
-  (test-pipeline (apply pipeline (take 1e3 (repeat inc))) 1000)
-  (test-pipeline (apply pipeline (take 1e3 (repeat (fn [x] (task (inc x)))))) 1000)
-  (test-pipeline (apply pipeline (take 100 (repeat slow-inc))) 100)
-  (test-pipeline (pipeline #(assoc {} :result %) :result) 0))
+(deftest test-simple-pipelines
+  (dotimes [i 10]
+    (eval
+      `(do
+         (is (= ~i @((repeated-pipeline ~i inc) 0)))
+         (is (= ~i @((repeated-pipeline ~i (defer inc)) 0)))
+         (is (= ~i @((repeated-executor-pipeline ~i inc) 0)))
+         (is (= ~i @((repeated-executor-pipeline ~i (defer inc)) 0)))
+         (is (= ~i @((repeated-pipeline ~i (fn [i#] (-> i# inc success-result success-result))) 0)))))))
 
-(deftest test-nested-pipelines
-  (test-pipeline (pipeline inc (pipeline inc (pipeline inc) inc) inc) 5))
+(deftest test-restart
+  (is (= 10 @(run-pipeline 0
+               inc
+               #(if (< % 10) (restart %) %))))
+  (is (= 10 @(run-pipeline 0
+               inc inc inc inc inc
+               #(if (< % 10) (restart %) %)))))
 
-(deftest test-redirected-pipelines
-  (test-pipeline (pipeline inc inc #(redirect (pipeline inc inc inc) %)) 5)
-  (test-pipeline pipe-b 10)
+(declare pipe-b)
+(def pipe-a (pipeline inc #(if (< % 10) (redirect pipe-b %) %)))
+(def pipe-b (pipeline inc #(if (< % 10) (redirect pipe-a %) %)))
 
-  (let [cat (fn [x] (fn [s] (conj s x)))]
-    (test-pipeline
-      (pipeline (fn [_] [])
-	(cat "a")
-	(pipeline
-	  (cat "b")
-	  #(if (< (count %) 3)
-	     (restart %)
-	     %)
-	  (cat "c"))
-	(cat "d"))
-      (map str (seq "abbcd")))))
+(deftest test-redirect
+  (is (= 10 @(pipe-a 0)))
+  (is (= 10 @(pipe-b 0))))
 
-(deftest test-error-propagation
-  (assert-failure (pipeline :error-handler (fn [_]) fail))
-  (assert-failure (pipeline :error-handler (fn [_]) inc fail))
-  (assert-failure (pipeline :error-handler (fn [_]) inc fail inc))
-  (assert-failure (pipeline :error-handler (fn [_]) slow-inc slow-fail))
-  (assert-failure (pipeline :error-handler (fn [_]) inc (pipeline :error-handler (fn [_]) inc fail) inc))
-  (assert-failure (pipeline :error-handler (fn [_]) inc #(redirect (pipeline :error-handler (fn [_]) inc fail) %))))
+(def ^:dynamic a 1)
 
-(deftest test-redirection-and-error-handlers
+(deftest test-unwrap
+  (is (= 1 (run-pipeline 0 {:unwrap? true} inc)))
+  (is (= 1 @(run-pipeline 0 {:unwrap? true} (defer inc)))))
 
-  (let [n (atom 0)
-	f (fn [_] (swap! n inc))]
-    (run-pipeline n
-      :error-handler (fn [_])
-      (pipeline :error-handler f
-	(pipeline :error-handler f
-	  (pipeline :error-handler f
-	    fail))))
-    (is (= 3 @n)))
+(deftest test-with-bindings
+  (is (= 2 @(run-pipeline a
+              inc)))
+  (is (= 2 @(run-pipeline a
+              (wait-stage 20)
+              inc)))
+  (is (= 2 @(binding [a 3]
+              (run-pipeline nil
+                (wait-stage 20)
+                (constantly a)
+                inc))))
+  (is (= 4 @(binding [a 3]
+              (run-pipeline a
+                (wait-stage 20)
+                inc))))
+  (is (= 4 @(binding [a 3]
+              (run-pipeline nil
+                {:with-bindings? true}
+                (wait-stage 20)
+                (constantly a)
+                inc)))))
 
-  (let [n (atom [])
-	f (fn [val] (fn [_] (swap! n conj val)))]
-    (run-pipeline n
-      :error-handler (fn [_])
-      (pipeline :error-handler (f 1)
-	(fn [x]
-	  (redirect
-	    (pipeline :error-handler (f 2)
-	      (fn [x]
-		(redirect
-		  (pipeline :error-handler (f 3)
-		    fail)
-		  x)))
-	    x))))
-    (is (= [3] @n))))
+(deftest test-error-handler
+  (is (thrown? Exception @(run-pipeline nil
+                            {:error-handler nil}
+                            boom)))
+  (is (thrown? Exception @(run-pipeline nil
+                            {:error-handler (fn [_])}
+                            boom)))
+  (is (thrown? Exception @(run-pipeline nil
+                            {:timeout 1}
+                            (wait-stage 100))))
+  (is (= 1 @(run-pipeline nil
+              {:error-handler (fn [_] (complete 1))}
+              boom)))
+  (is (thrown? Exception @(run-pipeline nil
+                            {:timeout 1
+                             :error-handler (fn [_] (complete 2))}
+                            (wait-stage 100))))
+  (is (= 1 @(run-pipeline nil
+              {:error-handler (pipeline
+                                (wait-stage 100)
+                                (fn [_] (complete 1)))}
+              boom))))
 
-(deftest test-error-handling
+(deftest test-finally
+  (let [latch (atom false)]
+    (is (= 1 @(run-pipeline 0
+                {:finally #(reset! latch true)}
+                inc)))
+    (is (= true @latch)))
+  (let [latch (atom false)]
+    (is (thrown? Exception @(run-pipeline nil
+                              {:error-handler (fn [_])
+                               :finally #(reset! latch true)}
+                              boom)))
+    (is (= true @latch))))
 
-  (test-pipeline
-    (pipeline :error-handler (fn [ex] (redirect (pipeline inc) 0))
-      inc
-      fail)
-    1)
+;;;
 
-  (test-pipeline
-    (pipeline :error-handler (fn [ex] (restart))
-      inc
-      (fail-times 3)
-      inc)
-    2)
+(deftest ^:benchmark benchmark-pipelines
+  (let [f #(-> % inc inc inc inc inc)]
+    (bench "baseline raw-function"
+      (f 0)))
+  (let [f (apply comp (repeat 5 inc))]
+    (bench "baseline composition"
+      (f 0)))
+  (let [p (repeated-pipeline 5 inc)]
+    (bench "simple inc"
+      (p 0)))
+  (bench "run-pipeline inc"
+    (repeated-run-pipeline 0 5 inc))
+  (let [p (repeated-pipeline 5 success-result)]
+    (bench "simple success-result"
+      (p 0)))
+  (let [p (repeated-pipeline 5 #(-> % inc success-result success-result))]
+    (bench "nested success-result"
+      (p 0)))
+  (let [r (result-channel)
+        _ (success r 1)
+        p (repeated-pipeline 5 (fn [_] r))]
+    (bench "simple result-channel"
+      (p 0)))
 
-  (test-pipeline
-    (pipeline
-      inc
-      (pipeline :error-handler (fn [ex] (restart))
-	inc
-	(fail-times 3))
-      inc)
-    3))
-
-(deftest test-tail-recursion
-  
-  (let [ch (apply closed-channel (range 1e4))]
-    (run-pipeline ch
-      read-channel
-      (fn [x]
-	(when-not (closed? ch)
-	  (restart)))))
-
-  (run-pipeline 1e5
-    #(when (pos? %)
-       (restart (dec %))))
-
-  ;;TODO: excessive failures should stop the pipeline at some point
-  (run-pipeline nil
-    :error-handler (fn [_] (restart))
-    (fail-times 1e4)))
-
-(deftest test-executor
-
-  (let [t1 (atom nil)
-	t2 (atom nil)
-	ch (channel)]
-
-    (wait-for-result
-      (with-thread-pool (thread-pool {:max-thread-count 1}) nil
-	(run-pipeline nil
-	  (fn [_]
-	    (reset! t1 (Thread/currentThread))
-	    (future (Thread/sleep 100) (enqueue ch 1))
-	    (read-channel ch))
-	  (pipeline
-	    (fn [_]
-	      (reset! t2 (Thread/currentThread))))))
-       500)
-    (is (= @t1 @t2)))
-
-  (let [t1 (atom nil)
-	t2 (atom nil)
-	ch (channel)]
-
-    (wait-for-result
-      (run-pipeline nil
-	:thread-pool (thread-pool {:max-thread-count 1})
-	(fn [_]
-	  (reset! t1 (Thread/currentThread))
-	  (future (Thread/sleep 100) (enqueue ch 1))
-	  (read-channel ch))
-	(pipeline
-	  (fn [_]
-	    (reset! t2 (Thread/currentThread)))))
-      500)
-    (is (= @t1 @t2))))
-
-(declare ^{:dynamic true} to-be-bound)
-
-(deftest test-bindings
-  (let [t1 (atom nil)
-	t2 (atom nil)
-	ch (channel)]
-
-    (wait-for-result
-      (binding [to-be-bound "foo"]
-	(run-pipeline nil
-	  :thread-pool (thread-pool)
-	  (fn [_]
-	    (reset! t1 to-be-bound)
-	    (future (Thread/sleep 100) (enqueue ch 1))
-	    (read-channel ch))
-	  (pipeline
-	    (fn [_]
-	      (reset! t2 to-be-bound)))))
-      500)
-    (is (= @t1 @t2))))
+  ;;;
+  (let [p (pipeline inc #(if (< % 10) (restart %) %))]
+    (bench "simple loop"
+      (p 0)))
+  (let [p (pipeline inc inc inc inc inc #(if (< % 10) (restart %) %))]
+    (bench "flattened loop"
+      (p 0))))

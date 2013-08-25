@@ -10,18 +10,27 @@
   (:use
     [potemkin])
   (:require
-    [lamina.core.pipeline :as pipeline]
-    [lamina.core.channel :as channel]
-    [lamina.core.seq :as seq]))
+    lamina.core.utils
+    lamina.core.channel
+    lamina.core.operators)
+  (:import
+    [java.util.concurrent
+     BlockingQueue]))
 
-(import-fn pipeline/poll-result)
-(import-fn pipeline/success-result)
-(import-fn pipeline/error-result)
-(import-fn pipeline/success!)
-(import-fn pipeline/error!)
-(import-fn pipeline/closed-result)
-(import-fn pipeline/drained-result)
+(import-vars
+  [lamina.core.channel
 
-(import-fn seq/copy)
+   connect
+   bridge
+   bridge-join
+   bridge-siphon]
 
-(import-fn channel/dequeue)
+  [lamina.core.operators
+
+   bridge-accumulate
+   bridge-in-order]
+
+  [lamina.core.utils
+   
+   result-seq])
+

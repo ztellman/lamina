@@ -1,5 +1,6 @@
 pom.xml
 *jar
+doc
 lib
 classes
 push
@@ -7,3 +8,4 @@ local-push
 *DS_Store
 autodoc
 .lein*
+target/**

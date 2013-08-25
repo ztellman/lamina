@@ -8,115 +8,114 @@
 
 (ns lamina.trace
   (:use
-    [lamina.core channel seq pipeline]
-    potemkin)
+    [potemkin]
+    [lamina.core])
   (:require
-    [clojure.tools.logging :as log]
-    [lamina.trace.core :as trace]))
+    [lamina.cache :as c]
+    [lamina.query :as q]
+    [lamina.time :as time]
+    [lamina.stats :as stats]
+    [lamina.trace.router :as r]
+    [lamina.trace.context :as ctx]
+    [lamina.trace.instrument :as i]
+    [lamina.trace.timer :as t]
+    [lamina.trace.utils :as u]
+    [lamina.trace.probe :as pr]))
+
+(import-fn ctx/register-context-builder)
+
+(import-fn i/instrument)
+(import-macro i/instrumented-fn)
+(import-macro i/defn-instrumented)
+
+(import-fn t/distill-timing)
+(import-fn t/merge-distilled-timings)
+(import-fn t/format-timing)
+(import-macro u/time*)
+(import-macro u/with-instrumentation)
+(import-fn t/add-sub-timing)
+(import-fn t/add-to-last-sub-timing)
+
+(import-fn c/subscribe)
+
+(defn tracing?
+  "Returns true when called inside an active function trace scope, false otherwise."
+  []
+  (boolean (lamina.core.context/timer)))
+
+(defn analyze-timings
+  "Aggregates timings, and periodically emits statistical information about them."
+  [{:keys [period  window]
+    :or {window (time/hours 1)
+         period (time/period)}
+    :as options}
+   ch]
+  (->> ch
+
+    ;; normalize the input
+    (map* distill-timing)
+
+    (q/query-stream
+      '[(group-by :task
+          [(zip
+             {:duration-quantiles [:durations concat moving-quantiles]
+              :calls [:durations concat rate rolling-sum]
+              :total-duration [:durations concat rolling-sum]
+              :sub-tasks [:sub-tasks concat recur]
+              })])]
+      options)))
 
 ;;;
 
-(trace/def-log-channel log-trace :trace)
-(trace/def-log-channel log-debug :debug)
-(trace/def-log-channel log-info :info)
-(trace/def-log-channel log-warn :warn)
-(trace/def-log-channel log-error :error)
-(trace/def-log-channel log-fatal :fatal)
+(import-vars
+  [lamina.trace.probe
 
-;;;
+   on-enabled-changed
+   on-new-probe
+   canonical-probe-name
+   probe-channel
+   error-probe-channel
+   probe-enabled?
+   select-probes
+   probe-names]
 
-(import-fn trace/register-probe)
-(import-fn trace/canonical-probe)
-(import-fn trace/on-new-probe)
-(import-fn trace/probe-channel)
+  [lamina.trace.timer
 
-(defn registered-probes []
-  @trace/probe-switches)
+   add-to-trace-counter
+   increment-trace-counter])
+
+(defmacro trace*
+  "A variant of trace that allows the probe name to be resolved at runtime."
+  [probe & body]
+  (let [probe (if (keyword? probe)
+                (name probe)
+                probe)]
+    `(let [probe-channel# (probe-channel ~probe)]
+       (if (probe-enabled? probe-channel#)
+         (do
+           (enqueue probe-channel# (do ~@body))
+           true)
+         false))))
 
 (defmacro trace
-  "Enqueues the value into a probe-channel only if there's a consumer for it.  If there
-   is no consumer, the body will not be evaluated."
-  [probe & body]
-  (apply trace/expand-trace probe body))
+  "Enqueues a value into the probe-channel described by `probe`.  The body is executed only
+   if there is a consumer for the probe channel; this is essentially a log statement that is
+   only active if someone is paying attention.
 
-(defmacro trace->> [probe & forms]
-  (apply trace/expand-trace->> probe forms))
+   For performance reasons, the probe name must be something that can be resolved at compile-time."
+  [probe & body]
+  (when-not (or (keyword? probe) (string? probe))
+    (println
+      (str
+        (ns-name *ns*) ", line " (-> &form meta :line) ": '"
+        (pr-str probe) "' cannot be resolved to a static probe. "
+        "This will work, but may cause performance issues. Use trace* to hide this warning.")))
+  `(trace* ~probe ~@body))
 
 ;;;
 
-(defn siphon-probes [prefix m]
-  (doseq [[k v] m]
-    (siphon (probe-channel [prefix k]) {v identity})))
 
-(defn- call-tracer [options]
-  (let [probe (canonical-probe [(:name options) :calls])
-	args-transform (if-let [transform-fn (:args-transform options)]
-			transform-fn
-			identity)]
-    (fn [args]
-      (trace probe (args-transform args)))))
+(import-fn r/trace-router)
+(import-fn r/local-trace-router)
+(import-fn r/aggregating-trace-router)
 
-(defn- result-tracer [options]
-  (let [probe (canonical-probe [(:name options) :results])
-	args-transform (if-let [transform-fn (:args-transform options)]
-			transform-fn
-			identity)
-	result-transform (if-let [transform-fn (:result-transform options)]
-			   transform-fn
-			   identity)]
-    (fn [args result start]
-      (trace probe
-	(let [end (System/nanoTime)]
-	  {:args (args-transform args)
-	   :result (result-transform result)
-	   :start-time (/ start 1e6)
-	   :end-time (/ end 1e6)
-	   :duration (/ (- end start) 1e6)})))))
-
-(defn- error-tracer [options]
-  (let [probe (canonical-probe [(:name options) :errors])
-	args-transform (if-let [transform-fn (:args-transform options)]
-			 transform-fn
-			 identity)]
-    (fn [args start ex]
-      (when-not (trace probe
-                  (let [end (System/nanoTime)]
-                    {:args (args-transform args)
-                     :exception ex
-                     :start-time (/ start 1e6)
-                     :end-time (/ end 1e6)
-                     :duration (/ (- end start) 1e6)}))
-        (log/error ex (str "Unconsumed error on " probe))))))
-
-(defn trace-wrap [f options]
-  (when-not (:name options)
-    (throw (Exception. "Must define :name for instrumented function.")))
-  (siphon-probes (:name options) (:probes options))
-  (let [calls (call-tracer options)
-	results (result-tracer options)
-	errors (error-tracer options)]
-    (fn [& args]
-      (calls args)
-      (let [start-time (System/nanoTime)]
-	(try
-	  (let [result (apply f args)]
-	    (run-pipeline result
-	      :error-handler #(errors args start-time %)
-	      #(results args % start-time))
-	    result)
-	  (catch Exception e
-	    (errors args start-time e)
-	    (throw e)))))))
-
-(defmacro defn-trace [name & forms]
-  (let [options (->> forms
-		  (take-while #(or (symbol? %) (string? %) (map? %)))
-		  (filter map?)
-		  first)]
-    `(do
-       (defn ~name ~@forms)
-       (def ~name
-	 (trace-wrap ~name
-	   (merge
-	     {:name (str (str *ns*) ":" ~name)}
-	     ~(or options {})))))))

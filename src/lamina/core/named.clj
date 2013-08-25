@@ -6,34 +6,24 @@
 ;;   the terms of this license.
 ;;   You must not remove this notice, or any other, from this software.
 
-(ns ^{:skip-wiki true}
-  lamina.core.named
+(ns lamina.core.named
   (:use
-    [lamina.core.channel]))
+    [lamina.core.channel :only (channel*)])
+  (:require
+    [lamina.cache :as cache])
+  (:import
+    [java.util.concurrent
+     ConcurrentHashMap]))
 
-(def named-channels (ref {}))
+(def named-channels (cache/channel-cache #(channel* :description (pr-str %) :permanent? true)))
 
 (defn named-channel
-  "Returns a unique channel for the key.  If no such channel exists,
-   a channel is created, and 'creation-callback' is invoked."
-  ([key]
-     (named-channel key nil))
-  ([key creation-callback]
-     (let [[created? ch] (dosync
-			   (if-let [ch (@named-channels key)]
-			     [false ch]
-			     (let [ch (permanent-channel)]
-			       (commute named-channels assoc key ch)
-			       [true ch])))]
-       (when (and created? creation-callback)
-	 (creation-callback ch))
-       ch)))
+  "Returns a permanent channel keyed to `id`.  If the channel doesn't already exist and `on-create` is non-nil, 
+   it will be invoked with zero parameters."
+  [id on-create]
+  (cache/get-or-create named-channels id on-create))
 
 (defn release-named-channel
-  "Forgets the channel associated with the key, if one exists."
-  [key]
-  (when-let [ch (dosync
-		  (let [ch ((ensure named-channels) key)]
-		    (alter named-channels dissoc key)
-		    ch))]
-    (close ch)))
+  "Removes the named channel keyed to `id` from the cache."
+  [id]
+  (cache/release named-channels id))

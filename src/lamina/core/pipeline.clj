@@ -6,371 +6,423 @@
 ;;   the terms of this license.
 ;;   You must not remove this notice, or any other, from this software.
 
-(ns ^{:skip-wiki true}
-  lamina.core.pipeline
+(ns lamina.core.pipeline
   (:use
-    [lamina.core.channel]
-    [clojure.pprint])
+    [potemkin]
+    [lamina.core.utils :only (description)])
   (:require
-    [clojure.tools.logging :as log])
+    [lamina.core.utils :as u]
+    [lamina.trace.timer :as t]
+    [lamina.core.result :as r]
+    [lamina.executor.utils :as ex]
+    [lamina.core.context :as context])
   (:import
-    [java.util.concurrent
-     TimeoutException
-     Executor]))
+    [lamina.core.result
+     ResultChannel
+     SuccessResult
+     ErrorResult]))
+
+
 
 ;;;
 
-(def instrument-exceptions false)
+(deftype+ Redirect [pipeline value])
 
-(def ^{:dynamic true} *inside-pipeline?* false)
-
-(def ^{:dynamic true} *current-executor* nil)
-
-(defmacro with-executor [executor & body]
-  `(let [f# (fn [] ~@body)]
-     (if-let [executor# ~executor]
-       (.execute ^Executor executor# f#)
-       (f#))))
-
-(defmacro with-executor* [executor & body]
-  `(let [f# (fn [] ~@body)]
-     (if-let [executor# ~executor]
-       (if-not (= executor# *current-executor*)
-	 (.execute ^Executor executor# f#)
-	 (f#))
-       (f#))))
-
-;;;
-
-(declare ^{:dynamic true} wait-for-result)
-
-(deftype ResultChannel [success error metadata]
-  Object
-  (toString [_]
-    (cond
-      (not= ::none (dequeue success ::none))
-      (str "<< " (pr-str (dequeue success nil)) " >>")
-
-      (not= ::none (dequeue error ::none))
-      (str "<< ERROR: " (dequeue error nil) " >>")
-
-      :else
-      "<< ... >>"))
-  clojure.lang.IDeref
-  (deref [this] (wait-for-result this))
-
-  clojure.lang.IObj
-  (withMeta [_ meta] (ResultChannel. success error meta))
-
-  clojure.lang.IMeta
-  (meta [_] metadata))
-
-(defn ^ResultChannel result-channel []
-  (ResultChannel. (constant-channel) (constant-channel) nil))
-
-(defn ^ResultChannel error-result [val]
-  (ResultChannel. nil-channel (constant-channel val) nil))
-
-(defn ^ResultChannel success-result [val]
-  (ResultChannel. (constant-channel val) nil-channel nil))
-
-(defn result-channel? [x]
-  (instance? ResultChannel x))
-
-(defn ^{:dynamic true} on-success [^ResultChannel ch & callbacks]
-  (apply receive (.success ch) callbacks))
-
-(defn ^{:dynamic true} on-error [^ResultChannel ch & callbacks]
-  (apply receive (.error ch) callbacks))
-
-(defn success! [^ResultChannel ch value]
-  (enqueue (.success ch) value))
-
-(defn error! [^ResultChannel ch value]
-  (enqueue (.error ch) value))
-
-(defn poll-result
-  ([result-channel]
-     (poll-result result-channel -1))
-  ([^ResultChannel result-channel timeout]
-     (poll {:success (.success result-channel) :error (.error result-channel)} timeout)))
-
-(defn has-result? [^ResultChannel result-channel]
-  (or
-    (not= ::none (dequeue (.error result-channel) ::none))
-    (not= ::none (dequeue (.success result-channel) ::none))))
-
-;;;
-
-(defrecord Redirect [pipeline value])
-
+(definterface+ IPipeline
+  (implicit? [_])
+  (gen-timer [_ stage])
+  (run-finally [_])
+  (run [_ result initial-value value stage])
+  (error [_ result initial-value ex]))
+ 
 (defn redirect
-  "Returns a redirect signal, which if returned by a pipeline stage will
-   skip all remaining stages in the current pipeline, and begin executing
-   the stages in 'pipeline'.  'value' describes the initial value passed into
-   the new pipeline, and defaults to the initial value passed into the current
-   pipeline."
-  ([pipeline]
-     (Redirect. pipeline ::initial))
-  ([pipeline value]
-     (Redirect. pipeline value)))
-
-(defn redirect? [x]
-  (instance? Redirect x))
+  "Returns a redirect signal which causes the flow to start at the beginning of `pipeline`, with an input
+   value of `value`.  The outcome of this new `pipeline` will be forwarded into the result returned by the
+   original pipeline."
+  [pipeline value]
+  (Redirect. pipeline value))
 
 (defn restart
-  "A special form of redirect, which simply restarts the current pipeline.  'value'
-   describe sthe initial value passed into the first stage of the current pipeline,
-   and defaults to the value that was previously passed into the first stage."
+  "A variant of `redirect` which redirects flow to the top of the current pipeline."
   ([]
-     (restart ::initial))
+     (Redirect. ::current ::initial))
   ([value]
-     (redirect ::pipeline value)))
+     (Redirect. ::current value)))
 
 ;;;
 
-(defn handle-error [pipeline ^ResultChannel result ^ResultChannel outer-result]
-  (let [ex (dequeue (.error result) nil)]
-    (if-let [redirect (if-let [handler (:error-handler pipeline)]
-			(let [result (handler ex)]
-			  (when (redirect? result)
-			    result)))]
-      redirect
-      (do
-	(enqueue (.error outer-result) ex)
-	nil))))
+(defn resume-pipeline [pipeline result initial-value value stage]
+  (loop [pipeline pipeline
+         initial-value initial-value
+         value value
+         stage stage]
+    
+    (let [timer (gen-timer pipeline stage)
+          val (run pipeline result initial-value value stage)]
+      (when timer
+        (t/mark-return timer nil))
+      (if (instance? Redirect val)
+        (let [^Redirect redirect val
+              value (if (identical? ::initial (.value redirect))
+                      initial-value
+                      (.value redirect))
+              pipeline (if (identical? ::current (.pipeline redirect))
+                         pipeline
+                         (do
+                           (run-finally pipeline)
+                           (.pipeline redirect)))]
+          (recur pipeline value value 0))
+        val))))
 
-(defn process-redirect [redirect pipeline initial-value]
-  (let [pipeline* (-> redirect :pipeline)
-	pipeline* (if (= ::pipeline pipeline*)
-		    pipeline
-		    (-> pipeline* meta :pipeline))
-	value (:value redirect)
-	value (if (= ::initial value)
-		initial-value
-		value)]
-    [pipeline* value]))
+(defn start-pipeline [pipeline result value]
+  (resume-pipeline pipeline result value value 0))
 
-(defmacro redirect-recur [redirect pipeline initial-value err-count]
-  `(let [[pipeline# value#] (process-redirect ~redirect ~pipeline ~initial-value)]
-     (recur (:stages pipeline#) pipeline# value# value# ~err-count)))
+(defn handle-redirect [^Redirect redirect result current-pipeline initial-value]
+  (let [value (if (identical? ::initial (.value redirect))
+                initial-value
+                (.value redirect))
+        pipeline (if (identical? ::current (.pipeline redirect))
+                   current-pipeline
+                   (.pipeline redirect))]
 
-(defn start-pipeline
-  ([pipeline initial-value]
-     (start-pipeline pipeline initial-value (result-channel)))
-  ([pipeline initial-value result]
-     (start-pipeline pipeline (:stages pipeline) initial-value initial-value result))
-  ([pipeline fns value initial-value ^ResultChannel result]
-     (binding [*inside-pipeline?* true]
-       (loop [fns fns, pipeline pipeline, initial-value initial-value, value value, err-count 0]
-	 (cond
-	   (< 100 err-count)
-	   (error! result (Exception. "Error loop detected in pipeline."))
-	   
-	   (redirect? value)
-	   (redirect-recur value pipeline initial-value err-count)
-	   
-	   (result-channel? value)
-	   (let [ch ^ResultChannel value]
-	     (cond
-	       (not= ::none (dequeue (.error ch) ::none))
-	       (if-let [redirect (handle-error pipeline ch result)]
-		 (redirect-recur redirect pipeline initial-value (inc err-count)))
-	       
-	       (not= ::none (dequeue (.success ch) ::none))
-	       (recur fns pipeline initial-value (dequeue (.success ch) nil) 0)
-	       
-	       :else
-	       (let [bindings (get-thread-bindings)]
-		 (receive (poll-result value)
-		   (fn [[outcome value]]
-		     (with-executor (:executor pipeline)
-		       (with-bindings bindings
-			 (case outcome
-			   :error (when-let [redirect (handle-error pipeline ch result)]
-				    (let [[pipeline value] (process-redirect
-							     redirect
-							     pipeline
-							     initial-value)]
-				      (start-pipeline pipeline value result)))
-			   :success (start-pipeline
-				      pipeline fns
-				      value initial-value
-				      result)))))))))
-	   
-	   (empty? fns)
-	   (when-not (has-result? result)
-	     (success! result value))
-	   
-	   :else
-	   (let [f (first fns)]
-	     (let [[success val] (try
-				   [true (f value)]
-				   (catch Exception e
-				     [false e]))]
-	       (if success
-		 (recur (rest fns) pipeline initial-value val 0)
-		 (if-let [redirect (handle-error
-				     pipeline
-				     (error-result val)
-				     result)]
-		   (redirect-recur redirect pipeline initial-value (inc err-count)))))))))
-     result))
+    ;; close out the current timer, if there is one
+    (when (implicit? current-pipeline)
+      (when-let [timer (context/timer)]
+        (t/mark-return timer nil)))
 
+    ;; start up the new pipeline
+    (start-pipeline pipeline result value)))
+
+(defn subscribe [pipeline result initial-val val fn-transform idx]
+  (let [new-result? (nil? result)
+        result (or result (r/result-channel))]
+    (if-let [ctx (context/context)]
+
+      ;; if we have context, propagate it forward
+      (r/subscribe val
+        (r/result-callback
+          (fn-transform
+            (fn [val]
+              (context/with-context ctx
+                (resume-pipeline pipeline result initial-val val idx))))
+          (fn-transform
+            (fn [err]
+              (context/with-context ctx
+                (error pipeline result initial-val err))))))
+      
+      ;; no context, so don't bother
+      (r/subscribe val
+        (r/result-callback
+          (fn-transform
+            (fn [val]
+              (resume-pipeline pipeline result initial-val val idx)))
+          (fn-transform
+            (fn [err]
+              (error pipeline result initial-val err))))))
+
+    (if new-result?
+      result
+      :lamina/suspended)))
 
 ;;;
 
-(defn wait-for-result
-  "Waits for a result-channel to emit a result.  If it succeeds, returns the result.
-   If there was an error, the exception is re-thrown.
+(defn- split-options [opts+stages form-meta]
+  (cond
+    (= :error-handler (first opts+stages))
+    (do
+      (println
+        (str
+          (ns-name *ns*) ", line " (:line form-meta) ": "
+          "(pipeline :error-handler ...) is deprecated, use (pipeline {:error-handler ...} ...) instead."))
+      [(apply hash-map (take 2 opts+stages)) (drop 2 opts+stages)])
 
-   If the timeout elapses, a java.util.concurrent.TimeoutException is thrown."
-  ([result-channel]
-     (wait-for-result result-channel -1))
-  ([^ResultChannel result-channel timeout]
-     (let [value (promise)]
-       (receive (poll-result result-channel timeout)
-	 #(deliver value %))
-       (let [value @value]
-	 (if (nil? value)
-	   (throw (TimeoutException. "Timed out waiting for result from pipeline."))
-	   (let [[k result] value]
-	     (case k
-	       :error (throw result)
-	       :success result)))))))
+    (map? (first opts+stages))
+    [(first opts+stages) (rest opts+stages)]
 
-(defn siphon-result
-  "Siphons the result from one result-channel to another."
-  [src dst]
-  (on-success src #(when-not (has-result? dst) (success! dst %)))
-  (on-error src #(when-not (has-result? dst) (error! dst %)))
-  dst)
+    :else
+    [nil opts+stages]))
 
-;;;
+;; this is a Duff's device-ish unrolling of the pipeline, the resulting code
+;; will end up looking something like:
+;;
+;; (case stage
+;;   0   (stages 0 to 2 and recur to 3)
+;;   1   (stages 1 to 3 and recur to 4)
+;;   ...
+;;   n-2 (stages n-2 to n and return)
+;;   n-1 (stages n-1 to n and return)
+;;   n   (stage n and return))
+;;
+;;  the longer the pipeline, the fewer stages per clause, since the JVM doesn't
+;;  like big functions.  Currently at eight or more stages, each clause only handles
+;;  a single stage. 
+(defn- unwind-stages [idx stages remaining subscribe-expr unwrap?]
+  `(cond
+       
+     (r/async-promise? val##)
+     (let [value# (r/success-value val## ::unrealized)]
+       (if (identical? ::unrealized value#)
+         ~(subscribe-expr idx)
+         (recur value# (long ~idx))))
+       
 
-(defn- get-opts [opts+rest]
-  (if (-> opts+rest first keyword?)
-    (concat (take 2 opts+rest) (get-opts (drop 2 opts+rest)))
-    nil))
+     (instance? Redirect val##)
+     val##
 
-(defn ^ResultChannel pipeline
-  "Returns a function with an arity of one.  Invoking the function will return
-   a result channel.
+     :else
+     ~(if (empty? stages)
+        `(do
+           (run-finally this##)
+           (if (identical? nil result##)
+             ~(if unwrap?
+                `val##
+                `(r/success-result val##))
+             (do
+               (r/success result## val##)
+               result##)))
+        `(let [val## (~(first stages) val##)]
+           ~(if (zero? remaining)
+              `(recur val## (long ~(inc idx)))
+              (unwind-stages
+                (inc idx)
+                (rest stages)
+                (dec remaining)
+                subscribe-expr
+                unwrap?))))))
 
-   Stages should either be pipelines, or functions with an arity of one.  These functions
-   should either return a result channel, a redirect signal, or a value which will be passed
-   into the next stage."
+;; totally ad hoc
+(defn- max-depth [num-stages]
+  (cond
+    (< num-stages 4) 3
+    (< num-stages 6) 2
+    (< num-stages 8) 1
+    :else 0))
+
+(defn- complex-error-handler [error-handler form-meta]
+  (if (and (sequential? error-handler)
+        (= "pipeline" (str (first error-handler))))
+
+    ;; pipeline error-handler
+    (let [[opts stages] (split-options (rest error-handler) form-meta)]
+      (unify-gensyms
+        `(error [this# result## initial-value# ex#]
+           (run-finally this#)
+           (let [result## (or result## (r/result-channel))
+                 p# (pipeline
+                      ~(merge {:error-handler `(fn [_#])} opts {:result `result##})
+                      ~@(butlast stages)
+                      (fn [value#]
+                        (let [value# (~(last stages) value#)]
+                          (if (instance? Redirect value#)
+                            (handle-redirect value# result## this# initial-value#)
+                            (r/error-result ex#)))))]
+             (p# ex#)
+             result##))))
+
+    ;; function error-handler
+    `(error [this# result# initial-value# ex#]
+       (run-finally this#)
+       (let [value# (~error-handler ex#)]
+         (if (instance? Redirect value#)
+           (handle-redirect value# result# this# initial-value#)
+           (if result#
+             (u/error result# ex# false)
+             (r/error-result ex#)))))))
+
+(defmacro pipeline
+  "A means for composing asynchronous functions.  Returns a function which will pass the value into the first
+   function, the result from that function into the second, and so on.
+
+   If any function returns an unrealized async-promise, the next function won't be called until that value is realized.
+   The call into the pipeline itself returns an async-promise, which won't be realized until all functions have completed.
+   If any function throws an exception or returns an async-promise that realizes as an error, this will short-circuit all
+   calls to subsequent functions, and cause the pipeline's result to be realized as an error.
+
+   Loops and other more complex flows may be created if any stage returns a redirect signal by returning the result of 
+   invoking `restart`, `redirect`, or `complete`.  See these functions for more details.
+
+   The first argument to `pipeline` may be a map of optional arguments:
+
+     `:error-handler` - a function which is called when an error occurs in the pipeline.  Takes a single argument, the `error`,
+                        and may optionally return a redirect signal to prevent the pipeline from returning the error.
+
+                        If no `:error-handler` is specified, the error will be logged.  If pipelines are nested, this may result
+                        in the same error being logged multiple times.  To hide this error you may define a no-op handler, but
+                        only do this if you're sure there's an outer pipeline that will handle/log the error.
+
+     `:finally` - a function which is called with zero arguments when the pipeline completes, either due to success or error.
+
+     `:result` - the result into which the pipeline's result will be forwarded.  Causes the pipeline to not return any value.
+
+     `:timeout` - the max duration of the pipeline's invocation.  If pipeline times out in the middle of a stage it won't terminate
+                  computation, but it will not continue onto the next stage.
+
+     `:implicit?` - describes whether the pipeline's execution should show up in higher-level instrumented functions calling into it.
+                    Defaults to false.
+
+     `:unwrap?` - if true, and the pipeline does not need to pause between streams, the pipeline will return an actual value 
+                  rather than an async-promise.
+
+     `:with-bindings` - if true, conveys the binding context of the initial invocation of the pipeline into any deferred stages."
   [& opts+stages]
-  (let [opts (apply hash-map (get-opts opts+stages))
-	stages (drop (* 2 (count opts)) opts+stages)
-	executor (or (:thread-pool opts) *current-executor*)
-	pipeline {:stages stages
-		  :error-handler (:error-handler opts)
-		  :executor executor}
-	pipeline-fn (fn [val]
-		      (start-pipeline
-			(update-in pipeline [:error-handler]
-			  #(or %
-			     (let [current-stack (when instrument-exceptions (Exception.))]
-			       (fn [ex]
-				 (when current-stack
-				   (.printStackTrace current-stack))
-				 (when (instance? Throwable ex)
-				   (log/warn ex "Unhandled exception in pipeline."))))))
-			val))]
-    (when-not (every? ifn? stages)
-      (throw (Exception. "Every stage in a pipeline must be a function.")))
-    ^{:pipeline pipeline}
-    (fn [x]
-      (let [result (result-channel)]
-	(when-let [timeout (:timeout opts)]
-	  (when-not (neg? timeout)
-	    (receive (timed-channel timeout)
-	      (fn [_]
-		(when-not (has-result? result)
-		  (error! result (TimeoutException. (str "Timed out after " timeout "ms"))))))))
-	(if executor
-	  (let [bindings (get-thread-bindings)]
-	    (with-executor* executor
-	      (with-bindings bindings
-		(siphon-result (pipeline-fn x) result)))
-	    result)
-	  (siphon-result (pipeline-fn x) result))))))
+  (let [[options stages] (split-options opts+stages (meta &form))
+        {:keys [result
+                error-handler
+                timeout
+                executor
+                with-bindings?
+                middleware
+                description
+                implicit?
+                unwrap?
+                finally
+                flow-exceptions]
+         :or {description "pipeline"
+              implicit? false
+              unwrap? false}}
+        options
+        len (count stages)
+        depth (max-depth len)
+        location (str (ns-name *ns*) ", line " (:line (meta &form)))
+        fn-transform (gensym "fn-transform")
+        expand-subscribe (fn [idx] `(subscribe this## result## initial-val## val## ~fn-transform ~idx))
+        stage-ids (take (count stages)
+                    (map
+                      #(gensym (str "stage" % "_"))
+                      (iterate inc 0)))]
+
+    ;; handle compositions of 
+    `(let [executor# ~executor
+           fn-transform# (or ~middleware identity) 
+           fn-transform# (if executor#
+                           (fn [f#]
+                             (fn [x#]
+                               (ex/execute executor# nil
+                                 #(f# x#)
+                                 ~(when implicit? `(context/timer)))))
+                           fn-transform#)
+           fn-transform# (if ~with-bindings?
+                           (comp potemkin/fast-bound-fn* fn-transform#)
+                           fn-transform#)
+           ~fn-transform fn-transform#]
+       (reify IPipeline
+
+         (implicit? [_#]
+           ~implicit?)
+
+         (run-finally [_#]
+           ~@(when finally
+               `((try*
+                   (~finally)
+                   (catch Throwable e#
+                     (u/log-error e# "error in finally clause"))))))
+
+         ~(unify-gensyms
+            `(gen-timer [_# stage##]
+               ~(cond
+                  (not implicit?) `nil
+                  executor `(when (context/timer)
+                              (if (neg? stage##)
+                                (t/timer
+                                  :description ~description
+                                  :implicit? true)
+                                (t/enqueued-timer
+                                  :description ~description
+                                  :implicit? true
+                                  :start-stage stage##)))
+                  :else `(when (context/timer)
+                           (t/timer
+                             :description ~description
+                             :implicit? true
+                             :start-stage stage##)))))
+         
+        ~(unify-gensyms
+           `(run [this## result## initial-val## val# stage#]
+
+              ;; if the result is already realized, stop now
+              (when (or (identical? nil result##)
+                      (identical? nil (r/result result##)))
+                (try
+                  ;; unwind the stages
+                  (let [~@(mapcat list
+                            stage-ids
+                            stages)]
+                    (loop [val## val# stage## (long stage#)]
+                      (case (int stage##)
+                        ~@(interleave
+                            (iterate inc 0)
+                            (map
+                              #(unwind-stages % (drop % stage-ids) depth expand-subscribe unwrap?)
+                              (range (inc len)))))))
+                  ~@(map
+                      (fn [ex] `(catch ~ex ex# (throw ex#)))
+                      (distinct flow-exceptions))
+                  (catch Error ex#
+                    (if-not (lamina.core.utils/retry-exception? ex#)
+                      (error this## result## initial-val## ex#)
+                      (throw ex#)))
+                  (catch Throwable ex#
+                    (error this## result## initial-val## ex#))))))
+       
+        ~(if error-handler
+           (complex-error-handler error-handler (meta &form))
+           `(error [this# result# _# ex#]
+              (when-not ~(contains? options :error-handler)
+                (u/log-error ex# (str "Unhandled exception in pipeline at " ~location)))
+              (run-finally this#)
+              (if result#
+                (u/error result# ex# false)
+                (r/error-result ex#))))
+
+        clojure.lang.IFn
+        ~(unify-gensyms
+           `(invoke [this## val##]
+              ~(cond
+                 (and timeout (not result))
+                 `(let [timeout# ~timeout
+                        result# (if timeout#
+                                  (r/expiring-result timeout#)
+                                  (r/result-channel))]
+                    (start-pipeline this## result# val##)
+                    result#)
+                 
+                (and result (not timeout))
+                `(start-pipeline this## ~result val##)
+
+                (and result timeout)
+                `(let [timeout# ~timeout
+                       result# ~result]
+                   (when timeout#
+                     (on-success (r/timed-result timeout#)
+                       (fn [_] (u/error result# :lamina/timeout! false))))
+                   (start-pipeline this## result# val##))
+
+                :else
+                `(start-pipeline this## nil val##))))))))
+
+(defmacro run-pipeline
+  "Like `pipeline`, but simply invokes the pipeline with `value` and returns the result."
+  [value & opts+stages]
+  `(let [p# ~(with-meta `(pipeline ~@opts+stages) (meta &form))
+         value# ~value]
+     (p# value#)))
+
+;;;
 
 (defn complete
-  "Skips to the end of the inner-most pipeline, causing it to emit 'result'."
-  [result]
+  "Returns a redirect signal which causes the pipeline's execution to stop, and simply return `value`.  If `value`
+   is a `Throwable`, then the pipeline will be realized as that error."
+  [value]
   (redirect
-    (pipeline
-      (fn [_]
-	(let [ch (result-channel)]
-	  (success! ch result))
-	result))
+    (if (instance? Throwable value)
+      (pipeline {:error-handler (fn [_])} (fn [_] (throw value)))
+      (pipeline (constantly value)))
     nil))
 
-(defn ^ResultChannel run-pipeline
-  "Equivalent to ((pipeline opts+stages) initial-value).
-
-   Returns a pipeline future."
-  [initial-value & opts+stages]
-  ((apply pipeline opts+stages) initial-value))
-
-(defn ^ResultChannel read-channel
-  "For reading channels within pipelines.  Takes a simple channel, and returns
-   a result channel representing the next message from the channel.  If the timeout
-   elapses, the result channel will emit an error."
-  ([ch]
-     (read-channel ch -1))
-  ([ch timeout]
-     (if (drained? ch)
-       (success-result nil)
-       (let [msg (dequeue ch ::none)]
-	 (if-not (= ::none msg)
-	   (success-result msg)
-	   (let [result (result-channel)]
-	     (receive
-	       (poll {:ch ch} timeout)
-	       #(if %
-		  (success! result
-		    (second %))
-		  (error! result
-		    (TimeoutException. (str "read-channel timed out after " timeout " ms")))))
-	     result))))))
-
-(defn read-merge
-  "For merging asynchronous reads into a pipeline.
-
-   'read-fn' is a function that takes no parameters and returns a value, which
-   can be a pipeline channel representing an asynchronous read.
-
-   'merge-fn' is a function which takes two parameters - the incoming value from
-   the pipeline and the value from read-fn - and returns a single value that
-   will propagate forward into the pipeline."
-  [read-fn merge-fn]
-  (fn [input]
-    (run-pipeline (read-fn)
-      #(merge-fn input %))))
-
-(defn wait-stage
-  "Creates a pipeline stage that accepts a value, and emits the same value after 'interval' milliseconds."
+(defmacro wait-stage
+  "Creates a pipeline stage which simply waits for `interval` milliseconds before continuing onto the next stage."
   [interval]
-  (fn [x]
-    (run-pipeline
-      (when (pos? interval)
-	(read-channel (timed-channel interval)))
-      (fn [_] x))))
+  `(fn [x#]
+     (r/timed-result ~interval x#)))
 
-(defn closed-result [ch]
-  (let [result (result-channel)]
-    (on-closed ch #(success! result true))
-    result))
 
-(defn drained-result [ch]
-  (let [result (result-channel)]
-    (on-drained ch #(success! result true))
-    result))
-
-;;;
-
-(defmethod print-method ResultChannel [ch writer]
-  (.write writer (.toString ch)))
