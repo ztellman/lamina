@@ -160,7 +160,8 @@
                       (let [result (context/with-context (context/assoc-context :timer timer)
                                      (f))]
                         (when (r/async-promise? result)
-                          (t/mark-waiting timer))
+                          (when timer
+                            (t/mark-waiting timer)))
                         result))
                     (fn [result]
                       (when timer (t/mark-return timer result)) 
