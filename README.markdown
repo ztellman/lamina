@@ -6,7 +6,9 @@ Lamina is for describing and analyzing streams of data.  It provides a rich set 
 
 Add the following to the `:dependencies` section of your `project.clj` file:
 
-    [lamina "0.5.2"]
+```clj
+[lamina "0.5.2"]
+```
 
 ## Rationale
 
