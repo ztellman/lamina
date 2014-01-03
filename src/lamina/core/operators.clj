@@ -393,7 +393,7 @@
      (channel->lazy-seq ch nil))
   ([ch timeout]
      (let [timeout-fn (when timeout
-                        (if (number? timeout)
+                        (if (number? timeout) 
                           (constantly timeout)
                           timeout))
            e (g/edge "channel->lazy-seq" (g/terminal-propagator nil))]

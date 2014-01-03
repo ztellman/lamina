@@ -156,11 +156,11 @@
                 (r/subscribe result##
                   (r/result-callback
                     (fn [x#]
-                      (when (and timeout-latch## (not @timeout-latch##))
+                      (when (and timeout-latch## (not @timeout-latch##) cancel-timeout##)
                         (cancel-timeout##))
                       (r/success result# x#))
                     (fn [err#]
-                      (when (and timeout-latch## (not @timeout-latch##))
+                      (when (and timeout-latch## (not @timeout-latch##) cancel-timeout##)
                         (cancel-timeout##))
                       (if (identical? :lamina/drained! err#)
                         (r/success result# ~on-drained)
