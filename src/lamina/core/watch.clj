@@ -25,7 +25,7 @@
   "Transforms a `channel` into an atom which updated with the value of each new message."
   ([channel]
      (atom-sink nil channel))
-  ([initial-value ch]
+  ([initial-value channel]
      (let [a (atom initial-value)]
        (receive-all channel #(reset! a %))
        a)))
