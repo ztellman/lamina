@@ -70,7 +70,8 @@
                 (on-connected conn)
                 (catch Throwable e
                   (log-error e "Error in on-connected callback"))))
-            (success @connection conn)
+            (let [connection @connection]
+              (success connection conn))
             (trace {:state :connected})
             (closed-result conn))))
 

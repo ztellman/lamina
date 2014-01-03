@@ -169,10 +169,9 @@
     (set! enter (System/nanoTime)))
   (mark-error [this err]
     (set! return (System/nanoTime))
-    (let [timing (assoc (timing this enter) :error err)]
-      (enqueue
-        (or error-probe (p/error-probe-channel [name :error]))
-        timing)
+    (let [timing (assoc (timing this enter) :error err)
+          probe (or error-probe (p/error-probe-channel [name :error]))]
+      (enqueue probe timing)
       (ex/trace-error executor timing)))
   (mark-waiting [this]
     (set! waiting (System/nanoTime)))
@@ -299,9 +298,8 @@
     (set! waiting (System/nanoTime)))
   (mark-error [this err]
     (set! return (System/nanoTime))
-    (enqueue
-      (or error-probe (p/error-probe-channel [name :error]))
-      (assoc (timing this enter) :error err)))
+    (let [probe (or error-probe (p/error-probe-channel [name :error]))]
+      (enqueue probe (assoc (timing this enter) :error err))))
   (mark-return [this val]
     (set! return (System/nanoTime))
     (case capture
