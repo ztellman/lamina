@@ -1,13 +1,13 @@
-(defproject lamina "0.5.1"
+(defproject lamina "0.5.2"
   :description "event-driven data structures for clojure"
   :min-lein-version "2.0.0"
-  :dependencies [[org.clojure/tools.logging "0.2.4"]
-                 [org.flatland/useful "0.9.0"]
-                 [potemkin "0.3.2"]]
+  :dependencies [[org.clojure/tools.logging "0.2.6"]
+                 [org.flatland/useful "0.11.1"]
+                 [potemkin "0.3.4"]]
   :exclusions [org.clojure/contrib
                org.clojure/clojure-contrib]
   :profiles {:dev {:dependencies [[org.clojure/clojure "1.5.1"]
-                                  [criterium "0.4.1"]
+                                  [criterium "0.4.2"]
                                   [codox-md "0.2.0" :exclusions [org.clojure/clojure]]]}
              :1.3 {:dependencies [[org.clojure/clojure "1.3.0"]]}
              :1.4 {:dependencies [[org.clojure/clojure "1.4.0"]]}
