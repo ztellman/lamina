@@ -110,6 +110,10 @@
   (enqueue [_ msg]
     (g/propagate (receiver-node receiver) msg true))
 
+  IError
+  (error [_ err force?]
+    (error (receiver-node receiver) err force?))
+
   IChannelMarker
   IChannel
   (receiver-node [_]
