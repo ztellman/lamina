@@ -29,8 +29,9 @@
         name (if explicit-name? (first body) "task")
         body (if explicit-name? (rest body) body)]
     `((trace/instrumented-fn
-        task
-        {:executor default-executor}
+        nil
+        {:executor default-executor
+         :name ~name}
         []
         ~@body))))
 
@@ -42,9 +43,10 @@
         name (if explicit-name? (first body) "bound-task")
         body (if explicit-name? (rest body) body)]
     `((trace/instrumented-fn
-        ~name
+        nil
         {:with-bindings? true
-         :executor default-executor}
+         :executor lamina.executor/default-executor
+         :name ~name}
         []
         ~@body))))
 
@@ -76,12 +78,12 @@
     (on-drained receiver
       #(when (zero? @pending)
          (close emitter)))
-    
+
     (bridge-siphon receiver emitter name
       (fn [msg]
         (swap! pending inc)
         (callback msg)))
-    
+
     (splice emitter receiver)))
 
 (defn defer
