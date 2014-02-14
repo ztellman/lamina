@@ -26,10 +26,10 @@
    value or error."
   [& body]
   (let [explicit-name? (string? (first body))
-        name (if explicit-name? (first body) "task")
+        name (symbol (if explicit-name? (first body) "task"))
         body (if explicit-name? (rest body) body)]
     `((trace/instrumented-fn
-        task
+        ~name
         {:executor default-executor}
         []
         ~@body))))
@@ -39,7 +39,7 @@
    value or error.  Unlike `task`, thread-local bindings are preserved when evaluating the body."
   [& body]
   (let [explicit-name? (string? (first body))
-        name (if explicit-name? (first body) "bound-task")
+        name (symbol (if explicit-name? (first body) "bound-task"))
         body (if explicit-name? (rest body) body)]
     `((trace/instrumented-fn
         ~name
