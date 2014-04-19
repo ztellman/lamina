@@ -18,7 +18,7 @@
 (definterface+ IChannelCache
   (get-or-create [cache id on-create]
     "Gets a channel keyed to `id`.  If `on-create` is non-nil and the entry must be created, 
-     it will be called with zero parameters.
+     it will be called with the new channel as a parameter.
 
      If the channel returned is closed, it will be implicitly removed from the cache.")
   (ids [cache]
