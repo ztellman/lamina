@@ -1,3 +1,5 @@
+![](doc/hudsucker.jpg)
+
 # Lamina
 
 Lamina is for describing and analyzing streams of data.  It provides a rich set of operators for dealing with these unrealized values, both individually and collectively.  If you're new to Lamina, you should start by reading about [how it deals with individual events](https://github.com/ztellman/lamina/wiki/Introduction).
