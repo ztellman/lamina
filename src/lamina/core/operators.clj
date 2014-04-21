@@ -724,7 +724,7 @@
                        (sink #(println \"average for\" facet-value \"is\" %))))})"
   [{:keys [facet initializer on-clearance]}]
   (let [receiver (g/node identity)
-        watch-channel (atom (fn [_]))
+        watch-channel (atom (fn [_ _]))
         propagator (g/distributing-propagator facet
                      (fn [id]
                        (let [ch (channel* :description (pr-str id))]
