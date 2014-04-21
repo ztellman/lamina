@@ -19,7 +19,7 @@
 
 (defn named-channel
   "Returns a permanent channel keyed to `id`.  If the channel doesn't already exist and `on-create` is non-nil, 
-   it will be invoked with zero parameters."
+   it will be invoked with the new channel as a parameter."
   [id on-create]
   (cache/get-or-create named-channels id on-create))
 
