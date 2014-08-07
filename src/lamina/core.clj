@@ -10,6 +10,9 @@
   (:use
     [potemkin])
   (:require
+    [manifold
+     [stream :as s]
+     [deferred :as d]]
     [lamina.time :as t]
     [lamina.core.watch :as w]
     [lamina.core.named :as n]
@@ -77,7 +80,7 @@
    last*
    partition*
    partition-all*
-   
+
    receive-in-order
    emit-in-order
    combine-latest
@@ -190,8 +193,8 @@
   (u/error channel err true))
 
 (defn siphon
-  "Takes all messages from `src` and forwards them to `dst`.  If `dst` closes, `src` is closed, but 
-   not vise-versa.  Error states are similarly propagated.  This is useful for many transient channels 
+  "Takes all messages from `src` and forwards them to `dst`.  If `dst` closes, `src` is closed, but
+   not vise-versa.  Error states are similarly propagated.  This is useful for many transient channels
    feeding into one channel.
 
    If more than two channels are specified, `siphon` becomes transitive.  `(siphon a b c)` is equivalent to
@@ -205,8 +208,8 @@
      (apply siphon dst rest)))
 
 (defn join
-  "Takes all messages from `src` and forwards them to `dst`.  If either channel closes or goes into an 
-   error state, the same is done for the other channel.  This is useful for channels which have a 1-to-1 
+  "Takes all messages from `src` and forwards them to `dst`.  If either channel closes or goes into an
+   error state, the same is done for the other channel.  This is useful for channels which have a 1-to-1
    relationship.
 
    If more than two channels are specified, `join` becomes transitive.  `(join a b c)` is equivalent to
@@ -353,7 +356,7 @@
            ch (tap channel)]
 
        (ground ch)
-       
+
        (p/run-pipeline ch
          {:error-handler (fn [_])}
          #(read-channel* %
@@ -398,3 +401,98 @@
   ([result-channel timeout]
      @(with-timeout timeout result-channel)))
 
+;;;
+
+(s/def-source LaminaChannelSource
+  [ch]
+
+  (isSynchronous [_] false)
+
+  (description [this]
+    {:source? true
+     :drained? (drained? ch)
+     :type "lamina"})
+
+  (close [_]
+    (close ch))
+
+  (take [this blocking? default-val]
+    (let [d (p/run-pipeline
+              (read-channel* ch
+                :on-error default-val)
+              {:error-handler (fn [x] (p/complete default-val))}
+              (fn [x]
+                (if (identical? :lamina/drained! x)
+                  (do
+                    (.markDrained this)
+                    default-val)
+                  x)))]
+      (if blocking?
+        @d
+        d)))
+
+  (take [this blocking? default-val timeout timeout-val]
+    (let [d (p/run-pipeline
+              (read-channel* ch
+                :timeout timeout
+                :on-timeout timeout-val
+                :on-error default-val)
+              {:error-handler (fn [x] (p/complete default-val))}
+              (fn [x]
+                (if (identical? :lamina/drained! x)
+                  (do
+                    (.markDrained this)
+                    default-val)
+                  x)))]
+      (if blocking?
+        @d
+        d))))
+
+(s/def-sink LaminaChannelSink
+  [ch]
+
+  (isSynchronous [_] false)
+
+  (description [this]
+    {:sink? true
+     :closed? (closed? ch)
+     :type "lamina"})
+
+  (close [this]
+    (close ch))
+
+  (put [this x blocking?]
+
+    (let [x (enqueue ch x)
+          x (cond
+              (r/async-promise? x)
+              (p/run-pipeline x
+                {:error-handler (fn [_])}
+                (fn [_] true))
+
+              (or
+                (identical? :lamina/closed! x)
+                (identical? :lamina/error! x))
+              (d/success-deferred false)
+
+              :else
+              (d/success-deferred true))]
+      (if blocking?
+        @x
+        x)))
+
+  (put [this x blocking? timeout timeout-val]
+
+    (.put this x blocking?)))
+
+(extend-protocol s/Sourceable
+
+    lamina.core.channel.IChannel
+    (to-source [ch]
+      (->LaminaChannelSource ch)))
+
+(extend-protocol s/Sinkable
+
+    lamina.core.channel.IChannel
+    (to-source [ch]
+      (->LaminaChannelSink ch)))

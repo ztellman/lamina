@@ -11,6 +11,7 @@
     [potemkin]
     [lamina.core.utils])
   (:require
+    [manifold.deferred :as d]
     [lamina.core.return-codes :as codes]
     [lamina.core.lock :as l]
     [lamina.time :as t])
@@ -159,7 +160,7 @@
   (meta [_] metadata)
   (alterMeta [_ _ _] (throw (Exception. "not implemented, use .resetMeta instead")))
   (resetMeta [_ m] (set! metadata m))
-  
+
   IResult
   (add-listener [_ listener]
     (.add listeners listener))
@@ -230,7 +231,7 @@
                (assoc-record ^ResultState state# :mode ::claimed)
                :lamina/:already-claimed!)
              (assoc-record ^ResultState state# :mode ::claimed)))
-         
+
          ::claimed
          (case signal#
            ::add (assoc-record ^ResultState state# :subscribers (inc (.subscribers state#)))
@@ -238,7 +239,7 @@
            ::success! (assoc-record ^ResultState state# :mode ::success, :value value#)
            ::error! (assoc-record ^ResultState state# :mode ::error, :value value#)
            (::success ::error ::claim) :lamina/already-claimed!)
-         
+
          (::success ::error)
          :lamina/already-realized!))))
 
@@ -253,15 +254,15 @@
                   (if (keyword? s#)
                     s#
                     (set-state ~this s#))))]
-         
+
        (if (keyword? s#)
          s#
          (let [^ResultState s# s#]
            (case (int (.subscribers s#))
-               
+
              0
              :lamina/realized
-               
+
              1
              (try
                (let [result# ((~f ^ResultCallback (.poll ~subscribers)) (.value s#))]
@@ -271,13 +272,13 @@
                  (log-error e# "Error in result callback.")
                  (error-to-listeners listeners# e#)
                  :lamina/error!))
-             
+
              (let [value# (.value s#)
                    ^{:tag "objects"} ary# (object-array (.size ~subscribers))]
-                 
+
                (loop [idx# 0]
                  (when-let [^ResultCallback c# (.poll ~subscribers)]
-                     
+
                    (try
                      (let [result# ((~f c#) value#)]
                        (enqueue-to-listeners listeners# result#)
@@ -286,7 +287,7 @@
                        (error-to-listeners listeners# e#)
                        (aset ary# idx# :lamina/error!)
                        (log-error e# "Error in result callback.")))
-                     
+
                    (recur (unchecked-inc idx#))))
 
                (result-seq ary#))))))))
@@ -299,7 +300,7 @@
            `(
              clojure.lang.IPending
              (isRealized [this#] (boolean (result this#)))
-             
+
              clojure.lang.IBlockingDeref
              (deref [this# timeout-ms# timeout-val#]
                (let [r# (result-channel)]
@@ -315,6 +316,17 @@
   result-channel
   result-callback)
 
+(extend-protocol d/Deferrable
+
+    IResult
+    (to-deferred [res]
+      (let [d (d/deferred)]
+        (subscribe res
+          (result-callback
+            #(d/success! d %)
+            #(d/error! d %)))
+        d)))
+
 (def-result-channel
   [^Lock lock
    ^{:volatile-mutable true :tag ResultState} state
@@ -328,7 +340,7 @@
     (success this msg))
 
   IError
-  
+
   (error [this err _]
     (compare-and-trigger
       [this error lock state subscribers listeners]
@@ -338,7 +350,7 @@
 
   clojure.lang.IMeta
   clojure.lang.IReference
-  
+
   (meta [_] metadata)
   (alterMeta [_ _ _] (throw (Exception. "not implemented, use .resetMeta instead")))
   (resetMeta [_ m] (set! metadata m))
@@ -368,7 +380,7 @@
             (subscribe this (ResultCallback. f f))
             (.await latch)
             (deref this))))))
-  
+
   IResult
 
   (add-listener [_ listener]
@@ -381,7 +393,7 @@
   (success [this val]
     (compare-and-trigger
       [this success lock state subscribers listeners]
-      ::success .on-success val)) 
+      ::success .on-success val))
 
   ;;
   (success! [this val]
@@ -567,7 +579,7 @@
         (if (zero? (.decrementAndGet counter))
           (success-result (seq ary))
           combined-result)
-        
+
         (let [r (first results)]
           (if-not (async-promise? r)
 
@@ -577,7 +589,7 @@
               (.decrementAndGet counter)
               (recur (inc idx) (rest results)))
 
-            
+
             (case (result r)
 
               ;; just return the error
@@ -613,4 +625,3 @@
 
 (defmethod print-method ResultChannel [o ^Writer w]
   (.write w (str o)))
-

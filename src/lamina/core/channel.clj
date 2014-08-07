@@ -33,8 +33,6 @@
     [java.io
      Writer]))
 
-
-
 ;;;
 
 (definterface+ IChannel
@@ -220,7 +218,7 @@
   `:predicate` - a function that takes the message, and returns true if it should be consumed.  If the
                  predicate returns false, the returned result will realize as value defined by `:on-false`.
 
-  `:result` - the result that the read message should be enqueued into.  If the same result is used for 
+  `:result` - the result that the read message should be enqueued into.  If the same result is used for
               `read-channel` calls from multiple channels, this will have the effect of being realized
               as the first message from any of the channels, and not consuming any messages from the other
               channels.
@@ -402,7 +400,7 @@
 
 (defn bridge
   "A generalization of `bridge-join` and `bridge-siphon`.  Takes one `src` channel, and one or
-   more downstream `dsts` channels.  All messages from `src` will be passed into `callback`, which 
+   more downstream `dsts` channels.  All messages from `src` will be passed into `callback`, which
    may or may not forward it to the downstream channels.
 
    This represents a relationship between channels which may or may not always result in messages
