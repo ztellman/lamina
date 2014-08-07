@@ -9,7 +9,7 @@
   <body>
     <header>
       <div id="header">
-        <h1 class="project-title">Lamina 0.5.3-SNAPSHOT API documentation</h1>
+        <h1 class="project-title">Lamina 0.5.4 API documentation</h1>
       </div>
     </header>
     <navigation>
@@ -432,8 +432,8 @@ states.</p>
             <div class="usage">[src dst]</div><div class="usage">[src dst &amp; rest]</div>
             
             
-            <div class="doc"><p>Takes all messages from <code>src</code> and forwards them to <code>dst</code>.  If either channel closes or goes into an 
-error state, the same is done for the other channel.  This is useful for channels which have a 1-to-1 
+            <div class="doc"><p>Takes all messages from <code>src</code> and forwards them to <code>dst</code>.  If either channel closes or goes into an
+error state, the same is done for the other channel.  This is useful for channels which have a 1-to-1
 relationship.</p>
 
 <p>If more than two channels are specified, <code>join</code> becomes transitive.  <code>(join a b c)</code> is equivalent to
@@ -519,7 +519,7 @@ results.</p>
             
             
             <div class="doc"><p>Returns a permanent channel keyed to <code>id</code>.  If the channel doesn't already exist and <code>on-create</code> is non-nil, 
-it will be invoked with zero parameters.</p>
+it will be invoked with the new channel as a parameter.</p>
 </div>
           </div><div class="public">
             <h3><a id="var-on-closed" class="source var-name" href="/src/lamina/core/channel.clj">on-closed</a></h3>
@@ -676,7 +676,7 @@ from being consumed, effectively cancelling the <code>read-channel</code> call.<
 <p><code>:predicate</code> - a function that takes the message, and returns true if it should be consumed.  If the
                predicate returns false, the returned result will realize as value defined by <code>:on-false</code>.</p>
 
-<p><code>:result</code> - the result that the read message should be enqueued into.  If the same result is used for 
+<p><code>:result</code> - the result that the read message should be enqueued into.  If the same result is used for
             <code>read-channel</code> calls from multiple channels, this will have the effect of being realized
             as the first message from any of the channels, and not consuming any messages from the other
             channels.</p>
@@ -837,8 +837,8 @@ resulting stream into the callback. This can be useful when defining
             <div class="usage">[src dst]</div><div class="usage">[src dst &amp; rest]</div>
             
             
-            <div class="doc"><p>Takes all messages from <code>src</code> and forwards them to <code>dst</code>.  If <code>dst</code> closes, <code>src</code> is closed, but 
-not vise-versa.  Error states are similarly propagated.  This is useful for many transient channels 
+            <div class="doc"><p>Takes all messages from <code>src</code> and forwards them to <code>dst</code>.  If <code>dst</code> closes, <code>src</code> is closed, but
+not vise-versa.  Error states are similarly propagated.  This is useful for many transient channels
 feeding into one channel.</p>
 
 <p>If more than two channels are specified, <code>siphon</code> becomes transitive.  <code>(siphon a b c)</code> is equivalent to
