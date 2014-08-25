@@ -446,7 +446,7 @@
                   x)))]
       (if blocking?
         @d
-        d))))
+        (d/->deferred d)))))
 
 (s/def-sink LaminaChannelSink
   [ch]
@@ -494,5 +494,5 @@
 (extend-protocol s/Sinkable
 
     lamina.core.channel.IChannel
-    (to-source [ch]
+    (to-sink [ch]
       (->LaminaChannelSink ch)))
