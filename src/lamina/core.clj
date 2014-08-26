@@ -417,36 +417,38 @@
     (close ch))
 
   (take [this blocking? default-val]
-    (let [d (p/run-pipeline
-              (read-channel* ch
-                :on-error default-val)
-              {:error-handler (fn [x] (p/complete default-val))}
-              (fn [x]
-                (if (identical? :lamina/drained! x)
-                  (do
-                    (.markDrained this)
-                    default-val)
-                  x)))]
+    (let [d (d/->deferred
+              (p/run-pipeline
+                (read-channel* ch
+                  :on-error default-val)
+                {:error-handler (fn [x] (p/complete default-val))}
+                (fn [x]
+                  (if (identical? :lamina/drained! x)
+                    (do
+                      (.markDrained this)
+                      default-val)
+                    x))))]
       (if blocking?
         @d
         d)))
 
   (take [this blocking? default-val timeout timeout-val]
-    (let [d (p/run-pipeline
-              (read-channel* ch
-                :timeout timeout
-                :on-timeout timeout-val
-                :on-error default-val)
-              {:error-handler (fn [x] (p/complete default-val))}
-              (fn [x]
-                (if (identical? :lamina/drained! x)
-                  (do
-                    (.markDrained this)
-                    default-val)
-                  x)))]
+    (let [d (d/->deferred
+              (p/run-pipeline
+                (read-channel* ch
+                  :timeout timeout
+                  :on-timeout timeout-val
+                  :on-error default-val)
+                {:error-handler (fn [x] (p/complete default-val))}
+                (fn [x]
+                  (if (identical? :lamina/drained! x)
+                    (do
+                      (.markDrained this)
+                     default-val)
+                    x))))]
       (if blocking?
         @d
-        (d/->deferred d)))))
+        d))))
 
 (s/def-sink LaminaChannelSink
   [ch]
@@ -466,9 +468,10 @@
     (let [x (enqueue ch x)
           x (cond
               (r/async-promise? x)
-              (p/run-pipeline x
-                {:error-handler (fn [_])}
-                (fn [_] true))
+              (-> x
+                d/->deferred
+                (d/chain (fn [_] true))
+                (d/catch Throwable (fn [_] false)))
 
               (or
                 (identical? :lamina/closed! x)
