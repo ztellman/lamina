@@ -58,7 +58,7 @@
                    (partition 2)
                    (map first))]
     (try
-        
+
       (doseq [v enqueued-values]
         (enqueue-fn v))
 
@@ -83,9 +83,9 @@
      :post-enqueue-fn post-enqueue-fn
      :consume-fn next-msg
      :enqueued-values (map
-                        (fn [x] {:x {:y x}})
+                        (fn [x] {:x {:y x}, :timestamp x})
                         (range 1 5))}
-  
+
     10.0
     [".x.y.sum()"
      '[:x :y sum]
@@ -139,13 +139,13 @@
                         #(hash-map :foo %1 :bar %2 :baz {:quux %2})
                         [:a :a :b :b :c]
                         [:x :x :z :y :y])}
-    
+
     ;; tests
     {:a [:x :x], :b [:z :y], :c [:y]}
     [".group-by(.foo).bar"]
 
     {:a 2, :b 2, :c 1}
-    [".group-by(.foo).rate()"]                      
+    [".group-by(.foo).rate()"]
 
     {:x 2, :y 2, :z 1}
     [".group-by(facet: .bar).rate()"
@@ -189,7 +189,7 @@
   (let [ch (channel)
         sub #(q/query-stream % {:period 100} ch)
         enq #(enqueue ch %)]
-    (run-basic-operator-test sub enq nil) 
+    (run-basic-operator-test sub enq nil)
     (close ch))
   (let [ch (channel)
         sub #(q/query-stream % {:period 100} ch)

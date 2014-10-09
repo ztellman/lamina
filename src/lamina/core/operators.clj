@@ -38,7 +38,7 @@
      AtomicBoolean
      AtomicLong]
     [java.math
-     BigInteger])) 
+     BigInteger]))
 
 ;;;
 
@@ -58,7 +58,7 @@
 
      `:predicate` - a predicate which takes the next message, and returns whether it should be consumed.  If false,
                     `dst` is closed.
-                    
+
      `:on-complete` - a callback which is invoked with zero parameters once the bridge is closed, but before `dst` is closed.
 
      `:close-on-complete?` - if true, forces an upstream connection, where closing `dst` closes `src`.
@@ -91,14 +91,14 @@
           (when dst
             (error dst :lamina/already-consumed! false))
           (r/error-result :lamina/already-consumed!))
-        
+
         (let [cleanup (fn cleanup []
                         (r/defer-within-transaction (cleanup)
                           (unconsume)
                           (when on-complete (on-complete))
                           (when dst (close dst))
                           (when close-on-complete? (close src))))]
-          
+
           (p/run-pipeline nil
             {:error-handler (fn [ex] (if dst
                                        (error dst ex false)
@@ -130,7 +130,7 @@
                     (f))
                   (when wait-on-callback?
                     result))))
-            
+
             (fn [_]
               (if dst
                 (if-not (closed? dst)
@@ -183,7 +183,7 @@
       (close ch*)
 
       (bridge-in-order ch ch* description
-        
+
         :callback
         (fn [msg]
           (try
@@ -252,7 +252,7 @@
      (let [ch (join ch (mimic ch))
            ch* (mimic ch)]
        (p/run-pipeline (read-channel* ch :on-drained ::drained)
-         {:error-handler (fn [ex] (error ch* ex false))}         
+         {:error-handler (fn [ex] (error ch* ex false))}
          (fn [val]
            (if (= ::drained val)
 
@@ -291,10 +291,10 @@
          {:error-handler (fn [_])}
          (fn [val]
            (if (= ::drained val)
-             
+
              ;; no elements, just invoke function
              (r/success-result (f))
-             
+
              ;; reduce over channel
              (reduce* f val ch))))))
 
@@ -373,7 +373,7 @@
 
 (defn channel->lazy-seq-
   [read-fn cleanup-fn]
-  (lazy-seq 
+  (lazy-seq
     (let [msg @(read-fn)]
       (if (= ::end msg)
         (do
@@ -393,7 +393,7 @@
      (channel->lazy-seq ch nil))
   ([ch timeout]
      (let [timeout-fn (when timeout
-                        (if (number? timeout) 
+                        (if (number? timeout)
                           (constantly timeout)
                           timeout))
            e (g/edge "channel->lazy-seq" (g/terminal-propagator nil))]
@@ -464,7 +464,7 @@
           period (t/period)
           priority 0}}
     f]
-     
+
      (let [ch (channel* :description "periodically")
            cnt (atom 0)
            f #(t/invoke-repeatedly task-queue period
@@ -510,7 +510,7 @@
           :lamina/accumulated
 
           (finally
-            
+
             ;; prime emitter, if we haven't already
             (when (.compareAndSet begin-latch false true)
 
@@ -578,7 +578,7 @@
         ^BitSet bitset (create-bitset cnt)
         lock (l/lock)
         ch* (channel* :description "zip-all")]
-    
+
     (doseq [[idx ch] (map vector (range cnt) channels)] ;; todo: tag as long
       (bridge-join ch ch* ""
         (fn [msg]
@@ -646,20 +646,20 @@
 
     (doseq [ch channels]
       (siphon ch ch*))
-    
+
     (let [chs (distinct channels)
           cnt (atom (count channels))]
       (doseq [ch channels]
         (on-closed ch
           #(when (zero? (swap! cnt dec))
              (close ch*)))))
-    
+
     ch*))
 
 ;;;
 
 (defn defer-onto-queue
-  "Takes an input `channel`, a `timestamp` which takes each message and returns the associated time, 
+  "Takes an input `channel`, a `timestamp` which takes each message and returns the associated time,
    and a `task-queue`.  If `auto-advance?` is true, then enqueueing a message will automatically
    advance `task-queue` to that time.
 
@@ -680,7 +680,7 @@
           (fn [msg]
             (let [r (r/result-channel)
                   t (timestamp msg)]
-              
+
               (t/invoke-at task-queue t
                 (with-meta
                   (fn []
@@ -696,7 +696,7 @@
 
               ;; if we've auto-advanced, this should always be realized
               r)))))
-    
+
     ch*))
 
 ;;;
@@ -748,7 +748,7 @@
                   (on-clearance))))))))
 
     (g/join receiver propagator)
-    
+
     (Channel. receiver receiver {::propagator propagator})))
 
 (defn distribute-aggregate
@@ -768,16 +768,16 @@
 
    Example:
 
-     (distribute-aggregate 
+     (distribute-aggregate
        {:facet     :uri
         :generator (fn [uri ch]
-		         (rate ch))}
+                         (rate ch))}
        ch)
-	
+
    will return a channel which periodically emits a map of the form
-	
-	  {\"/abc\" 2
-	   \"/def\" 3}"
+
+          {\"/abc\" 2
+           \"/def\" 3}"
   [{:keys [facet generator period task-queue]
     :or {task-queue (t/task-queue)
          period (t/period)}}
@@ -798,7 +798,7 @@
                                  generated))})
         propagator (-> dist meta ::propagator)]
 
-    ;; aggregation 
+    ;; aggregation
     (let [out (channel)
           aggregator (atom (HashMap.))
           lock (l/lock)
@@ -816,21 +816,21 @@
                 msg (de-nil msg)]
             (when-let [msg (l/with-exclusive-lock lock
                              (let [^HashMap m @aggregator]
-                                        
+
                                (if (closed? ch)
 
                                  ;; rely on flushing behavior if we're already closed
                                  (when-not (.containsKey m facet)
                                    (.put m facet msg))
-                                 
-                                 (or 
+
+                                 (or
                                   ;; we've lapped ourselves
                                   (and (.containsKey m facet)
                                     (reset! aggregator
                                       (doto (HashMap.)
                                         (.put facet msg)))
                                     m)
-                                   
+
                                   ;; we've filled up all available slots
                                   (do
                                     (.put m facet msg)
@@ -843,7 +843,7 @@
 
       ;; set up flush on inactivity
       (let [latch (atom true)]
-        
+
         (let [monitor (fork ch)]
           (receive-all monitor
             (fn [_]

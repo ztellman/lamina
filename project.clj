@@ -10,10 +10,8 @@
   :profiles {:dev {:dependencies [[org.clojure/clojure "1.5.1"]
                                   [criterium "0.4.2"]
                                   [codox-md "0.2.0" :exclusions [org.clojure/clojure]]]}
-             :1.3 {:dependencies [[org.clojure/clojure "1.3.0"]]}
-             :1.4 {:dependencies [[org.clojure/clojure "1.4.0"]]}
              :1.6 {:dependencies [[org.clojure/clojure "1.6.0"]]}}
-  :aliases {"all" ["with-profile" "dev:dev,1.6:dev,1.3:dev,1.4"]}
+  :aliases {"all" ["with-profile" "dev:dev,1.6"]}
   :plugins [[codox "0.6.2"]]
   :codox {:writer codox-md.writer/write-docs
           :include [lamina.core
