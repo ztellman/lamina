@@ -1,6 +1,6 @@
 # Lamina is deprecated
 
-Lamina has a enormous amount of functionality, but like many other concurrency libraries (Rx, core.async, etc.), it's a walled garden that doesn't play nicely with others.  In recognition of this, pieces of Lamina have been reimplemented as standalone libraries that can be used with a variety of concurrency primitives and execution models.
+Lamina has an enormous amount of functionality, but like many other concurrency libraries (Rx, core.async, etc.), it's a walled garden that doesn't play nicely with others.  In recognition of this, pieces of Lamina have been reimplemented as standalone libraries that can be used with a variety of concurrency primitives and execution models.
 
 * `lamina.core`, `lamina.cache`, `lamina.time` -> [Manifold](https://github.com/ztellman/manifold)
 * `lamina.query`, `lamina.stats` -> [Narrator](https://github.com/ztellman/narrator)
