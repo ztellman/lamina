@@ -1,3 +1,15 @@
+# Lamina is deprecated
+
+Lamina has a enormous amount of functionality, but like many other concurrency libraries (Rx, core.async, etc.), it's a walled garden that doesn't play nicely with others.  In recognition of this, pieces of Lamina have been reimplemented as standalone libraries that can be used with a variety of concurrency primitives and execution models.
+
+* `lamina.core`, `lamina.cache`, `lamina.time` -> [Manifold](https://github.com/ztellman/manifold)
+* `lamina.query`, `lamina.stats` -> [Narrator](https://github.com/ztellman/narrator)
+* `lamina.executor` -> [Dirigiste](https://github.com/ztellman/dirigiste)
+* `lamina.viz` -> nothing, yet
+* `lamina.trace` -> nothing, yet
+
+The latest version of [Aleph](https://github.com/ztellman/aleph) is built on this new stack.  Questions about adopting the new libraries can be answered on the [Aleph mailing list](https://groups.google.com/forum/#!forum/aleph-lib).
+
 # Lamina
 
 Lamina is for describing and analyzing streams of data.  It provides a rich set of operators for dealing with these unrealized values, both individually and collectively.  If you're new to Lamina, you should start by reading about [how it deals with individual events](https://github.com/ztellman/lamina/wiki/Introduction).
