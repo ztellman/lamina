@@ -18,7 +18,6 @@
 
     (validate-put-take in out)
 
-    (let [c' (channel)
-          out (s/->source c')]
+    (let [c' (channel)]
       (s/connect c c')
-      (validate-put-take in out))))
+      (validate-put-take in (s/->source c')))))

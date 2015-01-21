@@ -13,6 +13,7 @@
     [manifold
      [stream :as s]
      [deferred :as d]]
+    [manifold.stream.core :as manifold]
     [lamina.time :as t]
     [lamina.core.watch :as w]
     [lamina.core.named :as n]
@@ -403,7 +404,7 @@
 
 ;;;
 
-(s/def-source LaminaChannelSource
+(manifold/def-source LaminaChannelSource
   [ch]
 
   (isSynchronous [_] false)
@@ -416,7 +417,7 @@
   (close [_]
     (close ch))
 
-  (take [this blocking? default-val]
+  (take [this default-val blocking?]
     (let [d (d/->deferred
               (p/run-pipeline
                 (read-channel* ch
@@ -432,7 +433,7 @@
         @d
         d)))
 
-  (take [this blocking? default-val timeout timeout-val]
+  (take [this default-val blocking? timeout timeout-val]
     (let [d (d/->deferred
               (p/run-pipeline
                 (read-channel* ch
@@ -450,7 +451,7 @@
         @d
         d))))
 
-(s/def-sink LaminaChannelSink
+(manifold/def-sink LaminaChannelSink
   [ch]
 
   (isSynchronous [_] false)
@@ -464,14 +465,13 @@
     (close ch))
 
   (put [this x blocking?]
-
     (let [x (enqueue ch x)
           x (cond
               (r/async-promise? x)
               (-> x
                 d/->deferred
-                (d/chain (fn [_] true))
-                (d/catch Throwable (fn [_] false)))
+                (d/chain (fn [x] true))
+                (d/catch (fn [_] false)))
 
               (or
                 (identical? :lamina/closed! x)
@@ -488,13 +488,13 @@
 
     (.put this x blocking?)))
 
-(extend-protocol s/Sourceable
+(extend-protocol manifold/Sourceable
 
     lamina.core.channel.IChannel
     (to-source [ch]
       (->LaminaChannelSource ch)))
 
-(extend-protocol s/Sinkable
+(extend-protocol manifold/Sinkable
 
     lamina.core.channel.IChannel
     (to-sink [ch]
