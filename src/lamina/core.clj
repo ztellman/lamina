@@ -417,6 +417,12 @@
   (close [_]
     (close ch))
 
+  (isDrained [this]
+    (drained? ch))
+
+  (onDrained [this callback]
+    (on-drained this callback))
+
   (take [this default-val blocking?]
     (let [d (d/->deferred
               (p/run-pipeline
@@ -425,9 +431,7 @@
                 {:error-handler (fn [x] (p/complete default-val))}
                 (fn [x]
                   (if (identical? :lamina/drained! x)
-                    (do
-                      (.markDrained this)
-                      default-val)
+                    default-val
                     x))))]
       (if blocking?
         @d
@@ -443,9 +447,7 @@
                 {:error-handler (fn [x] (p/complete default-val))}
                 (fn [x]
                   (if (identical? :lamina/drained! x)
-                    (do
-                      (.markDrained this)
-                     default-val)
+                    default-val
                     x))))]
       (if blocking?
         @d
@@ -463,6 +465,12 @@
 
   (close [this]
     (close ch))
+
+  (isClosed [this]
+    (closed? ch))
+
+  (onClosed [this callback]
+    (on-closed ch callback))
 
   (put [this x blocking?]
     (let [x (enqueue ch x)
