@@ -417,6 +417,12 @@
   (close [_]
     (close ch))
 
+  (isDrained [this]
+    (drained? ch))
+
+  (onDrained [this callback]
+    (on-drained this callback))
+
   (take [this default-val blocking?]
     (let [d (d/->deferred
               (p/run-pipeline
@@ -463,6 +469,12 @@
 
   (close [this]
     (close ch))
+
+  (isClosed [this]
+    (closed? ch))
+
+  (onClosed [this callback]
+    (on-closed ch callback))
 
   (put [this x blocking?]
     (let [x (enqueue ch x)
