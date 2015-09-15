@@ -431,9 +431,7 @@
                 {:error-handler (fn [x] (p/complete default-val))}
                 (fn [x]
                   (if (identical? :lamina/drained! x)
-                    (do
-                      (.markDrained this)
-                      default-val)
+                    default-val
                     x))))]
       (if blocking?
         @d
@@ -449,9 +447,7 @@
                 {:error-handler (fn [x] (p/complete default-val))}
                 (fn [x]
                   (if (identical? :lamina/drained! x)
-                    (do
-                      (.markDrained this)
-                     default-val)
+                    default-val
                     x))))]
       (if blocking?
         @d
